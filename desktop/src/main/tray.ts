@@ -12,38 +12,63 @@ export function createTray(win: BrowserWindow): void {
   tray.setToolTip("media-launcher");
 
   const updateMenu = async () => {
-    const settings = await getSettings();
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: "Show/Hide",
-        click: () => {
-          if (win.isVisible()) {
-            win.hide();
-          } else {
-            win.show();
-          }
+    try {
+      const settings = await getSettings();
+      const contextMenu = Menu.buildFromTemplate([
+        {
+          label: "Show/Hide",
+          click: () => {
+            if (win.isVisible()) {
+              win.hide();
+            } else {
+              win.show();
+            }
+          },
         },
-      },
-      {
-        label: "Start on boot",
-        type: "checkbox",
-        checked: settings.autoStart,
-        click: async () => {
-          const newVal = !settings.autoStart;
-          await setSettings({ autoStart: newVal });
-          app.setLoginItemSettings({ openAtLogin: newVal });
+        {
+          label: "Start on boot",
+          type: "checkbox",
+          checked: settings.autoStart,
+          click: async () => {
+            const newVal = !settings.autoStart;
+            await setSettings({ autoStart: newVal });
+            app.setLoginItemSettings({ openAtLogin: newVal });
+          },
         },
-      },
-      { type: "separator" },
-      {
-        label: "Quit",
-        click: () => {
-          app.isQuiting = true;
-          app.quit();
+        { type: "separator" },
+        {
+          label: "Quit",
+          click: () => {
+            app.isQuiting = true;
+            app.quit();
+          },
         },
-      },
-    ]);
-    tray?.setContextMenu(contextMenu);
+      ]);
+      tray?.setContextMenu(contextMenu);
+    } catch {
+      // Server unreachable — show minimal menu
+      const fallbackMenu = Menu.buildFromTemplate([
+        {
+          label: "Show/Hide",
+          click: () => {
+            if (win.isVisible()) {
+              win.hide();
+            } else {
+              win.show();
+            }
+          },
+        },
+        { type: "separator" },
+        {
+          label: "Quit",
+          click: () => {
+            app.isQuiting = true;
+            app.quit();
+          },
+        },
+      ]);
+      tray?.setContextMenu(fallbackMenu);
+    }
   };
 
   tray.on("click", () => {

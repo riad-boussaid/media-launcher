@@ -78,7 +78,6 @@ export function launchPlayer(
 
   const proc = spawn(exe, args, {
     stdio: "ignore",
-    shell: process.platform === "win32",
   });
   proc.on("error", (err) =>
     console.error(`Failed to launch ${exe}:`, err.message),

@@ -64,18 +64,31 @@ export async function initDatabase(): Promise<void> {
 }
 
 export async function getSettings(): Promise<Settings> {
-  const serverSettings = await api<Record<string, unknown>>("/settings");
   const local = readLocalConfig();
-  return {
-    serverUrl: local.serverUrl,
-    player: serverSettings.player ?? "mpv",
-    mpvArgs: serverSettings.mpvArgs ?? "",
-    playerArgs: serverSettings.playerArgs ?? {},
-    customPlayerPath: serverSettings.customPlayerPath ?? "",
-    customPlayerArgs: serverSettings.customPlayerArgs ?? "{url}",
-    autoStart: serverSettings.autoStart ?? false,
-    startMinimized: serverSettings.startMinimized ?? false,
-  };
+  try {
+    const serverSettings = await api<Record<string, unknown>>("/settings");
+    return {
+      serverUrl: local.serverUrl,
+      player: serverSettings.player ?? "mpv",
+      mpvArgs: serverSettings.mpvArgs ?? "",
+      playerArgs: serverSettings.playerArgs ?? {},
+      customPlayerPath: serverSettings.customPlayerPath ?? "",
+      customPlayerArgs: serverSettings.customPlayerArgs ?? "{url}",
+      autoStart: serverSettings.autoStart ?? false,
+      startMinimized: serverSettings.startMinimized ?? false,
+    };
+  } catch {
+    return {
+      serverUrl: local.serverUrl,
+      player: "mpv",
+      mpvArgs: "",
+      playerArgs: {},
+      customPlayerPath: "",
+      customPlayerArgs: "{url}",
+      autoStart: false,
+      startMinimized: false,
+    };
+  }
 }
 
 export async function setSettings(
