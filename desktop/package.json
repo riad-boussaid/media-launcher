@@ -8,7 +8,10 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
+    "format": "biome format --write src/"
   },
   "build": {
     "appId": "com.media-launcher.desktop",
@@ -32,15 +35,13 @@
     }
   },
   "dependencies": {
-    "electron-squirrel-startup": "^1.0.1",
-    "express": "^5.2.1",
-    "sql.js": "^1.14.1"
+    "electron-squirrel-startup": "^1.0.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.5",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.5.4",
     "electron": "^43.2.0",

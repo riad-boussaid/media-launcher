@@ -1,6 +1,6 @@
 import { useState } from "react";
-import Play from "./pages/Play";
 import History from "./pages/History";
+import Play from "./pages/Play";
 import Settings from "./pages/Settings";
 import "./index.css";
 

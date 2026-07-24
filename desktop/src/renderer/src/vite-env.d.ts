@@ -17,7 +17,7 @@ interface DownloadItem {
 interface ElectronAPI {
   settings: {
     get: () => Promise<{
-      port: number;
+      serverUrl: string;
       player: string;
       mpvArgs: string;
       playerArgs: Record<string, string>;
@@ -27,7 +27,7 @@ interface ElectronAPI {
       startMinimized: boolean;
     }>;
     set: (partial: Record<string, unknown>) => Promise<{
-      port: number;
+      serverUrl: string;
       player: string;
       mpvArgs: string;
       playerArgs: Record<string, string>;
@@ -39,10 +39,22 @@ interface ElectronAPI {
   };
   history: {
     get: () => Promise<
-      { id: string; url: string; title: string; thumbnail: string; timestamp: number }[]
+      {
+        id: string;
+        url: string;
+        title: string;
+        thumbnail: string;
+        timestamp: number;
+      }[]
     >;
     delete: (id: string) => Promise<
-      { id: string; url: string; title: string; thumbnail: string; timestamp: number }[]
+      {
+        id: string;
+        url: string;
+        title: string;
+        thumbnail: string;
+        timestamp: number;
+      }[]
     >;
     clear: () => Promise<void>;
     replay: (url: string) => Promise<{ success: boolean; error?: string }>;

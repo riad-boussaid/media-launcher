@@ -8,6 +8,9 @@
     "build:firefox": "npm --prefix extensions/firefox run build",
     "dev:desktop": "npm --prefix desktop run dev",
     "dev:chrome": "npm --prefix extensions/chrome run dev",
-    "dev:firefox": "npm --prefix extensions/firefox run dev"
+    "dev:firefox": "npm --prefix extensions/firefox run dev",
+    "lint": "biome check server/src/ desktop/src/",
+    "lint:fix": "biome check --write server/src/ desktop/src/",
+    "format": "biome format --write server/src/ desktop/src/"
   }
 }

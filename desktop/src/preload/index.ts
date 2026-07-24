@@ -3,7 +3,8 @@ import { contextBridge, ipcRenderer } from "electron";
 const api = {
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
-    set: (partial: Record<string, unknown>) => ipcRenderer.invoke("settings:set", partial),
+    set: (partial: Record<string, unknown>) =>
+      ipcRenderer.invoke("settings:set", partial),
   },
   history: {
     get: () => ipcRenderer.invoke("history:get"),

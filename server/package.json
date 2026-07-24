@@ -1,21 +1,30 @@
 {
   "name": "media-launcher-server",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "2.0.0",
+  "description": "Standalone API server for media-launcher",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
+    "format": "biome format --write src/"
   },
-  "keywords": [],
   "author": "riad boussaid",
   "license": "ISC",
   "dependencies": {
-    "express": "^5.2.1"
+    "@hono/node-server": "^1.14.1",
+    "better-sqlite3": "^13.0.1",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.7.7"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "@biomejs/biome": "2.5.5",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@11.10.0"
 }

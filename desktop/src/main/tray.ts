@@ -1,5 +1,5 @@
-import { app, Tray, Menu, BrowserWindow, nativeImage } from "electron";
-import { join } from "path";
+import { join } from "node:path";
+import { app, type BrowserWindow, Menu, nativeImage, Tray } from "electron";
 import { getSettings, setSettings } from "./store";
 
 let tray: Tray | null = null;
@@ -11,8 +11,8 @@ export function createTray(win: BrowserWindow): void {
   tray = new Tray(icon);
   tray.setToolTip("media-launcher");
 
-  const updateMenu = () => {
-    const settings = getSettings();
+  const updateMenu = async () => {
+    const settings = await getSettings();
     const contextMenu = Menu.buildFromTemplate([
       {
         label: "Show/Hide",
@@ -28,9 +28,9 @@ export function createTray(win: BrowserWindow): void {
         label: "Start on boot",
         type: "checkbox",
         checked: settings.autoStart,
-        click: () => {
+        click: async () => {
           const newVal = !settings.autoStart;
-          setSettings({ autoStart: newVal });
+          await setSettings({ autoStart: newVal });
           app.setLoginItemSettings({ openAtLogin: newVal });
         },
       },
@@ -43,7 +43,7 @@ export function createTray(win: BrowserWindow): void {
         },
       },
     ]);
-    tray!.setContextMenu(contextMenu);
+    tray?.setContextMenu(contextMenu);
   };
 
   tray.on("click", () => {

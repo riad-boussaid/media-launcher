@@ -7,7 +7,7 @@ export interface HistoryEntry {
 }
 
 export interface Settings {
-  port: number;
+  serverUrl: string;
   player: string;
   mpvArgs: string;
   playerArgs: Record<string, string>;
@@ -37,7 +37,9 @@ export async function getSettings(): Promise<Settings> {
   return api.settings.get();
 }
 
-export async function setSettings(partial: Partial<Settings>): Promise<Settings> {
+export async function setSettings(
+  partial: Partial<Settings>,
+): Promise<Settings> {
   return api.settings.set(partial as Record<string, unknown>);
 }
 
@@ -53,7 +55,9 @@ export async function clearHistory(): Promise<void> {
   return api.history.clear();
 }
 
-export async function replayUrl(url: string): Promise<{ success: boolean; error?: string }> {
+export async function replayUrl(
+  url: string,
+): Promise<{ success: boolean; error?: string }> {
   return api.history.replay(url);
 }
 

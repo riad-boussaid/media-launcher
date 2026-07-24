@@ -1,7 +1,7 @@
-import { exec } from "child_process";
-import { createWriteStream, existsSync, mkdirSync, readdirSync, unlinkSync } from "fs";
-import { accessSync, constants, rename } from "fs/promises";
-import { join } from "path";
+import { exec } from "node:child_process";
+import { createWriteStream, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { accessSync, constants, rename } from "node:fs/promises";
+import { join } from "node:path";
 import { app } from "electron";
 
 const BIN_DIR = join(app.getPath("userData"), "bin");
@@ -25,25 +25,48 @@ interface DownloadableDef {
   name: string;
   description: string;
   size: string;
-  platformWin32: { url: string; type: "single" | "zip" | "link"; extract?: string } | null;
-  platformDarwin: { url: string; type: "single" | "zip" | "link"; extract?: string } | null;
-  platformLinux: { url: string; type: "single" | "zip" | "link"; extract?: string } | null;
+  platformWin32: {
+    url: string;
+    type: "single" | "zip" | "link";
+    extract?: string;
+  } | null;
+  platformDarwin: {
+    url: string;
+    type: "single" | "zip" | "link";
+    extract?: string;
+  } | null;
+  platformLinux: {
+    url: string;
+    type: "single" | "zip" | "link";
+    extract?: string;
+  } | null;
 }
 
 const DEFINITIONS: DownloadableDef[] = [
   {
     id: "yt-dlp",
     name: "yt-dlp",
-    description: "Download URLs from YouTube and hundreds of other sites. Required for fetching video title and thumbnail metadata.",
+    description:
+      "Download URLs from YouTube and hundreds of other sites. Required for fetching video title and thumbnail metadata.",
     size: "~3 MB",
-    platformWin32: { url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe", type: "single" },
-    platformDarwin: { url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp", type: "single" },
-    platformLinux: { url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp", type: "single" },
+    platformWin32: {
+      url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
+      type: "single",
+    },
+    platformDarwin: {
+      url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp",
+      type: "single",
+    },
+    platformLinux: {
+      url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp",
+      type: "single",
+    },
   },
   {
     id: "ffmpeg",
     name: "FFmpeg",
-    description: "Audio/video processing. Used by yt-dlp to merge formats and download audio.",
+    description:
+      "Audio/video processing. Used by yt-dlp to merge formats and download audio.",
     size: "~70 MB",
     platformWin32: {
       url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
@@ -96,7 +119,10 @@ export function getBinDir(): string {
 }
 
 export function getLocalBinaryPath(name: string): string {
-  const exe = process.platform === "win32" && !name.endsWith(".exe") ? `${name}.exe` : name;
+  const exe =
+    process.platform === "win32" && !name.endsWith(".exe")
+      ? `${name}.exe`
+      : name;
   const local = join(BIN_DIR, exe);
   if (existsSync(local)) {
     try {
@@ -118,10 +144,14 @@ async function fetchWithRedirect(url: string): Promise<Response> {
   return res;
 }
 
-async function downloadFile(url: string, destPath: string, onProgress?: (received: number, total: number) => void): Promise<void> {
+async function downloadFile(
+  url: string,
+  destPath: string,
+  onProgress?: (received: number, total: number) => void,
+): Promise<void> {
   const res = await fetchWithRedirect(url);
   const total = parseInt(res.headers.get("content-length") || "0", 10);
-  const reader = res.body!.getReader();
+  const reader = res.body?.getReader();
   const writer = createWriteStream(destPath);
   let received = 0;
 
@@ -148,7 +178,11 @@ async function downloadFile(url: string, destPath: string, onProgress?: (receive
   });
 }
 
-async function extractZip(zipPath: string, destDir: string, binaryInside: string): Promise<void> {
+async function extractZip(
+  zipPath: string,
+  destDir: string,
+  binaryInside: string,
+): Promise<void> {
   const targetName = binaryInside.split("/").pop()!;
   const targetDest = join(destDir, targetName);
 
@@ -157,14 +191,19 @@ async function extractZip(zipPath: string, destDir: string, binaryInside: string
       const tmpDir = join(destDir, "__extract");
       const cmd = `powershell -Command "Expand-Archive -Path '${zipPath.replace(/'/g, "''")}' -DestinationPath '${tmpDir.replace(/'/g, "''")}' -Force"`;
       exec(cmd, async (err) => {
-        if (err) { reject(err); return; }
+        if (err) {
+          reject(err);
+          return;
+        }
         try {
           const extractedBinary = join(tmpDir, binaryInside);
           if (existsSync(extractedBinary)) {
             await rename(extractedBinary, targetDest);
           }
           // cleanup
-          exec(`powershell -Command "Remove-Item -Path '${tmpDir.replace(/'/g, "''")}' -Recurse -Force"`);
+          exec(
+            `powershell -Command "Remove-Item -Path '${tmpDir.replace(/'/g, "''")}' -Recurse -Force"`,
+          );
           resolve();
         } catch (e) {
           reject(e);
@@ -174,41 +213,70 @@ async function extractZip(zipPath: string, destDir: string, binaryInside: string
   } else {
     await new Promise<void>((resolve, reject) => {
       const tmpDir = join(destDir, "__extract");
-      exec(`mkdir -p '${tmpDir}' && unzip -o '${zipPath}' -d '${tmpDir}'`, async (err) => {
-        if (err) { reject(err); return; }
-        try {
-          const extractedBinary = join(tmpDir, binaryInside);
-          if (existsSync(extractedBinary)) {
-            exec(`cp '${extractedBinary}' '${targetDest}'`);
+      exec(
+        `mkdir -p '${tmpDir}' && unzip -o '${zipPath}' -d '${tmpDir}'`,
+        async (err) => {
+          if (err) {
+            reject(err);
+            return;
           }
-          exec(`rm -rf '${tmpDir}'`);
-          resolve();
-        } catch (e) {
-          reject(e);
-        }
-      });
+          try {
+            const extractedBinary = join(tmpDir, binaryInside);
+            if (existsSync(extractedBinary)) {
+              exec(`cp '${extractedBinary}' '${targetDest}'`);
+            }
+            exec(`rm -rf '${tmpDir}'`);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        },
+      );
     });
   }
 }
 
-function getDefForPlatform(def: DownloadableDef): { url: string; type: string; extract?: string } | null {
-  const p = process.platform as keyof Pick<DownloadableDef, "platformWin32" | "platformDarwin" | "platformLinux">;
-  const key = `platform${p.charAt(0).toUpperCase() + p.slice(1)}` as keyof DownloadableDef;
-  return (def[key] as { url: string; type: string; extract?: string } | null) ?? null;
+function getDefForPlatform(
+  def: DownloadableDef,
+): { url: string; type: string; extract?: string } | null {
+  const p = process.platform as keyof Pick<
+    DownloadableDef,
+    "platformWin32" | "platformDarwin" | "platformLinux"
+  >;
+  const key =
+    `platform${p.charAt(0).toUpperCase() + p.slice(1)}` as keyof DownloadableDef;
+  return (
+    (def[key] as { url: string; type: string; extract?: string } | null) ?? null
+  );
 }
 
 const COMMON_PATHS: Record<string, string[]> = {
-  PotPlayerMini64: ["C:\\Program Files\\DAUM\\PotPlayer\\PotPlayerMini64.exe", "C:\\Program Files (x86)\\DAUM\\PotPlayer\\PotPlayerMini64.exe"],
-  "PotPlayerMini64.exe": ["C:\\Program Files\\DAUM\\PotPlayer\\PotPlayerMini64.exe", "C:\\Program Files (x86)\\DAUM\\PotPlayer\\PotPlayerMini64.exe"],
-  ffmpeg: ["C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe", "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe"],
-  "ffmpeg.exe": ["C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe", "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe"],
+  PotPlayerMini64: [
+    "C:\\Program Files\\DAUM\\PotPlayer\\PotPlayerMini64.exe",
+    "C:\\Program Files (x86)\\DAUM\\PotPlayer\\PotPlayerMini64.exe",
+  ],
+  "PotPlayerMini64.exe": [
+    "C:\\Program Files\\DAUM\\PotPlayer\\PotPlayerMini64.exe",
+    "C:\\Program Files (x86)\\DAUM\\PotPlayer\\PotPlayerMini64.exe",
+  ],
+  ffmpeg: [
+    "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+    "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
+  ],
+  "ffmpeg.exe": [
+    "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+    "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
+  ],
   iina: ["/Applications/IINA.app/Contents/MacOS/iina"],
   mpv: ["/usr/bin/mpv", "/usr/local/bin/mpv"],
 };
 
 export function resolveSystemPath(name: string): string {
   if (existsSync(name)) return name;
-  const lookup = [name, process.platform === "win32" && !name.endsWith(".exe") ? `${name}.exe` : ""].filter(Boolean);
+  const lookup = [
+    name,
+    process.platform === "win32" && !name.endsWith(".exe") ? `${name}.exe` : "",
+  ].filter(Boolean);
   for (const key of lookup) {
     const paths = COMMON_PATHS[key];
     if (paths) {
@@ -222,7 +290,8 @@ export function resolveSystemPath(name: string): string {
 
 export function checkSystemPath(binName: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const cmd = process.platform === "win32" ? `where ${binName}` : `which ${binName}`;
+    const cmd =
+      process.platform === "win32" ? `where ${binName}` : `which ${binName}`;
     exec(cmd, (err) => {
       if (!err) return resolve(true);
       const paths = COMMON_PATHS[binName];
@@ -238,7 +307,8 @@ export function checkSystemPath(binName: string): Promise<boolean> {
 
 const SYSTEM_CACHE = new Map<string, boolean>();
 function getSystemExeName(def: DownloadableDef): string {
-  if (def.id === "yt-dlp") return process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+  if (def.id === "yt-dlp")
+    return process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
   if (def.id === "mpv") return process.platform === "win32" ? "mpv.exe" : "mpv";
   if (def.id === "iina") return "iina";
   if (def.id === "potplayer") return "PotPlayerMini64";
@@ -247,16 +317,18 @@ function getSystemExeName(def: DownloadableDef): string {
 
 export async function listDownloads(): Promise<DownloadItem[]> {
   ensureBinDir();
-  await Promise.all(DEFINITIONS.map(async (def) => {
-    const name = getSystemExeName(def);
-    if (!SYSTEM_CACHE.has(name)) {
-      SYSTEM_CACHE.set(name, await checkSystemPath(name));
-    }
-  }));
+  await Promise.all(
+    DEFINITIONS.map(async (def) => {
+      const name = getSystemExeName(def);
+      if (!SYSTEM_CACHE.has(name)) {
+        SYSTEM_CACHE.set(name, await checkSystemPath(name));
+      }
+    }),
+  );
   return DEFINITIONS.map((def) => {
     const platform = getDefForPlatform(def);
     const exeName = getSystemExeName(def);
-    const isLinkType = platform?.type === "link";
+    const _isLinkType = platform?.type === "link";
     const installed = existsSync(join(BIN_DIR, exeName));
     const systemAvailable = SYSTEM_CACHE.get(exeName) ?? false;
     const status = downloadState.get(def.id) ?? (installed ? "done" : "idle");
@@ -265,7 +337,9 @@ export async function listDownloads(): Promise<DownloadItem[]> {
       name: def.name,
       description: def.description,
       size: def.size,
-      platform: platform ? process.platform as "win32" | "darwin" | "linux" : null,
+      platform: platform
+        ? (process.platform as "win32" | "darwin" | "linux")
+        : null,
       url: platform?.url,
       canDownload: platform?.type !== "link",
       installed,
@@ -288,7 +362,12 @@ export async function startDownload(id: string): Promise<void> {
   downloadErrors.delete(id);
 
   try {
-    const ext = platform.type === "zip" ? ".zip" : (process.platform === "win32" ? ".exe" : "");
+    const ext =
+      platform.type === "zip"
+        ? ".zip"
+        : process.platform === "win32"
+          ? ".exe"
+          : "";
     const tempPath = join(BIN_DIR, `.${id}${ext}`);
 
     console.log(`[download] ${id} → ${tempPath} (${platform.url})`);
@@ -301,12 +380,19 @@ export async function startDownload(id: string): Promise<void> {
       await extractZip(tempPath, BIN_DIR, extractPath);
       if (existsSync(tempPath)) unlinkSync(tempPath);
       if (existsSync(targetDest)) {
-        try { accessSync(targetDest, constants.X_OK); } catch { /* Windows doesn't need X_OK */ }
+        try {
+          accessSync(targetDest, constants.X_OK);
+        } catch {
+          /* Windows doesn't need X_OK */
+        }
       }
     } else {
-      const targetName = def.id === "yt-dlp"
-        ? (process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp")
-        : def.id;
+      const targetName =
+        def.id === "yt-dlp"
+          ? process.platform === "win32"
+            ? "yt-dlp.exe"
+            : "yt-dlp"
+          : def.id;
       const targetDest = join(BIN_DIR, targetName);
       if (tempPath !== targetDest) {
         await rename(tempPath, targetDest);

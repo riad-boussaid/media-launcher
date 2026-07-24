@@ -1,3 +1,2 @@
-@echo off
-node ./index.js
-pause
+#!/bin/bash
+npx tsx src/index.ts

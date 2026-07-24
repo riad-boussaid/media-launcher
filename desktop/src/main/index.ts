@@ -1,18 +1,32 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell } from "electron";
-import { join } from "path";
-import { startServer, stopServer } from "./server";
+import { join } from "node:path";
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  screen,
+  shell,
+} from "electron";
+import { deleteDownload, listDownloads, startDownload } from "./downloads";
+import { checkPlayerExists } from "./player";
+import {
+  clearHistory,
+  deleteHistory,
+  getHistory,
+  getServerUrlSync,
+  getSettings,
+  initDatabase,
+  setSettings,
+} from "./store";
 import { createTray, destroyTray } from "./tray";
-import { launchPlayer, checkPlayerExists } from "./player";
-import { initDatabase, getSettings, setSettings, getHistory, deleteHistory, clearHistory, addHistory, updateHistoryEntry } from "./store";
-import { fetchMetadata } from "./metadata";
-import { listDownloads, startDownload, deleteDownload } from "./downloads";
 
 if (require("electron-squirrel-startup")) app.quit();
 
 let win: BrowserWindow | null = null;
 
 function createWindow(): void {
-  const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
+  const { width: screenWidth, height: screenHeight } =
+    screen.getPrimaryDisplay().workAreaSize;
 
   win = new BrowserWindow({
     width: 520,
@@ -38,13 +52,13 @@ function createWindow(): void {
   win.on("close", (event) => {
     if (!app.isQuiting) {
       event.preventDefault();
-      win!.hide();
+      win?.hide();
     }
   });
 
   win.on("minimize", (event) => {
     event.preventDefault();
-    win!.hide();
+    win?.hide();
   });
 }
 
@@ -66,14 +80,20 @@ function registerIPC(): void {
   });
   ipcMain.handle("shell:open", (_event, url) => shell.openExternal(url));
   ipcMain.handle("history:replay", async (_event, url) => {
-    const result = await launchPlayer(url, [], getSettings());
-    if (!result.success) return result;
-    const entry = addHistory(url);
-    const meta = await fetchMetadata(url);
-    if (meta.title || meta.thumbnail) {
-      updateHistoryEntry(entry.id, meta);
+    try {
+      const res = await fetch(`${getServerUrlSync()}/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ err: res.statusText }));
+        return { success: false, error: err.err || res.statusText };
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
     }
-    return result;
   });
   ipcMain.handle("window:toggle", () => {
     if (win) {
@@ -85,15 +105,14 @@ function registerIPC(): void {
 
 app.whenReady().then(async () => {
   await initDatabase();
-  const settings = getSettings();
+  const settings = await getSettings();
   app.setLoginItemSettings({ openAtLogin: settings.autoStart });
 
-  startServer(settings.port);
   registerIPC();
   createWindow();
 
-  if (settings.startMinimized) win!.hide();
-  else win!.show();
+  if (settings.startMinimized) win?.hide();
+  else win?.show();
 
   createTray(win!);
 
@@ -109,5 +128,4 @@ app.on("window-all-closed", () => {});
 
 app.on("before-quit", () => {
   destroyTray();
-  stopServer();
 });
