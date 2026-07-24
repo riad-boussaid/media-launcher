@@ -1,4 +1,4 @@
-import { sendUrl, getServerUrl } from "@/lib/api";
+import { getServerUrl, sendUrl } from "@/lib/api";
 
 const LOGO = chrome.runtime.getURL("mpv-logo.png");
 
@@ -24,9 +24,7 @@ async function fetchThumbnail(videoId: string): Promise<string> {
         r.onload = () => resolve(r.result as string);
         r.readAsDataURL(blob);
       });
-    } catch {
-      continue;
-    }
+    } catch {}
   }
   return LOGO;
 }
@@ -105,6 +103,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     updatePersistentBadge();
     sendResponse();
   }
+  return undefined;
 });
 
 chrome.contextMenus.onClicked.addListener(async (info) => {

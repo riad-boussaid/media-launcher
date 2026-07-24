@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { defaultSettings, Settings } from "@/lib/settings";
+import { useCallback, useEffect, useState } from "react";
 import { discoverServer } from "@/lib/discovery";
+import { defaultSettings, type Settings } from "@/lib/settings";
 
 const styles = {
   page: {
@@ -165,7 +165,7 @@ export default function Options() {
     setSaved(false);
   };
 
-  const runDiscovery = async () => {
+  const runDiscovery = useCallback(async () => {
     setDiscovering(true);
     setDiscovered(null);
     const result = await discoverServer(serverUrl);
@@ -176,11 +176,16 @@ export default function Options() {
       setDiscovered(false);
     }
     setDiscovering(false);
-  };
+  }, [serverUrl]);
 
   const saveOptions = async () => {
     try {
-      await chrome.storage.sync.set({ serverUrl, maxHeight, mpvArgs, showThumb });
+      await chrome.storage.sync.set({
+        serverUrl,
+        maxHeight,
+        mpvArgs,
+        showThumb,
+      });
       setDirty(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -200,23 +205,23 @@ export default function Options() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const restoreOptions = async () => {
+  const restoreOptions = useCallback(async () => {
     const opts = (await chrome.storage.sync.get(defaultSettings)) as Settings;
     setServerUrl(opts.serverUrl);
     setMaxHeight(opts.maxHeight);
     setMpvArgs(opts.mpvArgs);
     setShowThumb(opts.showThumb);
-  };
+  }, []);
 
   useEffect(() => {
     restoreOptions();
-  }, []);
+  }, [restoreOptions]);
 
   useEffect(() => {
     if (serverUrl && serverUrl === defaultSettings.serverUrl) {
       runDiscovery();
     }
-  }, []);
+  }, [serverUrl, runDiscovery]);
 
   const discoveryIndicator = discovering ? (
     <span style={{ color: "#888" }}>Scanning ports 5000–5010...</span>
@@ -246,10 +251,7 @@ export default function Options() {
             }}
             placeholder="http://localhost:5000"
           />
-          <button
-            style={styles.btnSmall}
-            onClick={runDiscovery}
-          >
+          <button type="button" style={styles.btnSmall} onClick={runDiscovery}>
             {discovering ? "..." : "Scan"}
           </button>
         </div>
@@ -331,13 +333,15 @@ export default function Options() {
             You have unsaved changes
           </span>
         )}
-        {saved && !dirty && (
-          <span style={styles.status}>Options saved.</span>
-        )}
-        <button style={styles.btnSecondary} onClick={resetOptions}>
+        {saved && !dirty && <span style={styles.status}>Options saved.</span>}
+        <button
+          type="button"
+          style={styles.btnSecondary}
+          onClick={resetOptions}
+        >
           Reset
         </button>
-        <button style={styles.btnPrimary} onClick={saveOptions}>
+        <button type="button" style={styles.btnPrimary} onClick={saveOptions}>
           Save
         </button>
       </div>

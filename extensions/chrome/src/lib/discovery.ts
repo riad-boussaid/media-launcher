@@ -35,15 +35,20 @@ export async function discoverServer(
       if (res.ok) {
         const data = await res.json();
         if (data.app === "media-launcher") {
-          return { serverUrl: url, port: new URL(url).port as unknown as number };
+          return {
+            serverUrl: url,
+            port: new URL(url).port as unknown as number,
+          };
         }
       }
-    } catch { /* fall through to probing */ }
+    } catch {
+      /* fall through to probing */
+    }
   }
 
   const controller = new AbortController();
   const combinedSignal = signal
-    ? AbortSignal.any?.([signal, controller.signal]) ?? signal
+    ? (AbortSignal.any?.([signal, controller.signal]) ?? signal)
     : controller.signal;
 
   for (let port = DEFAULT_PORT; port <= MAX_PORT; port++) {

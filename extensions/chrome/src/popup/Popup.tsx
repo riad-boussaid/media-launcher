@@ -1,8 +1,13 @@
-import { sendUrl, checkServerHealth, type SendResult } from "@/lib/api";
-import { getHistory, addHistory, type HistoryEntry } from "@/lib/history";
-import { defaultSettings } from "@/lib/settings";
+import {
+  CheckCircle2,
+  History,
+  Loader2,
+  Play,
+  Settings,
+  XCircle,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -10,15 +15,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  Settings,
-  History,
-  Play,
-} from "lucide-react";
-import { useState, useEffect } from "react";
+import { Separator } from "@/components/ui/separator";
+import { checkServerHealth, type SendResult, sendUrl } from "@/lib/api";
+import { addHistory, getHistory, type HistoryEntry } from "@/lib/history";
+import { defaultSettings } from "@/lib/settings";
 
 function getYoutubeId(url: string): string | null {
   const m = url.match(
@@ -44,7 +44,11 @@ export default function Popup() {
     : null;
 
   useEffect(() => {
-    try { chrome.runtime.sendMessage("check-server"); } catch { /* ignore */ }
+    try {
+      chrome.runtime.sendMessage("check-server");
+    } catch {
+      /* ignore */
+    }
 
     chrome.storage.sync.get(defaultSettings).then((opts) => {
       if (opts.maxHeight) setMaxHeight(opts.maxHeight);
@@ -84,9 +88,15 @@ export default function Popup() {
 
   const dot =
     serverStatus === "connected" ? (
-      <span className="size-2 shrink-0 rounded-full bg-green-500 ring-2 ring-green-500/20" title="Server connected" />
+      <span
+        className="size-2 shrink-0 rounded-full bg-green-500 ring-2 ring-green-500/20"
+        title="Server connected"
+      />
     ) : serverStatus === "disconnected" ? (
-      <span className="size-2 shrink-0 rounded-full bg-red-500 ring-2 ring-red-500/20" title="Server not found" />
+      <span
+        className="size-2 shrink-0 rounded-full bg-red-500 ring-2 ring-red-500/20"
+        title="Server not found"
+      />
     ) : (
       <Loader2 className="size-3 animate-spin text-muted-foreground" />
     );
@@ -96,7 +106,9 @@ export default function Popup() {
       <div className="space-y-3 p-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold tracking-tight">media-launcher</span>
+            <span className="text-sm font-semibold tracking-tight">
+              media-launcher
+            </span>
             {dot}
           </div>
           <Button
@@ -115,6 +127,7 @@ export default function Popup() {
             {thumbUrl && (
               <img
                 src={thumbUrl}
+                alt={tabTitle || "Video thumbnail"}
                 className="size-11 shrink-0 rounded-md object-cover shadow-xs"
               />
             )}
@@ -134,7 +147,7 @@ export default function Popup() {
         <Select
           value={maxHeight}
           onValueChange={(v) => {
-            setMaxHeight(v);
+            if (v) setMaxHeight(v);
             chrome.storage.sync.set({ maxHeight: v });
           }}
         >
@@ -163,7 +176,8 @@ export default function Popup() {
             </span>
           ) : (
             <span className="flex items-center gap-1.5">
-              <Play className="size-3.5 fill-current" /> Play with Media Launcher
+              <Play className="size-3.5 fill-current" /> Play with Media
+              Launcher
             </span>
           )}
         </Button>
@@ -192,6 +206,7 @@ export default function Popup() {
               <div className="max-h-28 space-y-0.5 overflow-y-auto">
                 {history.slice(0, 5).map((entry) => (
                   <button
+                    type="button"
                     key={entry.url + entry.timestamp}
                     onClick={() => handlePlay(entry.url, entry.title)}
                     className="w-full truncate rounded-md px-1.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

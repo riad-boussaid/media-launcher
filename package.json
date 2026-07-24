@@ -10,10 +10,10 @@
     "dev:desktop": "pnpm -C desktop run dev",
     "dev:chrome": "pnpm -C extensions/chrome run dev",
     "dev:firefox": "pnpm -C extensions/firefox run dev",
-    "lint": "biome check server/src/ desktop/src/",
-    "lint:fix": "biome check --write server/src/ desktop/src/",
-    "format": "biome format --write server/src/ desktop/src/",
-    "type-check": "pnpm -C server run type-check && pnpm -C desktop run type-check"
+    "lint": "biome check server/src/ desktop/src/ extensions/chrome/src/ extensions/firefox/src/",
+    "lint:fix": "biome check --write server/src/ desktop/src/ extensions/chrome/src/ extensions/firefox/src/",
+    "format": "biome format --write server/src/ desktop/src/ extensions/chrome/src/ extensions/firefox/src/",
+    "type-check": "pnpm -C server run type-check && pnpm -C desktop run type-check && pnpm -C extensions/chrome run type-check && pnpm -C extensions/firefox run type-check"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.5"

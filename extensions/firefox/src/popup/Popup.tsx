@@ -1,7 +1,7 @@
-import { sendUrl, checkServerHealth, type SendResult } from "@/lib/api";
-import { getHistory, addHistory, type HistoryEntry } from "@/lib/history";
+import { useEffect, useState } from "react";
+import { checkServerHealth, type SendResult, sendUrl } from "@/lib/api";
+import { addHistory, getHistory, type HistoryEntry } from "@/lib/history";
 import { defaultSettings } from "@/lib/settings";
-import { useState, useEffect } from "react";
 
 function getYoutubeId(url: string): string | null {
   const m = url.match(
@@ -208,7 +208,11 @@ export default function Popup() {
     : null;
 
   useEffect(() => {
-    try { chrome.runtime.sendMessage("check-server"); } catch { /* ignore */ }
+    try {
+      chrome.runtime.sendMessage("check-server");
+    } catch {
+      /* ignore */
+    }
 
     chrome.storage.sync.get(defaultSettings).then((opts) => {
       if (opts.maxHeight) setMaxHeight(opts.maxHeight);
@@ -264,6 +268,7 @@ export default function Popup() {
             {indicator}
           </div>
           <button
+            type="button"
             style={s.settingsBtn}
             onClick={() => chrome.runtime.openOptionsPage()}
             title="Settings"
@@ -274,7 +279,13 @@ export default function Popup() {
 
         {tabUrl && (
           <div style={s.tabCard}>
-            {thumbUrl && <img src={thumbUrl} style={s.thumb} />}
+            {thumbUrl && (
+              <img
+                src={thumbUrl}
+                alt={tabTitle || "Video thumbnail"}
+                style={s.thumb}
+              />
+            )}
             <div style={s.tabInfo}>
               {tabTitle && <p style={s.tabTitle}>{tabTitle}</p>}
               <p style={s.tabUrl}>{tabUrl}</p>
@@ -299,6 +310,7 @@ export default function Popup() {
         </select>
 
         <button
+          type="button"
           onClick={handlePlayCurrent}
           disabled={sending || !tabUrl}
           style={sending || !tabUrl ? s.btnDisabled : s.btn}
@@ -309,9 +321,7 @@ export default function Popup() {
         {status && !status.success && (
           <div style={s.errorBox}>✗ {status.error}</div>
         )}
-        {status?.success && (
-          <div style={s.successBox}>✓ Sent to player</div>
-        )}
+        {status?.success && <div style={s.successBox}>✓ Sent to player</div>}
 
         {history.length > 0 && (
           <>
@@ -321,6 +331,7 @@ export default function Popup() {
               <div style={s.historyScroll}>
                 {history.slice(0, 5).map((entry) => (
                   <button
+                    type="button"
                     key={entry.url + entry.timestamp}
                     onClick={() => handlePlay(entry.url, entry.title)}
                     style={s.historyItem}

@@ -11,6 +11,7 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "baseUrl": ".",
+    "types": ["chrome-types"],
     "paths": {
       "@/*": ["./src/*"]
     }

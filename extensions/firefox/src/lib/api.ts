@@ -1,5 +1,5 @@
-import { defaultSettings } from "@/lib/settings";
 import { discoverServer } from "@/lib/discovery";
+import { defaultSettings } from "@/lib/settings";
 
 let cachedServerUrl: string | null = null;
 
@@ -8,9 +8,7 @@ export async function getServerUrl(): Promise<string | null> {
 
   const opts = await chrome.storage.sync.get(defaultSettings);
   const preferredUrl =
-    opts.serverUrl !== defaultSettings.serverUrl
-      ? opts.serverUrl
-      : undefined;
+    opts.serverUrl !== defaultSettings.serverUrl ? opts.serverUrl : undefined;
 
   const result = await discoverServer(preferredUrl);
   if (result) {
@@ -53,7 +51,9 @@ export async function sendUrl(url: string): Promise<SendResult> {
       mpvArgs.push("--script-opts=ytdl_hook-thumbnails=best");
     }
   } else {
-    mpvArgs.push(`--ytdl-format=bestvideo[height<=${opts.maxHeight}]+bestaudio`);
+    mpvArgs.push(
+      `--ytdl-format=bestvideo[height<=${opts.maxHeight}]+bestaudio`,
+    );
   }
 
   const customArgs = opts.mpvArgs
@@ -76,14 +76,23 @@ export async function sendUrl(url: string): Promise<SendResult> {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      return { success: false, error: `Server error: ${res.status}${text ? ` - ${text}` : ""}` };
+      return {
+        success: false,
+        error: `Server error: ${res.status}${text ? ` - ${text}` : ""}`,
+      };
     }
 
     return { success: true };
   } catch (error) {
     if (error instanceof DOMException && error.name === "TimeoutError") {
-      return { success: false, error: "Request timed out. Is the server running?" };
+      return {
+        success: false,
+        error: "Request timed out. Is the server running?",
+      };
     }
-    return { success: false, error: `Connection failed: ${(error as Error).message}` };
+    return {
+      success: false,
+      error: `Connection failed: ${(error as Error).message}`,
+    };
   }
 }

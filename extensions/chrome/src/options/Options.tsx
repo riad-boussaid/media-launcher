@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { ExternalLink, Info, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, Wifi, WifiOff, RefreshCw, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -13,12 +13,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { defaultSettings, Settings } from "@/lib/settings";
+import { Textarea } from "@/components/ui/textarea";
 import { discoverServer } from "@/lib/discovery";
+import { defaultSettings, type Settings } from "@/lib/settings";
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-3 rounded-lg border p-4">
       <h3 className="text-sm font-semibold">{title}</h3>
@@ -38,7 +44,7 @@ export default function Options() {
   const [discovered, setDiscovered] = useState<boolean | null>(null);
   const [dirty, setDirty] = useState(false);
 
-  const runDiscovery = async () => {
+  const runDiscovery = useCallback(async () => {
     setDiscovering(true);
     setDiscovered(null);
     const result = await discoverServer(serverUrl);
@@ -49,7 +55,7 @@ export default function Options() {
       setDiscovered(false);
     }
     setDiscovering(false);
-  };
+  }, [serverUrl]);
 
   const markDirty = () => setDirty(true);
 
@@ -79,23 +85,23 @@ export default function Options() {
     setDirty(false);
   };
 
-  const restoreOptions = async () => {
+  const restoreOptions = useCallback(async () => {
     const opts = (await chrome.storage.sync.get(defaultSettings)) as Settings;
     setServerUrl(opts.serverUrl);
     setMaxHeight(opts.maxHeight);
     setMpvArgs(opts.mpvArgs);
     setShowThumb(opts.showThumb);
-  };
+  }, []);
 
   useEffect(() => {
     restoreOptions();
-  }, []);
+  }, [restoreOptions]);
 
   useEffect(() => {
     if (serverUrl && serverUrl === defaultSettings.serverUrl) {
       runDiscovery();
     }
-  }, []);
+  }, [serverUrl, runDiscovery]);
 
   return (
     <div className="mx-auto w-4/5 max-w-2xl space-y-6 p-4">
@@ -207,6 +213,7 @@ export default function Options() {
                 href="https://mpv.io/manual/stable/#options"
                 target="_blank"
                 className="flex items-center"
+                rel="noopener"
               >
                 mpv manual
                 <ExternalLink className="ml-1 size-3" />

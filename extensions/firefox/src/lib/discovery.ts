@@ -38,7 +38,9 @@ export async function discoverServer(
           return { serverUrl: url, port: Number(new URL(url).port) };
         }
       }
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
 
   const controller = new AbortController();

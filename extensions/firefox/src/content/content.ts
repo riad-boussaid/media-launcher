@@ -44,7 +44,9 @@ function getVideoId(element: HTMLElement): string | null {
   if (!anchor) return null;
   const href = anchor.getAttribute("href");
   if (!href) return null;
-  const m = href.match(/[?&]v=([a-zA-Z0-9_-]{11})|^\/shorts\/([a-zA-Z0-9_-]{11})/);
+  const m = href.match(
+    /[?&]v=([a-zA-Z0-9_-]{11})|^\/shorts\/([a-zA-Z0-9_-]{11})/,
+  );
   return m?.[1] ?? m?.[2] ?? null;
 }
 
@@ -81,7 +83,7 @@ function injectBadge(a: HTMLAnchorElement): void {
     const id = getVideoId(a);
     if (!id) return;
     badge.style.opacity = "0.5";
-    const result = await sendUrl(`https://www.youtube.com/watch?v=${id}`);
+    await sendUrl(`https://www.youtube.com/watch?v=${id}`);
     badge.style.opacity = "1";
   });
 
@@ -112,4 +114,3 @@ observer.observe(document.body, { childList: true, subtree: true });
 
 injectButton();
 injectThumbnailBadges();
-
