@@ -4,28 +4,36 @@ Send videos from your browser to an external media player (mpv) with one click.
 
 ## Architecture
 
-| Component | Directory | Platform |
-|-----------|-----------|----------|
+| Component | Directory | Tech |
+|-----------|-----------|------|
+| API server | server/ | Hono, Drizzle ORM, better-sqlite3 |
+| Desktop app | desktop/ | Electron, React, Tailwind CSS |
 | Chrome extension | extensions/chrome/ | Chrome, Edge, Brave |
 | Firefox extension | extensions/firefox/ | Firefox |
-| Go server | go-server/ | Cross-platform |
-| Desktop app | desktop/ | Windows (Electron) |
 
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js 20+
-- Go 1.22+
-- pnpm (for Chrome extension)
+- pnpm
 - mpv media player
 
 ### Build & Run
 
 ```bash
-# Go server
-cd go-server
-go run .
+# Install dependencies
+pnpm install
+pnpm -C server install
+pnpm -C desktop install
+
+# API server
+cd server
+pnpm dev
+
+# Desktop app
+cd desktop
+pnpm dev
 
 # Chrome extension
 cd extensions/chrome
@@ -36,11 +44,19 @@ pnpm build
 cd extensions/firefox
 npm install
 npm run build
+```
 
-# Desktop app
-cd desktop
-npm install
-npm run dev
+## Development
+
+```bash
+# Lint
+pnpm lint
+
+# Type check
+pnpm type-check
+
+# Format
+pnpm format
 ```
 
 ## Loading the extension

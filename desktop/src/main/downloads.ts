@@ -183,7 +183,8 @@ async function extractZip(
   destDir: string,
   binaryInside: string,
 ): Promise<void> {
-  const targetName = binaryInside.split("/").pop()!;
+  const targetName = binaryInside.split("/").pop();
+  if (!targetName) return;
   const targetDest = join(destDir, targetName);
 
   if (process.platform === "win32") {
@@ -374,8 +375,10 @@ export async function startDownload(id: string): Promise<void> {
     await downloadFile(platform.url, tempPath);
 
     if (platform.type === "zip") {
-      const extractPath = platform.extract!;
-      const targetName = extractPath.split("/").pop()!;
+      const extractPath = platform.extract;
+      if (!extractPath) return;
+      const targetName = extractPath.split("/").pop();
+      if (!targetName) return;
       const targetDest = join(BIN_DIR, targetName);
       await extractZip(tempPath, BIN_DIR, extractPath);
       if (existsSync(tempPath)) unlinkSync(tempPath);
@@ -404,10 +407,11 @@ export async function startDownload(id: string): Promise<void> {
     }
 
     downloadState.set(id, "done");
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     downloadState.set(id, "error");
-    downloadErrors.set(id, err.message);
-    console.error(`[download] ${id} failed:`, err.message);
+    downloadErrors.set(id, message);
+    console.error(`[download] ${id} failed:`, message);
     throw err;
   }
 }

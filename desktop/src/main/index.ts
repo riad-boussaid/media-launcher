@@ -91,8 +91,9 @@ function registerIPC(): void {
         return { success: false, error: err.err || res.statusText };
       }
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
     }
   });
   ipcMain.handle("window:toggle", () => {
@@ -114,7 +115,7 @@ app.whenReady().then(async () => {
   if (settings.startMinimized) win?.hide();
   else win?.show();
 
-  createTray(win!);
+  createTray(win);
 
   globalShortcut.register("CommandOrControl+Shift+M", () => {
     if (win) {

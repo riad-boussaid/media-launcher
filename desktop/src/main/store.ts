@@ -64,7 +64,7 @@ export async function initDatabase(): Promise<void> {
 }
 
 export async function getSettings(): Promise<Settings> {
-  const serverSettings = await api<any>("/settings");
+  const serverSettings = await api<Record<string, unknown>>("/settings");
   const local = readLocalConfig();
   return {
     serverUrl: local.serverUrl,
@@ -100,7 +100,7 @@ export async function setSettings(
     serverPayload.startMinimized = partial.startMinimized;
 
   if (Object.keys(serverPayload).length > 0) {
-    await api<any>("/settings", {
+    await api<Record<string, unknown>>("/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(serverPayload),

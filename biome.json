@@ -34,6 +34,6 @@
     }
   },
   "files": {
-    "includes": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx"]
+    "includes": ["server/src/**", "desktop/src/**/*.ts", "desktop/src/**/*.tsx", "desktop/src/**/*.js", "desktop/src/**/*.jsx"]
   }
 }

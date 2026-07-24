@@ -34,17 +34,27 @@ export default function SettingsPage() {
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
+  const refreshDownloads = async () => {
+    setDownloads(await getDownloads());
+  };
+
+  const verifyPlayer = async (s: Settings) => {
+    const exe = PLAYER_EXE[s.player]?.(s);
+    if (!exe) return;
+    setChecking(true);
+    const ok = await checkPlayer(exe);
+    setPlayerStatus(ok ? "ok" : "missing");
+    setChecking(false);
+  };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
   useEffect(() => {
     getSettings().then((s) => {
       setLocal(s);
       verifyPlayer(s);
     });
     refreshDownloads();
-  }, [verifyPlayer, refreshDownloads]);
-
-  const refreshDownloads = async () => {
-    setDownloads(await getDownloads());
-  };
+  }, []);
 
   const handleDownload = async (id: string) => {
     setDownloadingId(id);
@@ -60,15 +70,6 @@ export default function SettingsPage() {
   const handleDelete = async (id: string) => {
     await deleteDownload(id);
     refreshDownloads();
-  };
-
-  const verifyPlayer = async (s: Settings) => {
-    const exe = PLAYER_EXE[s.player]?.(s);
-    if (!exe) return;
-    setChecking(true);
-    const ok = await checkPlayer(exe);
-    setPlayerStatus(ok ? "ok" : "missing");
-    setChecking(false);
   };
 
   if (!settings) return null;
@@ -232,7 +233,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="flex gap-2 mt-2">
-        <button className="btn-primary" onClick={save}>
+        <button type="button" className="btn-primary" onClick={save}>
           Save
         </button>
       </div>
@@ -274,6 +275,7 @@ export default function SettingsPage() {
               ) : d.canDownload ? (
                 d.installed ? (
                   <button
+                    type="button"
                     className="px-3 py-1 text-xs bg-surface border border-border rounded-lg text-muted cursor-pointer hover:bg-[#444]"
                     onClick={() => handleDelete(d.id)}
                   >
@@ -283,6 +285,7 @@ export default function SettingsPage() {
                   <span className="text-xs text-accent">Downloading...</span>
                 ) : (
                   <button
+                    type="button"
                     className="btn-primary px-3 py-1 text-xs"
                     onClick={() => handleDownload(d.id)}
                   >
@@ -291,8 +294,11 @@ export default function SettingsPage() {
                 )
               ) : d.url ? (
                 <button
+                  type="button"
                   className="px-3 py-1 text-xs bg-surface border border-border rounded-lg text-muted cursor-pointer hover:bg-[#444]"
-                  onClick={() => openExternal(d.url!)}
+                  onClick={() => {
+                    if (d.url) openExternal(d.url);
+                  }}
                 >
                   Website
                 </button>

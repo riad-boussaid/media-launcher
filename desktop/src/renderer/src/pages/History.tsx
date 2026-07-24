@@ -140,15 +140,13 @@ export default function History() {
       }
       setItems(await getHistory());
       showToast("Playing...");
-    } catch (err: any) {
-      showToast(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(`Error: ${message}`);
     }
   };
 
-  const handleReplay = useCallback(
-    (url: string) => handlePlayUrl(url),
-    [handlePlayUrl],
-  );
+  const handleReplay = handlePlayUrl;
 
   const handleCopy = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -192,6 +190,7 @@ export default function History() {
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
+            aria-hidden="true"
           >
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.35-4.35" />
@@ -205,6 +204,7 @@ export default function History() {
           />
           {search && (
             <button
+              type="button"
               className="absolute right-1.5 bg-none border-none text-muted text-lg cursor-pointer px-1.5 py-0.5 rounded hover:text-text hover:bg-[#2a2a4a]"
               onClick={() => setSearch("")}
             >
@@ -215,12 +215,14 @@ export default function History() {
         {items.length > 0 && !selectMode && (
           <>
             <button
+              type="button"
               className="px-3.5 py-2 border border-[#3a2a2a] rounded-lg bg-[#2a1a1a] text-danger text-xs cursor-pointer whitespace-nowrap transition-colors flex-shrink-0 hover:bg-[#3a2a2a]"
               onClick={handleClear}
             >
               Clear all
             </button>
             <button
+              type="button"
               className="px-3.5 py-2 border border-[#3a2a2a] rounded-lg bg-[#2a1a1a] text-danger text-xs cursor-pointer whitespace-nowrap transition-colors flex-shrink-0 hover:bg-[#3a2a2a]"
               onClick={() => setSelectMode(true)}
             >
@@ -239,6 +241,7 @@ export default function History() {
               All
             </label>
             <button
+              type="button"
               className="px-3.5 py-2 border border-[#3a2a2a] rounded-lg bg-[#2a1a1a] text-danger text-xs cursor-pointer whitespace-nowrap transition-colors flex-shrink-0 hover:bg-[#3a2a2a]"
               onClick={() => {
                 setSelected(new Set());
@@ -249,6 +252,7 @@ export default function History() {
             </button>
             {selected.size > 0 && (
               <button
+                type="button"
                 className="px-3.5 py-2 border border-[#3a2a2a] rounded-lg bg-[#2a1a1a] text-danger text-xs cursor-pointer whitespace-nowrap transition-colors flex-shrink-0 hover:bg-[#3a2a2a] danger"
                 onClick={handleDeleteSelected}
               >
@@ -271,6 +275,7 @@ export default function History() {
             <>
               <p>No results for "{search}"</p>
               <button
+                type="button"
                 className="btn btn-primary"
                 onClick={() => setSearch("")}
                 style={{ marginTop: 12 }}
@@ -301,6 +306,8 @@ export default function History() {
                   className={`flex items-stretch mb-1 rounded-lg overflow-hidden transition-colors min-h-[56px] hover:bg-surface group ${selectMode ? "cursor-default" : ""}`}
                 >
                   {selectMode && (
+                    // biome-ignore lint/a11y/noStaticElementInteractions: checkbox wrapper layout
+                    // biome-ignore lint/a11y/useKeyWithClickEvents: checkbox wrapper layout
                     <div
                       className="flex items-center pl-2 pr-1 cursor-pointer"
                       onClick={() => toggleSelect(item.id)}
@@ -312,6 +319,8 @@ export default function History() {
                       />
                     </div>
                   )}
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: thumbnail clickable area */}
+                  {/* biome-ignore lint/a11y/useKeyWithClickEvents: thumbnail clickable area */}
                   <div
                     className="w-20 flex-shrink-0 bg-[#0f0f1a] bg-cover bg-center cursor-pointer flex items-center justify-center rounded-l-lg overflow-hidden"
                     onClick={() => !selectMode && handleReplay(item.url)}
@@ -328,11 +337,14 @@ export default function History() {
                         fill="none"
                         stroke="currentColor"
                         strokeWidth="1.5"
+                        aria-hidden="true"
                       >
                         <polygon points="5 3 19 12 5 21 5 3" />
                       </svg>
                     )}
                   </div>
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: row content clickable area */}
+                  {/* biome-ignore lint/a11y/useKeyWithClickEvents: row content clickable area */}
                   <div
                     className="flex-1 flex items-center gap-2 px-2.5 py-2 cursor-pointer min-w-0"
                     onClick={() => !selectMode && handleReplay(item.url)}
@@ -358,6 +370,7 @@ export default function History() {
                   {!selectMode && (
                     <div className="hidden group-hover:flex items-center gap-0.5 pr-1.5">
                       <button
+                        type="button"
                         className="action-btn replay"
                         title="Play again"
                         onClick={() => handleReplay(item.url)}
@@ -367,11 +380,13 @@ export default function History() {
                           fill="currentColor"
                           width="14"
                           height="14"
+                          aria-hidden="true"
                         >
                           <path d="M8 5v14l11-7z" />
                         </svg>
                       </button>
                       <button
+                        type="button"
                         className="action-btn copy"
                         title="Copy URL"
                         onClick={() => handleCopy(item.url)}
@@ -383,6 +398,7 @@ export default function History() {
                           strokeWidth="2"
                           width="14"
                           height="14"
+                          aria-hidden="true"
                         >
                           <rect
                             x="9"
@@ -396,6 +412,7 @@ export default function History() {
                         </svg>
                       </button>
                       <button
+                        type="button"
                         className="action-btn open"
                         title="Open in browser"
                         onClick={() => window.open(item.url, "_blank")}
@@ -407,6 +424,7 @@ export default function History() {
                           strokeWidth="2"
                           width="14"
                           height="14"
+                          aria-hidden="true"
                         >
                           <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
                           <polyline points="15 3 21 3 21 9" />
@@ -414,6 +432,7 @@ export default function History() {
                         </svg>
                       </button>
                       <button
+                        type="button"
                         className="action-btn delete"
                         title="Remove"
                         onClick={() => handleDelete(item.id)}
@@ -425,6 +444,7 @@ export default function History() {
                           strokeWidth="2"
                           width="14"
                           height="14"
+                          aria-hidden="true"
                         >
                           <polyline points="3 6 5 6 21 6" />
                           <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />

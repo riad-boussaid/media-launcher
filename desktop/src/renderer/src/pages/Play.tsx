@@ -27,8 +27,9 @@ export default function Play() {
       }
       showToast("Playing...");
       setUrlInput("");
-    } catch (err: any) {
-      showToast(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(`Error: ${message}`);
     }
   };
 
@@ -51,6 +52,7 @@ export default function Play() {
             }}
           />
           <button
+            type="button"
             className="btn-primary"
             onClick={handlePlay}
             disabled={!urlInput.trim()}

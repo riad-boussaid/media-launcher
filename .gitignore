@@ -14,3 +14,4 @@ Thumbs.db
 *.suo
 *.ntvs*
 *.njspro
+.pnpm-store

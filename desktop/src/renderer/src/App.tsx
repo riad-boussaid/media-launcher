@@ -21,6 +21,7 @@ export default function App() {
         {TABS.map((t) => (
           <button
             key={t.key}
+            type="button"
             className={`flex-1 py-3 border-none bg-transparent text-muted text-sm cursor-pointer transition-colors duration-200${tab === t.key ? " !text-accent border-b-2 border-accent bg-[#1a1a3e]" : ""}`}
             onClick={() => setTab(t.key)}
           >
