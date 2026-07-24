@@ -14,4 +14,6 @@ Thumbs.db
 *.suo
 *.ntvs*
 *.njspro
+go-server/
+desktop-old/
 .pnpm-store
