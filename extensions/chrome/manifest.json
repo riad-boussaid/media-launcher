@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "media-launcher",
+  "description": "Sends videos in pages like YouTube to an external media player",
+  "icons": { "128": "mpv-logo.png" },
+  "version": "0.1.0",
+
+  "permissions": ["storage", "activeTab", "contextMenus", "scripting", "notifications", "alarms"],
+  "host_permissions": ["http://localhost:*/*"],
+  "optional_host_permissions": ["*://*/*"],
+
+  "action": {
+    "default_title": "Play with Media Launcher",
+    "default_icon": "mpv-logo.png",
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "src/background/background.ts"
+  },
+  "content_scripts": [
+    {
+      "js": ["src/content/content.ts"],
+      "matches": ["https://www.youtube.com/*"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["mpv-logo.png"],
+      "matches": ["https://www.youtube.com/*"]
+    }
+  ]
+}

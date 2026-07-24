@@ -1,0 +1,32 @@
+{
+  "name": "media-launcher-desktop",
+  "version": "1.0.0",
+  "description": "Modern desktop tray app for media-launcher",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
+    "express": "^5.2.1",
+    "sql.js": "^1.14.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@types/sql.js": "^1.4.11",
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "^10.5.4",
+    "electron": "^43.2.0",
+    "electron-vite": "^5.0.0",
+    "postcss": "^8.5.22",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.0.0"
+  }
+}

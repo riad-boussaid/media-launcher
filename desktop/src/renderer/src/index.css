@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@theme {
+  --color-base: #1a1a2e;
+  --color-surface: #16213e;
+  --color-card: #1e1e2e;
+  --color-accent: #64ffda;
+  --color-danger: #ff6b6b;
+  --color-muted: #555;
+  --color-label: #888;
+  --color-border: #2a2a4a;
+  --color-border-light: #333;
+  --color-text: #e0e0e0;
+  --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --animate-fade-in: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@layer base {
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    color: var(--color-text);
+    user-select: none;
+    background: var(--color-base);
+  }
+}
+
+@layer components {
+  .btn-primary {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+    background: var(--color-accent);
+    color: var(--color-base);
+  }
+  .btn-primary:hover {
+    background: #4ad4b3;
+  }
+  .btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+.action-btn:hover {
+  background: #1a1a3e;
+}
+.action-btn.replay:hover { color: var(--color-accent); }
+.action-btn.copy:hover { color: #4fc3f7; }
+.action-btn.open:hover { color: #ffd54f; }
+.action-btn.delete:hover { color: var(--color-danger); background: #2a1a1a; }
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-accent);
+  color: var(--color-base);
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  z-index: 100;
+  animation: fadeIn 0.3s;
+}
