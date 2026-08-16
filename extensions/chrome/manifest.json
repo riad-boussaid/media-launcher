@@ -2,16 +2,36 @@
   "manifest_version": 3,
   "name": "media-launcher",
   "description": "Sends videos in pages like YouTube to an external media player",
-  "icons": { "128": "mpv-logo.png" },
+  "icons": { "128": "play-logo.png" },
   "version": "0.1.0",
 
-  "permissions": ["storage", "activeTab", "contextMenus", "scripting", "notifications", "alarms"],
-  "host_permissions": ["http://localhost:*/*"],
+  "permissions": ["storage", "activeTab", "contextMenus", "scripting", "notifications", "alarms", "sidePanel"],
+  "host_permissions": [
+    "http://localhost:*/*",
+    "http://127.0.0.1:*/*",
+    "https://img.youtube.com/*",
+    "https://*.youtube.com/*",
+    "https://i.vimeocdn.com/*",
+    "https://*.dailymotion.com/*",
+    "https://images.dmcdn.net/*",
+    "https://static-cdn.jtvnw.net/*",
+    "https://i0.hdslb.com/*",
+    "https://i1.sndcdn.com/*",
+    "https://pbs.twimg.com/*",
+    "https://i.redd.it/*",
+    "https://preview.redd.it/*",
+    "https://raven.rumble.com/*",
+    "https://thumbnail.odycdn.com/*"
+  ],
   "optional_host_permissions": ["*://*/*"],
+
+  "side_panel": {
+    "default_path": "sidebar.html"
+  },
 
   "action": {
     "default_title": "Play with Media Launcher",
-    "default_icon": "mpv-logo.png",
+    "default_icon": "play-logo.png",
     "default_popup": "popup.html"
   },
   "options_ui": {
@@ -24,13 +44,13 @@
   "content_scripts": [
     {
       "js": ["src/content/content.ts"],
-      "matches": ["https://www.youtube.com/*"]
+      "matches": ["<all_urls>"]
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["mpv-logo.png"],
-      "matches": ["https://www.youtube.com/*"]
+      "resources": ["play-logo.png"],
+      "matches": ["<all_urls>"]
     }
   ]
 }

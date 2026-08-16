@@ -14,6 +14,7 @@ export default defineConfig({
         // main: resolve(__dirname, "index.html"),
         popup: resolve(__dirname, "popup.html"),
         options: resolve(__dirname, "options.html"),
+        sidebar: resolve(__dirname, "sidebar.html"),
       },
     },
   },

@@ -1,7 +1,14 @@
 import { discoverServer } from "@/lib/discovery";
 import { defaultSettings } from "@/lib/settings";
+import { getStartSeconds } from "@/lib/url";
 
 let cachedServerUrl: string | null = null;
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "sync" && changes.serverUrl) {
+    cachedServerUrl = null;
+  }
+});
 
 export async function getServerUrl(): Promise<string | null> {
   if (cachedServerUrl) return cachedServerUrl;
@@ -41,6 +48,13 @@ export async function checkServerHealth(): Promise<boolean> {
   }
 }
 
+const CODEC_PREFIXES: Record<string, string[]> = {
+  h264: ["avc1"],
+  vp9: ["vp09"],
+  av1: ["av01"],
+  h265: ["hvc1", "hev1"],
+};
+
 export async function sendUrl(url: string): Promise<SendResult> {
   const opts = await chrome.storage.sync.get(defaultSettings);
   const mpvArgs: string[] = [];
@@ -51,10 +65,27 @@ export async function sendUrl(url: string): Promise<SendResult> {
       mpvArgs.push("--script-opts=ytdl_hook-thumbnails=best");
     }
   } else {
-    mpvArgs.push(
-      `--ytdl-format=bestvideo[height<=${opts.maxHeight}]+bestaudio`,
-    );
+    const base = `bestvideo[height<=${opts.maxHeight}]+bestaudio`;
+    const prefixes =
+      opts.codec && opts.codec !== "any" ? CODEC_PREFIXES[opts.codec] : null;
+    if (prefixes) {
+      const selectors = prefixes.map(
+        (p) => `bestvideo[height<=${opts.maxHeight}][vcodec^=${p}]+bestaudio`,
+      );
+      mpvArgs.push(`--ytdl-format=${selectors.join("/")}/${base}/best`);
+    } else {
+      mpvArgs.push(`--ytdl-format=${base}/best`);
+    }
   }
+
+  // Auto flags come before custom args so the user's extra MPV arguments win
+  // (mpv uses last-flag-wins).
+  if (opts.volume !== 100) mpvArgs.push(`--volume=${opts.volume}`);
+  if (opts.speed !== 1) mpvArgs.push(`--speed=${opts.speed}`);
+  if (opts.subLang) mpvArgs.push(`--sub-lang=${opts.subLang}`);
+  if (opts.loop) mpvArgs.push("--loop-file=inf");
+  const start = getStartSeconds(url);
+  if (start !== null) mpvArgs.push(`--start=${start}`);
 
   const customArgs = opts.mpvArgs
     ? opts.mpvArgs.split(/\r?\n/).filter(Boolean)
@@ -84,6 +115,8 @@ export async function sendUrl(url: string): Promise<SendResult> {
 
     return { success: true };
   } catch (error) {
+    // The cached server URL is stale — clear it so the next call re-discovers.
+    cachedServerUrl = null;
     if (error instanceof DOMException && error.name === "TimeoutError") {
       return {
         success: false,

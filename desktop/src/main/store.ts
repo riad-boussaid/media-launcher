@@ -13,15 +13,19 @@ export interface HistoryEntry {
 export interface Settings {
   serverUrl: string;
   player: string;
-  mpvArgs: string;
   playerArgs: Record<string, string>;
   customPlayerPath: string;
   customPlayerArgs: string;
+  binDir: string;
   autoStart: boolean;
   startMinimized: boolean;
 }
 
 const DEFAULT_SERVER_URL = "http://localhost:5000";
+
+function normalizeServerUrl(url: string): string {
+  return url.replace(/\/+$/, "");
+}
 
 function localConfigPath(): string {
   return join(app.getPath("userData"), "config.json");
@@ -31,7 +35,16 @@ function readLocalConfig(): { serverUrl: string } {
   const path = localConfigPath();
   if (existsSync(path)) {
     try {
-      return JSON.parse(readFileSync(path, "utf-8"));
+      const parsed = JSON.parse(readFileSync(path, "utf-8")) as {
+        serverUrl?: string;
+      };
+      return {
+        serverUrl: normalizeServerUrl(
+          typeof parsed.serverUrl === "string"
+            ? parsed.serverUrl
+            : DEFAULT_SERVER_URL,
+        ),
+      };
     } catch {
       return { serverUrl: DEFAULT_SERVER_URL };
     }
@@ -40,7 +53,14 @@ function readLocalConfig(): { serverUrl: string } {
 }
 
 function writeLocalConfig(config: { serverUrl: string }): void {
-  writeFileSync(localConfigPath(), JSON.stringify(config, null, 2));
+  writeFileSync(
+    localConfigPath(),
+    JSON.stringify(
+      { serverUrl: normalizeServerUrl(config.serverUrl) },
+      null,
+      2,
+    ),
+  );
 }
 
 function getServerUrl(): string {
@@ -70,10 +90,10 @@ export async function getSettings(): Promise<Settings> {
     return {
       serverUrl: local.serverUrl,
       player: serverSettings.player ?? "mpv",
-      mpvArgs: serverSettings.mpvArgs ?? "",
       playerArgs: serverSettings.playerArgs ?? {},
       customPlayerPath: serverSettings.customPlayerPath ?? "",
       customPlayerArgs: serverSettings.customPlayerArgs ?? "{url}",
+      binDir: serverSettings.binDir ?? "",
       autoStart: serverSettings.autoStart ?? false,
       startMinimized: serverSettings.startMinimized ?? false,
     };
@@ -81,10 +101,10 @@ export async function getSettings(): Promise<Settings> {
     return {
       serverUrl: local.serverUrl,
       player: "mpv",
-      mpvArgs: "",
       playerArgs: {},
       customPlayerPath: "",
       customPlayerArgs: "{url}",
+      binDir: "",
       autoStart: false,
       startMinimized: false,
     };
@@ -94,19 +114,29 @@ export async function getSettings(): Promise<Settings> {
 export async function setSettings(
   partial: Partial<Settings>,
 ): Promise<Settings> {
+  const prevUrl = getServerUrl();
+
   if (partial.serverUrl !== undefined) {
-    writeLocalConfig({ serverUrl: partial.serverUrl });
+    const nextUrl = normalizeServerUrl(partial.serverUrl);
+    writeLocalConfig({ serverUrl: nextUrl });
+    try {
+      const res = await fetch(`${nextUrl}/api/health`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch {
+      writeLocalConfig({ serverUrl: prevUrl });
+      throw new Error(`Server unreachable at ${nextUrl}`);
+    }
   }
 
   const serverPayload: Record<string, unknown> = {};
   if (partial.player !== undefined) serverPayload.player = partial.player;
-  if (partial.mpvArgs !== undefined) serverPayload.mpvArgs = partial.mpvArgs;
   if (partial.playerArgs !== undefined)
     serverPayload.playerArgs = partial.playerArgs;
   if (partial.customPlayerPath !== undefined)
     serverPayload.customPlayerPath = partial.customPlayerPath;
   if (partial.customPlayerArgs !== undefined)
     serverPayload.customPlayerArgs = partial.customPlayerArgs;
+  if (partial.binDir !== undefined) serverPayload.binDir = partial.binDir;
   if (partial.autoStart !== undefined)
     serverPayload.autoStart = partial.autoStart;
   if (partial.startMinimized !== undefined)
@@ -125,6 +155,38 @@ export async function setSettings(
 
 export async function getHistory(): Promise<HistoryEntry[]> {
   return api<HistoryEntry[]>("/history");
+}
+
+export async function getNowPlaying(): Promise<HistoryEntry | null> {
+  const history = await api<HistoryEntry[]>("/history");
+  return history[0] ?? null;
+}
+
+export async function replayUrl(
+  url: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${getServerUrl()}/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) {
+      const data: unknown = await res.json().catch(() => null);
+      const error =
+        typeof data === "object" &&
+        data !== null &&
+        "err" in data &&
+        typeof data.err === "string"
+          ? data.err
+          : res.statusText;
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
 }
 
 export async function addHistory(

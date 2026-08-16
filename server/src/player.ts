@@ -4,7 +4,13 @@ import { join } from "node:path";
 import { getSettings } from "./db.js";
 
 function parseArgs(str: string): string[] {
-  return str.split(/\s+/).filter(Boolean);
+  const args: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(str)) !== null) {
+    args.push(m[1] ?? m[2] ?? m[3]);
+  }
+  return args;
 }
 
 function getPlayerExeName(key: string, customPlayerPath: string): string {
@@ -42,6 +48,10 @@ function resolvePlayerPath(
       : name;
   const inBinExe = join(bin, exeName);
   if (existsSync(inBinExe)) return inBinExe;
+  if (key === "iina") {
+    const iina = "/Applications/IINA.app/Contents/MacOS/iina";
+    if (existsSync(iina)) return iina;
+  }
   return name;
 }
 
@@ -50,10 +60,37 @@ export interface PlayerResult {
   error?: string;
 }
 
-export function launchPlayer(
+function spawnPlayer(
+  exe: string,
+  args: string[],
+  timeoutMs = 10000,
+): Promise<PlayerResult> {
+  return new Promise((resolve) => {
+    const proc = spawn(exe, args, { stdio: "ignore" });
+    const timer = setTimeout(() => {
+      proc.kill();
+      resolve({ success: false, error: `Timed out launching ${exe}` });
+    }, timeoutMs);
+
+    proc.once("error", (err) => {
+      clearTimeout(timer);
+      resolve({
+        success: false,
+        error: `Failed to launch ${exe}: ${err.message}`,
+      });
+    });
+    proc.once("spawn", () => {
+      clearTimeout(timer);
+      console.log(`[${exe}] ${args.join(" ")}`);
+      resolve({ success: true });
+    });
+  });
+}
+
+export async function launchPlayer(
   url: string,
   extensionOptions: string[] = [],
-): PlayerResult {
+): Promise<PlayerResult> {
   const settings = getSettings();
   const key = settings.player || "mpv";
   const exe = resolvePlayerPath(key, settings);
@@ -63,12 +100,28 @@ export function launchPlayer(
   switch (key) {
     case "mpv": {
       const userArgs = parseArgs(settings.playerArgs?.mpv || "");
-      args = [...extensionOptions, ...userArgs, url];
+      args = [
+        "--keep-open=yes",
+        "--no-resume-playback",
+        ...extensionOptions,
+        ...userArgs,
+        "--",
+        url,
+      ];
       break;
     }
     case "custom": {
       const template = settings.customPlayerArgs || "{url}";
-      args = parseArgs(template).map((p) => (p === "{url}" ? url : p));
+      const tokens = parseArgs(template);
+      let hasUrl = false;
+      args = tokens.map((p) => {
+        if (p.includes("{url}")) {
+          hasUrl = true;
+          return p.replaceAll("{url}", url);
+        }
+        return p;
+      });
+      if (!hasUrl) args.push(url);
       break;
     }
     default: {
@@ -76,12 +129,5 @@ export function launchPlayer(
     }
   }
 
-  const proc = spawn(exe, args, {
-    stdio: "ignore",
-  });
-  proc.on("error", (err) =>
-    console.error(`Failed to launch ${exe}:`, err.message),
-  );
-  console.log(`[${exe}] ${url}`);
-  return { success: true };
+  return spawnPlayer(exe, args);
 }

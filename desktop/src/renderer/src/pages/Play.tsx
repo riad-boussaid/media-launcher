@@ -1,9 +1,19 @@
 import { useState } from "react";
 import { getSettings } from "../lib/api";
 
+function isValidUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export default function Play() {
   const [urlInput, setUrlInput] = useState("");
   const [toast, setToast] = useState("");
+  const [playing, setPlaying] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -12,7 +22,12 @@ export default function Play() {
 
   const handlePlay = async () => {
     const url = urlInput.trim();
-    if (!url) return;
+    if (!url || playing) return;
+    if (!isValidUrl(url)) {
+      showToast("Please enter a valid http(s) URL");
+      return;
+    }
+    setPlaying(true);
     try {
       const settings = await getSettings();
       const res = await fetch(`${settings.serverUrl}/`, {
@@ -30,6 +45,8 @@ export default function Play() {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       showToast(`Error: ${message}`);
+    } finally {
+      setPlaying(false);
     }
   };
 
@@ -55,9 +72,9 @@ export default function Play() {
             type="button"
             className="btn-primary"
             onClick={handlePlay}
-            disabled={!urlInput.trim()}
+            disabled={!urlInput.trim() || playing}
           >
-            Play
+            {playing ? "Sending..." : "Play"}
           </button>
         </div>
       </div>

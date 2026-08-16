@@ -10,7 +10,7 @@ export interface DiscoveryResult {
 async function probePort(port: number, signal?: AbortSignal): Promise<boolean> {
   try {
     const res = await fetch(`http://localhost:${port}${HEALTH_ENDPOINT}`, {
-      signal,
+      signal: signal ?? AbortSignal.timeout(1500),
       cache: "no-store",
     });
     if (!res.ok) return false;
@@ -29,16 +29,13 @@ export async function discoverServer(
     try {
       const url = preferredUrl.replace(/\/+$/, "");
       const res = await fetch(`${url}${HEALTH_ENDPOINT}`, {
-        signal,
+        signal: signal ?? AbortSignal.timeout(1500),
         cache: "no-store",
       });
       if (res.ok) {
         const data = await res.json();
         if (data.app === "media-launcher") {
-          return {
-            serverUrl: url,
-            port: new URL(url).port as unknown as number,
-          };
+          return { serverUrl: url, port: Number(new URL(url).port) };
         }
       }
     } catch {

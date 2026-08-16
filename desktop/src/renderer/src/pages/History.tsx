@@ -5,6 +5,7 @@ import {
   deleteHistory,
   getHistory,
   getSettings,
+  openExternal,
 } from "../lib/api";
 
 function relativeTime(ts: number): string {
@@ -63,7 +64,11 @@ export default function History() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
-    setItems(await getHistory());
+    try {
+      setItems(await getHistory());
+    } catch {
+      // server unreachable — keep current items
+    }
   }, []);
 
   useEffect(() => {
@@ -171,11 +176,13 @@ export default function History() {
   };
 
   const handleDeleteSelected = async () => {
-    for (const id of selected) {
-      setItems(await deleteHistory(id));
+    try {
+      await Promise.allSettled([...selected].map((id) => deleteHistory(id)));
+      setItems(await getHistory().catch(() => items));
+    } finally {
+      setSelected(new Set());
+      setSelectMode(false);
     }
-    setSelected(new Set());
-    setSelectMode(false);
   };
 
   const allSelected = filtered.length > 0 && selected.size === filtered.length;
@@ -326,7 +333,9 @@ export default function History() {
                     onClick={() => !selectMode && handleReplay(item.url)}
                     style={
                       item.thumbnail
-                        ? { backgroundImage: `url(${item.thumbnail})` }
+                        ? {
+                            backgroundImage: `url("${item.thumbnail.replace(/["\\]/g, "")}")`,
+                          }
                         : undefined
                     }
                   >
@@ -415,7 +424,7 @@ export default function History() {
                         type="button"
                         className="action-btn open"
                         title="Open in browser"
-                        onClick={() => window.open(item.url, "_blank")}
+                        onClick={() => void openExternal(item.url)}
                       >
                         <svg
                           viewBox="0 0 24 24"

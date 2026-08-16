@@ -72,6 +72,8 @@ interface ElectronAPI {
   };
   window: {
     toggle: () => Promise<void>;
+    openHistory: () => Promise<void>;
+    onNavigate: (cb: (tab: string) => void) => () => void;
   };
 }
 

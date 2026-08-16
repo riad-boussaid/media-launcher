@@ -7,19 +7,24 @@ import {
   screen,
   shell,
 } from "electron";
-import { deleteDownload, listDownloads, startDownload } from "./downloads";
+import {
+  deleteDownload,
+  getBinDir,
+  listDownloads,
+  startDownload,
+} from "./downloads";
 import { checkPlayerExists } from "./player";
 import { startServer, stopServer } from "./server";
 import {
   clearHistory,
   deleteHistory,
   getHistory,
-  getServerUrlSync,
   getSettings,
   initDatabase,
+  replayUrl,
   setSettings,
 } from "./store";
-import { createTray, destroyTray } from "./tray";
+import { createTray, destroyTray, refreshTrayMenu } from "./tray";
 
 if (require("electron-squirrel-startup")) app.quit();
 
@@ -29,6 +34,13 @@ if (!gotTheLock) {
   app.quit();
 } else {
   let win: BrowserWindow | null = null;
+  let isQuitting = false;
+
+  app.on("before-quit", () => {
+    isQuitting = true;
+    stopServer();
+    destroyTray();
+  });
 
   app.on("second-instance", () => {
     if (win) {
@@ -50,6 +62,7 @@ if (!gotTheLock) {
       show: false,
       frame: true,
       title: "media-launcher",
+      icon: join(__dirname, "../../resources/play-256.png"),
       webPreferences: {
         preload: join(__dirname, "../preload/index.js"),
         contextIsolation: true,
@@ -64,21 +77,34 @@ if (!gotTheLock) {
     }
 
     win.on("close", (event) => {
-      if (!app.isQuiting) {
+      if (!isQuitting) {
         event.preventDefault();
         win?.hide();
       }
     });
 
-    win.on("minimize", (event) => {
-      event.preventDefault();
+    win.on("minimize", () => {
       win?.hide();
+    });
+
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      if (url.startsWith("http:") || url.startsWith("https:")) {
+        void shell.openExternal(url);
+      }
+      return { action: "deny" };
     });
   }
 
   function registerIPC(): void {
     ipcMain.handle("settings:get", () => getSettings());
-    ipcMain.handle("settings:set", (_event, partial) => setSettings(partial));
+    ipcMain.handle("settings:set", async (_event, partial) => {
+      const updated = await setSettings(partial);
+      if (partial.autoStart !== undefined) {
+        app.setLoginItemSettings({ openAtLogin: partial.autoStart });
+      }
+      if (win) refreshTrayMenu(win);
+      return updated;
+    });
     ipcMain.handle("history:get", () => getHistory());
     ipcMain.handle("history:delete", (_event, id) => deleteHistory(id));
     ipcMain.handle("history:clear", () => clearHistory());
@@ -94,22 +120,22 @@ if (!gotTheLock) {
       await deleteDownload(id);
       return listDownloads();
     });
-    ipcMain.handle("shell:open", (_event, url) => shell.openExternal(url));
-    ipcMain.handle("history:replay", async (_event, url) => {
-      try {
-        const res = await fetch(`${getServerUrlSync()}/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ err: res.statusText }));
-          return { success: false, error: err.err || res.statusText };
-        }
-        return { success: true };
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { success: false, error: message };
+    ipcMain.handle("shell:open", (_event, url) => {
+      if (
+        typeof url === "string" &&
+        (url.startsWith("http:") || url.startsWith("https:"))
+      ) {
+        return shell.openExternal(url);
+      }
+      return Promise.resolve();
+    });
+    ipcMain.handle("history:replay", (_event, url) => replayUrl(url));
+    ipcMain.handle("window:openHistory", () => {
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        win.webContents.send("navigate", "history");
       }
     });
     ipcMain.handle("window:toggle", () => {
@@ -121,16 +147,24 @@ if (!gotTheLock) {
   }
 
   app.whenReady().then(async () => {
-    startServer();
+    await startServer();
     await initDatabase();
     const settings = await getSettings();
     app.setLoginItemSettings({ openAtLogin: settings.autoStart });
 
+    try {
+      await setSettings({ binDir: getBinDir() });
+    } catch {
+      // Server may be unreachable; binDir will be synced on next save.
+    }
+
     registerIPC();
     createWindow();
 
-    if (settings.startMinimized) win?.hide();
-    else win?.show();
+    if (!win) return;
+
+    if (settings.startMinimized) win.hide();
+    else win.show();
 
     createTray(win);
 
@@ -143,9 +177,4 @@ if (!gotTheLock) {
   });
 
   app.on("window-all-closed", () => {});
-
-  app.on("before-quit", () => {
-    stopServer();
-    destroyTray();
-  });
 }

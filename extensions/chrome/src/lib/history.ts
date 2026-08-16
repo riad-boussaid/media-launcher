@@ -12,10 +12,20 @@ export async function getHistory(): Promise<HistoryEntry[]> {
   return data[HISTORY_KEY] ?? [];
 }
 
+let writeQueue: Promise<unknown> = Promise.resolve();
+
 export async function addHistory(url: string, title: string): Promise<void> {
-  const history = await getHistory();
-  const filtered = history.filter((e) => e.url !== url);
-  filtered.unshift({ url, title, timestamp: Date.now() });
-  if (filtered.length > MAX_ENTRIES) filtered.length = MAX_ENTRIES;
-  await chrome.storage.local.set({ [HISTORY_KEY]: filtered });
+  const run = writeQueue.then(async () => {
+    const history = await getHistory();
+    const filtered = history.filter((e) => e.url !== url);
+    filtered.unshift({ url, title, timestamp: Date.now() });
+    if (filtered.length > MAX_ENTRIES) filtered.length = MAX_ENTRIES;
+    await chrome.storage.local.set({ [HISTORY_KEY]: filtered });
+  });
+  writeQueue = run.catch(() => undefined);
+  return run;
+}
+
+export async function clearHistory(): Promise<void> {
+  await chrome.storage.local.remove(HISTORY_KEY);
 }

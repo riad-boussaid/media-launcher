@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const DATA_DIR = join(__dirname, "..", "data");
+
+const PLAYER_KEYS = ["mpv", "iina", "potplayer", "custom"];
 
 function dbPath(): string {
   return join(DATA_DIR, "media-launcher.db");
@@ -82,14 +85,29 @@ function migrateMpvArgs(sqlite: Database.Database): void {
     .get() as { mpv_args: string; player_args: string } | undefined;
   if (!row) return;
 
-  const parsed: Record<string, string> = row.player_args
-    ? JSON.parse(row.player_args)
-    : {};
+  let parsed: Record<string, string> = {};
+  try {
+    parsed = row.player_args ? JSON.parse(row.player_args) : {};
+  } catch {
+    parsed = {};
+  }
   if (row.mpv_args && (row.player_args === "{}" || !row.player_args)) {
     parsed.mpv = row.mpv_args;
     sqlite
       .prepare("UPDATE settings SET player_args = ? WHERE id = ?")
       .run(JSON.stringify(parsed), 1);
+  }
+}
+
+function parsePlayerArgs(raw: string | null | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, string>)
+      : {};
+  } catch {
+    return {};
   }
 }
 
@@ -102,7 +120,6 @@ export function getSettings(): Settings {
   if (!r) {
     return {
       player: "mpv",
-      mpvArgs: "",
       playerArgs: {},
       customPlayerPath: "",
       customPlayerArgs: "{url}",
@@ -113,8 +130,7 @@ export function getSettings(): Settings {
   }
   return {
     player: r.player,
-    mpvArgs: r.mpvArgs,
-    playerArgs: r.playerArgs ? JSON.parse(r.playerArgs) : {},
+    playerArgs: parsePlayerArgs(r.playerArgs),
     customPlayerPath: r.customPlayerPath,
     customPlayerArgs: r.customPlayerArgs,
     binDir: r.binDir,
@@ -124,9 +140,23 @@ export function getSettings(): Settings {
 }
 
 export function setSettings(partial: SettingsUpdate): Settings {
+  if (
+    partial.player !== undefined &&
+    !PLAYER_KEYS.includes(partial.player)
+  ) {
+    throw new Error(`Invalid player: ${partial.player}`);
+  }
+  if (
+    partial.playerArgs !== undefined &&
+    (typeof partial.playerArgs !== "object" ||
+      partial.playerArgs === null ||
+      Array.isArray(partial.playerArgs))
+  ) {
+    throw new Error("playerArgs must be an object");
+  }
+
   const update: Record<string, unknown> = {};
   if (partial.player !== undefined) update.player = partial.player;
-  if (partial.mpvArgs !== undefined) update.mpvArgs = partial.mpvArgs;
   if (partial.customPlayerPath !== undefined)
     update.customPlayerPath = partial.customPlayerPath;
   if (partial.customPlayerArgs !== undefined)
@@ -134,9 +164,9 @@ export function setSettings(partial: SettingsUpdate): Settings {
   if (partial.playerArgs !== undefined)
     update.playerArgs = JSON.stringify(partial.playerArgs);
   if (partial.binDir !== undefined) update.binDir = partial.binDir;
-  if (partial.autoStart !== undefined) update.autoStart = partial.autoStart;
+  if (partial.autoStart !== undefined) update.autoStart = Boolean(partial.autoStart);
   if (partial.startMinimized !== undefined)
-    update.startMinimized = partial.startMinimized;
+    update.startMinimized = Boolean(partial.startMinimized);
 
   if (Object.keys(update).length > 0) {
     db.update(schema.settings)
@@ -162,7 +192,7 @@ export function addHistory(
   thumbnail = "",
 ): HistoryEntry {
   const entry: HistoryEntry = {
-    id: Date.now().toString(),
+    id: randomUUID(),
     url,
     title,
     thumbnail,

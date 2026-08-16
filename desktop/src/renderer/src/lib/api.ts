@@ -9,10 +9,10 @@ export interface HistoryEntry {
 export interface Settings {
   serverUrl: string;
   player: string;
-  mpvArgs: string;
   playerArgs: Record<string, string>;
   customPlayerPath: string;
   customPlayerArgs: string;
+  binDir: string;
   autoStart: boolean;
   startMinimized: boolean;
 }

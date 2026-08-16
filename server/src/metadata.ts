@@ -1,6 +1,7 @@
-import { exec } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { getSettings } from "./db.js";
 
 export interface VideoMetadata {
   title: string;
@@ -21,28 +22,54 @@ export function fetchMetadata(
   signal?: AbortSignal,
 ): Promise<VideoMetadata> {
   return new Promise((resolve) => {
-    const ytDlpPath = findYtDlp("");
+    const settings = getSettings();
+    const ytDlpPath = findYtDlp(settings.binDir);
 
-    const proc = exec(
-      `"${ytDlpPath}" --print "%(title)s" --print "%(thumbnail)s" --no-download "${url}"`,
-      {
-        shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
-        timeout: 15000,
-      },
-      (err: Error | null, stdout: string) => {
-        if (err || !stdout) {
-          resolve({ title: "", thumbnail: "" });
-          return;
-        }
-        const lines = stdout.trim().split("\n");
-        const title = lines[0]?.trim() ?? "";
-        const thumbnail = lines[1]?.trim() ?? "";
-        resolve({ title, thumbnail });
-      },
+    const proc = spawn(
+      ytDlpPath,
+      [
+        "--no-playlist",
+        "--print",
+        "%(title)s",
+        "--print",
+        "%(thumbnail)s",
+        "--no-download",
+        url,
+      ],
+      { stdio: ["ignore", "pipe", "ignore"], timeout: 15000 },
     );
 
+    let stdout = "";
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+
+    const onError = (err: Error) => {
+      console.error(`[metadata] yt-dlp error: ${err.message}`);
+      resolve({ title: "", thumbnail: "" });
+    };
+
+    proc.on("error", onError);
+    proc.on("close", (code) => {
+      if (code !== 0 || !stdout.trim()) {
+        resolve({ title: "", thumbnail: "" });
+        return;
+      }
+      const lines = stdout
+        .trim()
+        .split("\n")
+        .map((l) => l.trim());
+      const title = lines[0] ?? "";
+      const thumbnail = lines[lines.length - 1] ?? "";
+      resolve({ title, thumbnail });
+    });
+
     if (signal) {
-      signal.addEventListener("abort", () => proc.kill());
+      const abortHandler = () => proc.kill();
+      signal.addEventListener("abort", abortHandler, { once: true });
+      proc.once("close", () => {
+        signal.removeEventListener("abort", abortHandler);
+      });
     }
   });
 }

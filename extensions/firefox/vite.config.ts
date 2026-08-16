@@ -20,7 +20,7 @@ export default defineConfig({
         },
         content_scripts: [
           {
-            matches: ["*://*.youtube.com/*"],
+            matches: ["<all_urls>"],
             js: ["src/content/content.ts"],
           },
         ],

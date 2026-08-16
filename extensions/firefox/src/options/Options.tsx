@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { discoverServer } from "@/lib/discovery";
 import { defaultSettings, type Settings } from "@/lib/settings";
 
@@ -150,15 +150,98 @@ const styles = {
   } as React.CSSProperties,
 };
 
+const MAX_HEIGHTS = ["2160", "1440", "1080", "720", "480", "a"];
+const CODECS = ["any", "h264", "vp9", "av1", "h265"];
+
+function isSettingsShape(value: unknown): value is Settings {
+  if (typeof value !== "object" || value === null) return false;
+  const s = value as Record<string, unknown>;
+  return (
+    typeof s.serverUrl === "string" &&
+    typeof s.maxHeight === "string" &&
+    MAX_HEIGHTS.includes(s.maxHeight) &&
+    typeof s.codec === "string" &&
+    CODECS.includes(s.codec) &&
+    typeof s.mpvArgs === "string" &&
+    typeof s.showThumb === "boolean" &&
+    typeof s.volume === "number" &&
+    s.volume >= 0 &&
+    s.volume <= 100 &&
+    typeof s.speed === "number" &&
+    s.speed >= 0.25 &&
+    s.speed <= 3 &&
+    typeof s.subLang === "string" &&
+    typeof s.loop === "boolean"
+  );
+}
+
 export default function Options() {
   const [serverUrl, setServerUrl] = useState(defaultSettings.serverUrl);
   const [maxHeight, setMaxHeight] = useState(defaultSettings.maxHeight);
+  const [codec, setCodec] = useState(defaultSettings.codec);
   const [mpvArgs, setMpvArgs] = useState(defaultSettings.mpvArgs);
   const [showThumb, setShowThumb] = useState(defaultSettings.showThumb);
+  const [volume, setVolume] = useState(defaultSettings.volume);
+  const [speed, setSpeed] = useState(defaultSettings.speed);
+  const [subLang, setSubLang] = useState(defaultSettings.subLang);
+  const [loop, setLoop] = useState(defaultSettings.loop);
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<boolean | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+
+  const currentSettings = (): Settings => ({
+    serverUrl,
+    maxHeight,
+    codec,
+    mpvArgs,
+    showThumb,
+    volume,
+    speed,
+    subLang,
+    loop,
+  });
+
+  const applySettings = (s: Settings) => {
+    setServerUrl(s.serverUrl);
+    setMaxHeight(s.maxHeight);
+    setCodec(s.codec);
+    setMpvArgs(s.mpvArgs);
+    setShowThumb(s.showThumb);
+    setVolume(s.volume);
+    setSpeed(s.speed);
+    setSubLang(s.subLang);
+    setLoop(s.loop);
+  };
+
+  const exportSettings = () => {
+    const blob = new Blob([JSON.stringify(currentSettings(), null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "media-launcher-settings.json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const importSettings = async (file: File) => {
+    try {
+      const text = await file.text();
+      const parsed: unknown = JSON.parse(text);
+      if (!isSettingsShape(parsed)) {
+        throw new Error("invalid shape");
+      }
+      applySettings(parsed);
+      markDirty();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      setSaved(false);
+    }
+  };
 
   const markDirty = () => {
     setDirty(true);
@@ -172,6 +255,7 @@ export default function Options() {
     if (result) {
       setServerUrl(result.serverUrl);
       setDiscovered(true);
+      markDirty();
     } else {
       setDiscovered(false);
     }
@@ -180,11 +264,20 @@ export default function Options() {
 
   const saveOptions = async () => {
     try {
+      const safeSpeed =
+        Number.isFinite(speed) && speed >= 0.25 && speed <= 3
+          ? speed
+          : defaultSettings.speed;
       await chrome.storage.sync.set({
         serverUrl,
-        maxHeight,
+        maxHeight: maxHeight ?? defaultSettings.maxHeight,
+        codec,
         mpvArgs,
         showThumb,
+        volume,
+        speed: safeSpeed,
+        subLang,
+        loop,
       });
       setDirty(false);
       setSaved(true);
@@ -196,10 +289,7 @@ export default function Options() {
 
   const resetOptions = async () => {
     await chrome.storage.sync.set(defaultSettings);
-    setServerUrl(defaultSettings.serverUrl);
-    setMaxHeight(defaultSettings.maxHeight);
-    setMpvArgs(defaultSettings.mpvArgs);
-    setShowThumb(defaultSettings.showThumb);
+    applySettings(defaultSettings);
     setDirty(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -207,18 +297,19 @@ export default function Options() {
 
   const restoreOptions = useCallback(async () => {
     const opts = (await chrome.storage.sync.get(defaultSettings)) as Settings;
-    setServerUrl(opts.serverUrl);
-    setMaxHeight(opts.maxHeight);
-    setMpvArgs(opts.mpvArgs);
-    setShowThumb(opts.showThumb);
+    applySettings(opts);
   }, []);
 
   useEffect(() => {
     restoreOptions();
   }, [restoreOptions]);
 
+  const hasAutoDiscovered = useRef(false);
+
   useEffect(() => {
+    if (hasAutoDiscovered.current) return;
     if (serverUrl && serverUrl === defaultSettings.serverUrl) {
+      hasAutoDiscovered.current = true;
       runDiscovery();
     }
   }, [serverUrl, runDiscovery]);
@@ -247,6 +338,7 @@ export default function Options() {
             value={serverUrl}
             onChange={(e) => {
               setServerUrl(e.target.value);
+              setDiscovered(null);
               markDirty();
             }}
             placeholder="http://localhost:5000"
@@ -284,6 +376,93 @@ export default function Options() {
           Limits video quality. "Audio only" skips video entirely.
         </p>
 
+        <label style={styles.label}>Preferred codec</label>
+        <select
+          style={styles.select}
+          value={codec}
+          onChange={(e) => {
+            setCodec(e.target.value);
+            markDirty();
+          }}
+        >
+          <option value="any">Any</option>
+          <option value="h264">H.264</option>
+          <option value="vp9">VP9</option>
+          <option value="av1">AV1</option>
+          <option value="h265">H.265</option>
+        </select>
+        <p style={styles.hint}>
+          Prefers this video codec, falling back to the best available if the
+          video doesn't offer it.
+        </p>
+
+        <label style={styles.label}>Volume</label>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={volume}
+            onChange={(e) => {
+              setVolume(Number(e.target.value));
+              markDirty();
+            }}
+            style={{ flex: 1 }}
+          />
+          <span style={{ width: "48px", textAlign: "right", fontSize: "12px", color: "#888" }}>
+            {volume}%
+          </span>
+        </div>
+
+        <label style={styles.label}>Playback speed</label>
+        <input
+          type="number"
+          min={0.25}
+          max={3}
+          step={0.05}
+          style={styles.input}
+          value={speed}
+          onChange={(e) => {
+            setSpeed(Number(e.target.value));
+            markDirty();
+          }}
+          onBlur={() => {
+            const v = Number(speed);
+            if (!Number.isFinite(v) || v < 0.25 || v > 3) {
+              setSpeed(defaultSettings.speed);
+            }
+          }}
+        />
+
+        <label style={styles.label}>Preferred subtitle language</label>
+        <input
+          style={styles.input}
+          placeholder="en"
+          value={subLang}
+          onChange={(e) => {
+            setSubLang(e.target.value);
+            markDirty();
+          }}
+        />
+        <p style={styles.hint}>
+          ISO 639-1 code, e.g. en, fr, es. Empty = default.
+        </p>
+
+        <div style={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            id="loop"
+            checked={loop}
+            onChange={(e) => {
+              setLoop(e.target.checked);
+              markDirty();
+            }}
+          />
+          <label htmlFor="loop" style={{ fontSize: "12px" }}>
+            Loop the video
+          </label>
+        </div>
+
         {maxHeight === "a" && (
           <div style={styles.checkboxRow}>
             <input
@@ -315,8 +494,32 @@ export default function Options() {
           placeholder="--ytdl-format=bestvideo+bestaudio"
         />
         <p style={styles.hint}>
-          One per line. Appended after the auto-generated flags.
+          One per line. Appended after the auto-generated flags. Playlist tips:
+          `--playlist-start=3`, `--loop-playlist=inf`.
         </p>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button type="button" style={styles.btnSmall} onClick={exportSettings}>
+            Export settings
+          </button>
+          <button
+            type="button"
+            style={styles.btnSmall}
+            onClick={() => importRef.current?.click()}
+          >
+            Import settings
+          </button>
+          <input
+            ref={importRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void importSettings(file);
+              e.target.value = "";
+            }}
+          />
+        </div>
       </div>
 
       <hr

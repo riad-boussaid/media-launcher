@@ -75,8 +75,13 @@ export default function SettingsPage() {
   if (!settings) return null;
 
   const save = async () => {
-    await setSettings(settings);
-    setToast("Settings saved");
+    try {
+      await setSettings(settings);
+      setToast("Settings saved");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setToast(`Save failed: ${message}`);
+    }
     setTimeout(() => setToast(""), 2000);
   };
 

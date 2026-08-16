@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import History from "./pages/History";
 import Play from "./pages/Play";
 import Settings from "./pages/Settings";
@@ -14,6 +14,13 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("play");
+
+  useEffect(() => {
+    const cleanup = window.electronAPI.window.onNavigate((t) => {
+      if (t === "play" || t === "history" || t === "settings") setTab(t);
+    });
+    return cleanup;
+  }, []);
 
   return (
     <div className="h-screen flex flex-col">

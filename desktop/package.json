@@ -30,7 +30,7 @@
       "target": [
         "nsis"
       ],
-      "icon": "resources/icon.ico"
+      "icon": "resources/play.ico"
     },
     "nsis": {
       "oneClick": false,

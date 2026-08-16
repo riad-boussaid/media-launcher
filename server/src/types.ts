@@ -1,6 +1,5 @@
 export interface Settings {
   player: string;
-  mpvArgs: string;
   playerArgs: Record<string, string>;
   customPlayerPath: string;
   customPlayerArgs: string;
