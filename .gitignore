@@ -19,3 +19,5 @@ desktop-old/
 .pnpm-store/
 .server-staging/
 data/
+
+.zcode/
