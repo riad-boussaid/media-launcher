@@ -4,8 +4,8 @@ import {
   clearHistory,
   deleteHistory,
   getHistory,
-  getSettings,
   openExternal,
+  replayUrl,
 } from "../lib/api";
 
 function relativeTime(ts: number): string {
@@ -55,13 +55,35 @@ function displayUrl(url: string): { host: string; path: string } {
   }
 }
 
-export default function History() {
+export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
   const [items, setItems] = useState<HistoryEntry[]>([]);
   const [search, setSearch] = useState("");
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<{ msg: string; variant: string } | null>(
+    null,
+  );
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // App bumps focusSignal (Ctrl+2 / Ctrl+F) to jump here and focus the search.
+  useEffect(() => {
+    if (focusSignal > 0) searchRef.current?.focus();
+  }, [focusSignal]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (selectMode) {
+        setSelected(new Set());
+        setSelectMode(false);
+      } else if (search) {
+        setSearch("");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectMode, search]);
 
   const load = useCallback(async () => {
     try {
@@ -92,9 +114,9 @@ export default function History() {
     };
   }, [items, load]);
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(""), 2000);
+  const showToast = (msg: string, variant = "toast-success") => {
+    setToast({ msg, variant });
+    setTimeout(() => setToast(null), 2200);
   };
 
   const filtered = useMemo(
@@ -131,24 +153,13 @@ export default function History() {
   };
 
   const handlePlayUrl = async (url: string) => {
-    try {
-      const settings = await getSettings();
-      const res = await fetch(`${settings.serverUrl}/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        showToast(`Error: ${err}`);
-        return;
-      }
-      setItems(await getHistory());
-      showToast("Playing...");
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      showToast(`Error: ${message}`);
+    const res = await replayUrl(url);
+    if (!res.success) {
+      showToast(`Error: ${res.error ?? "Could not play URL"}`, "toast-error");
+      return;
     }
+    setItems(await getHistory());
+    showToast("Playing…", "toast-success");
   };
 
   const handleReplay = handlePlayUrl;
@@ -203,16 +214,17 @@ export default function History() {
             <path d="m21 21-4.35-4.35" />
           </svg>
           <input
+            ref={searchRef}
             className="w-full py-2 pl-8 pr-8 bg-surface border border-border rounded-lg text-text text-sm outline-none focus:border-accent transition-colors placeholder:text-muted"
             type="text"
-            placeholder="Search history..."
+            placeholder="Search history… (Ctrl+F)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           {search && (
             <button
               type="button"
-              className="absolute right-1.5 bg-none border-none text-muted text-lg cursor-pointer px-1.5 py-0.5 rounded hover:text-text hover:bg-[#2a2a4a]"
+              className="absolute right-1.5 bg-none border-none text-muted text-lg cursor-pointer px-1.5 py-0.5 rounded hover:text-text hover:bg-elevated"
               onClick={() => setSearch("")}
             >
               ×
@@ -223,14 +235,14 @@ export default function History() {
           <>
             <button
               type="button"
-              className="px-3.5 py-2 border border-[#3a2a2a] rounded-lg bg-[#2a1a1a] text-danger text-xs cursor-pointer whitespace-nowrap transition-colors flex-shrink-0 hover:bg-[#3a2a2a]"
+              className="btn-danger flex-shrink-0"
               onClick={handleClear}
             >
               Clear all
             </button>
             <button
               type="button"
-              className="px-3.5 py-2 border border-[#3a2a2a] rounded-lg bg-[#2a1a1a] text-danger text-xs cursor-pointer whitespace-nowrap transition-colors flex-shrink-0 hover:bg-[#3a2a2a]"
+              className="btn-ghost flex-shrink-0"
               onClick={() => setSelectMode(true)}
             >
               Select
@@ -239,7 +251,7 @@ export default function History() {
         )}
         {selectMode && (
           <div className="flex items-center gap-2">
-            <label className="text-xs text-[#999] flex items-center gap-1 cursor-pointer">
+            <label className="text-xs text-muted flex items-center gap-1 cursor-pointer">
               <input
                 type="checkbox"
                 checked={allSelected}
@@ -249,7 +261,7 @@ export default function History() {
             </label>
             <button
               type="button"
-              className="px-3.5 py-2 border border-[#3a2a2a] rounded-lg bg-[#2a1a1a] text-danger text-xs cursor-pointer whitespace-nowrap transition-colors flex-shrink-0 hover:bg-[#3a2a2a]"
+              className="btn-ghost flex-shrink-0"
               onClick={() => {
                 setSelected(new Set());
                 setSelectMode(false);
@@ -260,7 +272,7 @@ export default function History() {
             {selected.size > 0 && (
               <button
                 type="button"
-                className="px-3.5 py-2 border border-[#3a2a2a] rounded-lg bg-[#2a1a1a] text-danger text-xs cursor-pointer whitespace-nowrap transition-colors flex-shrink-0 hover:bg-[#3a2a2a] danger"
+                className="btn-danger flex-shrink-0"
                 onClick={handleDeleteSelected}
               >
                 Delete ({selected.size})
@@ -277,15 +289,14 @@ export default function History() {
       )}
 
       {filtered.length === 0 ? (
-        <div className="text-center py-10 px-5 text-[#666]">
+        <div className="text-center py-10 px-5 text-muted">
           {search ? (
             <>
               <p>No results for "{search}"</p>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn-primary mt-3"
                 onClick={() => setSearch("")}
-                style={{ marginTop: 12 }}
               >
                 Clear search
               </button>
@@ -293,7 +304,7 @@ export default function History() {
           ) : (
             <>
               <p>No history yet</p>
-              <p className="text-xs mt-2 text-[#444]">
+              <p className="text-xs mt-2 text-muted/70">
                 Play a video from your browser to see it here
               </p>
             </>
@@ -310,7 +321,7 @@ export default function History() {
               return (
                 <div
                   key={item.id}
-                  className={`flex items-stretch mb-1 rounded-lg overflow-hidden transition-colors min-h-[56px] hover:bg-surface group ${selectMode ? "cursor-default" : ""}`}
+                  className={`flex items-stretch mb-1 rounded-lg overflow-hidden transition-colors min-h-[56px] hover:bg-card group ${selectMode ? "cursor-default" : ""}`}
                 >
                   {selectMode && (
                     // biome-ignore lint/a11y/noStaticElementInteractions: checkbox wrapper layout
@@ -329,7 +340,7 @@ export default function History() {
                   {/* biome-ignore lint/a11y/noStaticElementInteractions: thumbnail clickable area */}
                   {/* biome-ignore lint/a11y/useKeyWithClickEvents: thumbnail clickable area */}
                   <div
-                    className="w-20 flex-shrink-0 bg-[#0f0f1a] bg-cover bg-center cursor-pointer flex items-center justify-center rounded-l-lg overflow-hidden"
+                    className="w-20 flex-shrink-0 bg-black/40 bg-cover bg-center cursor-pointer flex items-center justify-center rounded-l-lg overflow-hidden"
                     onClick={() => !selectMode && handleReplay(item.url)}
                     style={
                       item.thumbnail
@@ -341,7 +352,7 @@ export default function History() {
                   >
                     {!item.thumbnail && (
                       <svg
-                        className="w-5 h-5 text-[#333]"
+                        className="w-5 h-5 text-white/15"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
@@ -366,7 +377,7 @@ export default function History() {
                       ) : null}
                       <div className="text-xs overflow-hidden text-ellipsis whitespace-nowrap">
                         <span className="text-accent">{host}</span>
-                        <span className="text-[#666]">{path}</span>
+                        <span className="text-muted">{path}</span>
                       </div>
                     </div>
                     <div
@@ -468,7 +479,7 @@ export default function History() {
         ))
       )}
 
-      {toast && <div className="toast">{toast}</div>}
+      {toast && <div className={`toast ${toast.variant}`}>{toast.msg}</div>}
     </div>
   );
 }

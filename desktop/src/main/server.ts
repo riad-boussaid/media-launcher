@@ -64,6 +64,32 @@ async function probeHealth(timeoutMs = 1500): Promise<HealthResponse | null> {
   }
 }
 
+/** Lightweight liveness probe for the renderer's status indicator. */
+export async function getServerStatus(): Promise<{ online: boolean }> {
+  const health = await probeHealth(1000);
+  return { online: health !== null };
+}
+
+/** Probe an arbitrary server URL (used by Settings' "Test connection"). */
+export async function probeServerUrl(
+  url: string,
+): Promise<{ ok: boolean; detail?: string }> {
+  const base = url.trim().replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${base}/api/health`, {
+      signal: AbortSignal.timeout(2500),
+    });
+    if (!res.ok) return { ok: false, detail: `HTTP ${res.status}` };
+    const data: HealthResponse = await res.json();
+    if (data.app !== "media-launcher") {
+      return { ok: false, detail: "Reached a server, but not media-launcher" };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, detail: "No response" };
+  }
+}
+
 export async function startServer(): Promise<void> {
   const entry = getServerEntry();
   if (!existsSync(entry)) {

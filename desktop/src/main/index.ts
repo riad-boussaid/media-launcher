@@ -2,19 +2,28 @@ import { join } from "node:path";
 import {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   ipcMain,
+  Menu,
   screen,
   shell,
 } from "electron";
 import {
+  checkUpdate,
   deleteDownload,
   getBinDir,
   listDownloads,
   startDownload,
 } from "./downloads";
 import { checkPlayerExists } from "./player";
-import { readServerToken, startServer, stopServer } from "./server";
+import {
+  getServerStatus,
+  probeServerUrl,
+  readServerToken,
+  startServer,
+  stopServer,
+} from "./server";
 import {
   clearHistory,
   deleteHistory,
@@ -55,12 +64,18 @@ if (!gotTheLock) {
       screen.getPrimaryDisplay().workAreaSize;
 
     win = new BrowserWindow({
-      width: 520,
-      height: 680,
-      x: screenWidth - 530,
-      y: screenHeight - 690,
+      width: 560,
+      height: 730,
+      x: screenWidth - 570,
+      y: screenHeight - 740,
       show: false,
-      frame: true,
+      // Frameless look while keeping native window controls (WCO overlay).
+      titleBarStyle: "hidden",
+      titleBarOverlay: {
+        color: "#14171c",
+        symbolColor: "#9aa3b2",
+        height: 36,
+      },
       title: "media-launcher",
       icon: join(__dirname, "../../resources/play-256.png"),
       webPreferences: {
@@ -72,6 +87,7 @@ if (!gotTheLock) {
 
     if (process.env.ELECTRON_RENDERER_URL) {
       win.loadURL(process.env.ELECTRON_RENDERER_URL);
+      win.webContents.openDevTools({ mode: "detach" });
     } else {
       win.loadFile(join(__dirname, "../renderer/index.html"));
     }
@@ -97,6 +113,10 @@ if (!gotTheLock) {
 
   function registerIPC(): void {
     ipcMain.handle("server:token", () => readServerToken());
+    ipcMain.handle("server:status", () => getServerStatus());
+    ipcMain.handle("server:probe", (_event, url: string) =>
+      probeServerUrl(url),
+    );
     ipcMain.handle("settings:get", () => getSettings());
     ipcMain.handle("settings:set", async (_event, partial) => {
       const updated = await setSettings(partial);
@@ -121,6 +141,9 @@ if (!gotTheLock) {
       await deleteDownload(id);
       return listDownloads();
     });
+    ipcMain.handle("downloads:updateCheck", (_event, id: string) =>
+      checkUpdate(id),
+    );
     ipcMain.handle("shell:open", (_event, url) => {
       if (
         typeof url === "string" &&
@@ -129,6 +152,18 @@ if (!gotTheLock) {
         return shell.openExternal(url);
       }
       return Promise.resolve();
+    });
+    ipcMain.handle("dialog:pickExecutable", async () => {
+      if (!win) return null;
+      const result = await dialog.showOpenDialog(win, {
+        title: "Locate player executable",
+        properties: ["openFile"],
+        filters:
+          process.platform === "win32"
+            ? [{ name: "Executables", extensions: ["exe"] }]
+            : undefined,
+      });
+      return result.filePaths[0] ?? null;
     });
     ipcMain.handle("history:replay", (_event, url) => replayUrl(url));
     ipcMain.handle("window:openHistory", () => {
@@ -148,6 +183,10 @@ if (!gotTheLock) {
   }
 
   app.whenReady().then(async () => {
+    // Drop the default Electron menu (File/Edit/View/Window) — the renderer
+    // owns all navigation, and the stock menu makes the app feel unfinished.
+    Menu.setApplicationMenu(null);
+
     await startServer();
     await initDatabase();
     const settings = await getSettings();

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { getSettings } from "../lib/api";
+import { type DragEvent, useEffect, useState } from "react";
+import { getHistory, type HistoryEntry, replayUrl } from "../lib/api";
 
 function isValidUrl(value: string): boolean {
   try {
@@ -10,75 +10,222 @@ function isValidUrl(value: string): boolean {
   }
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
 export default function Play() {
   const [urlInput, setUrlInput] = useState("");
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<{ msg: string; variant: string } | null>(
+    null,
+  );
   const [playing, setPlaying] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [recent, setRecent] = useState<HistoryEntry[]>([]);
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(""), 2000);
+  const showToast = (msg: string, variant = "toast-success") => {
+    setToast({ msg, variant });
+    setTimeout(() => setToast(null), 2200);
   };
 
-  const handlePlay = async () => {
-    const url = urlInput.trim();
-    if (!url || playing) return;
-    if (!isValidUrl(url)) {
-      showToast("Please enter a valid http(s) URL");
-      return;
-    }
+  useEffect(() => {
+    void getHistory()
+      .then((items) => setRecent(items.slice(0, 3)))
+      .catch(() => {});
+  }, []);
+
+  const playUrl = async (url: string) => {
+    if (playing) return;
     setPlaying(true);
     try {
-      const settings = await getSettings();
-      const res = await fetch(`${settings.serverUrl}/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        showToast(`Error: ${err}`);
+      const res = await replayUrl(url);
+      if (!res.success) {
+        showToast(`Error: ${res.error ?? "Could not play URL"}`, "toast-error");
         return;
       }
-      showToast("Playing...");
+      showToast("Playing…");
       setUrlInput("");
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      showToast(`Error: ${message}`);
+      void getHistory()
+        .then((items) => setRecent(items.slice(0, 3)))
+        .catch(() => {});
     } finally {
       setPlaying(false);
     }
   };
 
+  const handlePlay = async () => {
+    const url = urlInput.trim();
+    if (!url) return;
+    if (!isValidUrl(url)) {
+      showToast("Please enter a valid http(s) URL", "toast-error");
+      return;
+    }
+    await playUrl(url);
+  };
+
+  const handlePaste = async () => {
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (text) setUrlInput(text);
+    } catch {
+      showToast("Clipboard unavailable", "toast-error");
+    }
+  };
+
+  const handleDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const text =
+      e.dataTransfer.getData("text/uri-list") ||
+      e.dataTransfer.getData("text/plain");
+    const url = text.trim().split(/\s+/)[0] ?? "";
+    if (isValidUrl(url)) {
+      setUrlInput(url);
+      void playUrl(url);
+    } else {
+      showToast("Drop an http(s) URL to play it", "toast-error");
+    }
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh]">
-      <div className="w-full max-w-lg">
-        <h2 className="text-lg font-semibold text-text mb-1">Play a video</h2>
-        <p className="text-xs text-muted mb-4">
-          Paste a URL from YouTube or any supported site
-        </p>
-        <div className="flex gap-2">
+    // biome-ignore lint/a11y/noStaticElementInteractions: drop target for URLs
+    <div
+      className={`flex flex-col items-center justify-center min-h-[62vh] rounded-xl transition-shadow ${
+        dragOver
+          ? "shadow-[inset_0_0_0_2px_rgb(100_255_218/0.5)] bg-[rgb(100_255_218/0.03)]"
+          : ""
+      }`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setDragOver(false);
+        }
+      }}
+      onDrop={handleDrop}
+    >
+      <div className="w-full max-w-md">
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="w-14 h-14 rounded-2xl bg-card border border-border flex items-center justify-center mb-3">
+            <svg
+              viewBox="0 0 24 24"
+              width="26"
+              height="26"
+              fill="var(--color-accent)"
+              aria-hidden="true"
+            >
+              <polygon points="7 4 21 12 7 20 7 4" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-text m-0">Play a video</h2>
+          <p className="text-xs text-muted mt-1 mb-0">
+            Paste a URL from YouTube or any supported site — or drop a link
+            anywhere here
+          </p>
+        </div>
+
+        <div className="relative">
           <input
-            className="flex-1 px-4 py-3 border border-border-light rounded-lg bg-card text-text text-sm outline-none focus:border-accent transition-colors placeholder:text-muted"
+            className="w-full px-3.5 py-3 pr-11 border border-border rounded-lg bg-surface text-text text-sm outline-none transition-colors placeholder:text-muted focus:border-[rgb(100_255_218/0.5)] focus:shadow-[0_0_0_3px_rgb(100_255_218/0.08)]"
             type="text"
-            placeholder="Paste a URL and press Enter..."
+            placeholder="Paste a URL and press Enter…"
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handlePlay();
+              if (e.key === "Enter") void handlePlay();
             }}
+            spellCheck={false}
           />
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handlePlay}
-            disabled={!urlInput.trim() || playing}
-          >
-            {playing ? "Sending..." : "Play"}
-          </button>
+          {urlInput ? (
+            <button
+              type="button"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 action-btn"
+              title="Clear"
+              onClick={() => setUrlInput("")}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="15"
+                height="15"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 action-btn"
+              title="Paste from clipboard"
+              onClick={() => void handlePaste()}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="15"
+                height="15"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+              </svg>
+            </button>
+          )}
         </div>
+
+        <button
+          type="button"
+          className="btn-primary w-full mt-3"
+          onClick={() => void handlePlay()}
+          disabled={!urlInput.trim() || playing}
+        >
+          {playing ? "Sending…" : "Play"}
+        </button>
+
+        {recent.length > 0 && (
+          <div className="mt-7">
+            <div className="text-[11px] text-muted uppercase tracking-[0.06em] font-semibold mb-2">
+              Recent
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {recent.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="max-w-full flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-full text-xs text-text-dim cursor-pointer hover:bg-elevated hover:border-border-strong hover:text-text transition-colors"
+                  title={item.title || item.url}
+                  onClick={() => void playUrl(item.url)}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="11"
+                    height="11"
+                    fill="var(--color-accent)"
+                    aria-hidden="true"
+                  >
+                    <polygon points="6 3 20 12 6 21 6 3" />
+                  </svg>
+                  <span className="truncate">
+                    {item.title || hostOf(item.url)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-      {toast && <div className="toast">{toast}</div>}
+      {toast && <div className={`toast ${toast.variant}`}>{toast.msg}</div>}
     </div>
   );
 }

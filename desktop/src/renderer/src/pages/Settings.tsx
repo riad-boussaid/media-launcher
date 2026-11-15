@@ -1,11 +1,26 @@
-import { useEffect, useState } from "react";
-import type { DownloadItem, Settings } from "../lib/api";
+import {
+  type JSX,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import type {
+  DownloadItem,
+  ProbeResult,
+  Settings,
+  UpdateCheck,
+} from "../lib/api";
 import {
   checkPlayer,
+  checkUpdate,
   deleteDownload,
   getDownloads,
   getSettings,
   openExternal,
+  pickExecutable,
+  probeServerUrl,
   setSettings,
   startDownload,
 } from "../lib/api";
@@ -24,21 +39,233 @@ const PLAYER_EXE: Record<string, (s: Settings) => string> = {
   custom: (s) => s.customPlayerPath || "mpv",
 };
 
+type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="card p-4 mb-4">
+      <h3 className="field-label mb-3">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: JSX.Element;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mb-4 last:mb-0">
+      <label className="field-label">{label}</label>
+      {children}
+      {hint && (
+        <p className="text-[11px] text-muted mt-1.5 leading-snug">{hint}</p>
+      )}
+    </div>
+  );
+}
+
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-3 py-2 cursor-pointer">
+      <span className="toggle">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <span className="track" />
+      </span>
+      <span className="flex flex-col gap-0.5">
+        <span className="text-sm text-text">{label}</span>
+        <span className="text-[11px] text-muted leading-snug">
+          {description}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 export default function SettingsPage() {
   const [settings, setLocal] = useState<Settings | null>(null);
-  const [toast, setToast] = useState("");
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [toast, setToast] = useState<{ msg: string; variant: string } | null>(
+    null,
+  );
   const [playerStatus, setPlayerStatus] = useState<
     "unknown" | "ok" | "missing"
   >("unknown");
   const [checking, setChecking] = useState(false);
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
+
+  const loadedRef = useRef(false);
+  const settingsRef = useRef<Settings | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string, variant = "toast-error") => {
+    setToast({ msg, variant });
+    setTimeout(() => setToast(null), 2200);
+  }, []);
 
   useEffect(() => {
     window.electronAPI.server.getToken().then((t) => setToken(t ?? ""));
   }, []);
+
+  const verifyPlayer = useCallback(async (s: Settings) => {
+    const exe = PLAYER_EXE[s.player]?.(s);
+    if (!exe) return;
+    setChecking(true);
+    const ok = await checkPlayer(exe);
+    setPlayerStatus(ok ? "ok" : "missing");
+    setChecking(false);
+  }, []);
+
+  const flushSave = useCallback(
+    async (next: Settings) => {
+      setSaveState("saving");
+      try {
+        await setSettings(next);
+        setSaveState("saved");
+        setTimeout(
+          () => setSaveState((s) => (s === "saved" ? "idle" : s)),
+          1800,
+        );
+      } catch (err: unknown) {
+        setSaveState("error");
+        const message = err instanceof Error ? err.message : String(err);
+        showToast(`Save failed: ${message}`);
+      }
+    },
+    [showToast],
+  );
+
+  const scheduleSave = useCallback(
+    (next: Settings) => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      setSaveState("pending");
+      saveTimer.current = setTimeout(() => void flushSave(next), 600);
+    },
+    [flushSave],
+  );
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
+  useEffect(() => {
+    getSettings().then((s) => {
+      settingsRef.current = s;
+      setLocal(s);
+      loadedRef.current = true;
+      verifyPlayer(s);
+    });
+    void getDownloads().then(setDownloads);
+    void checkUpdate("yt-dlp")
+      .then(setUpdateCheck)
+      .catch(() => {});
+    // Flush a pending debounced save when leaving the page.
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        if (loadedRef.current && settingsRef.current) {
+          void setSettings(settingsRef.current).catch(() => {});
+        }
+      }
+    };
+  }, []);
+
+  const refreshDownloads = useCallback(async () => {
+    setDownloads(await getDownloads());
+  }, []);
+
+  // Poll while something is downloading so the progress bars move.
+  useEffect(() => {
+    if (!downloads.some((d) => d.status === "downloading")) return;
+    const t = setInterval(() => void refreshDownloads(), 1000);
+    return () => clearInterval(t);
+  }, [downloads, refreshDownloads]);
+
+  const handleDownload = async (id: string) => {
+    try {
+      setDownloads(await startDownload(id));
+      // Refresh the update badge (a fresh install may close the gap).
+      void checkUpdate("yt-dlp")
+        .then(setUpdateCheck)
+        .catch(() => {});
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(`Download failed: ${message}`);
+      void refreshDownloads();
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    await deleteDownload(id);
+    void refreshDownloads();
+  };
+
+  if (!settings) return null;
+
+  const isHttpUrl = (value: string) => {
+    try {
+      const u = new URL(value);
+      return u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+      return false;
+    }
+  };
+  const urlInvalid =
+    settings.serverUrl.trim() !== "" && !isHttpUrl(settings.serverUrl.trim());
+
+  const handleProbe = async () => {
+    setProbing(true);
+    setProbeResult(null);
+    setProbeResult(await probeServerUrl(settings.serverUrl));
+    setProbing(false);
+  };
+
+  const handleBrowsePlayer = async () => {
+    const path = await pickExecutable();
+    if (!path) return;
+    update({ player: "custom", customPlayerPath: path });
+  };
+
+  const update = (partial: Partial<Settings>) => {
+    const next: Settings = {
+      ...settings,
+      ...partial,
+      playerArgs: { ...settings.playerArgs, ...(partial.playerArgs || {}) },
+    };
+    settingsRef.current = next;
+    setLocal(next);
+    scheduleSave(next);
+    if (partial.serverUrl !== undefined) setProbeResult(null);
+    if (
+      partial.player !== undefined ||
+      partial.customPlayerPath !== undefined
+    ) {
+      void verifyPlayer(next);
+    }
+  };
 
   const copyToken = async () => {
     try {
@@ -46,321 +273,414 @@ export default function SettingsPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setToast("Copy failed — select the token manually");
-      setTimeout(() => setToast(""), 2000);
+      showToast("Copy failed — select the token manually");
     }
   };
 
-  const refreshDownloads = async () => {
-    setDownloads(await getDownloads());
-  };
-
-  const verifyPlayer = async (s: Settings) => {
-    const exe = PLAYER_EXE[s.player]?.(s);
-    if (!exe) return;
-    setChecking(true);
-    const ok = await checkPlayer(exe);
-    setPlayerStatus(ok ? "ok" : "missing");
-    setChecking(false);
-  };
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
-  useEffect(() => {
-    getSettings().then((s) => {
-      setLocal(s);
-      verifyPlayer(s);
-    });
-    refreshDownloads();
-  }, []);
-
-  const handleDownload = async (id: string) => {
-    setDownloadingId(id);
-    try {
-      await startDownload(id);
-    } catch {
-    } finally {
-      setDownloadingId(null);
-      refreshDownloads();
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    await deleteDownload(id);
-    refreshDownloads();
-  };
-
-  if (!settings) return null;
-
-  const save = async () => {
-    try {
-      await setSettings(settings);
-      setToast("Settings saved");
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setToast(`Save failed: ${message}`);
-    }
-    setTimeout(() => setToast(""), 2000);
-  };
-
-  const update = (partial: Partial<Settings>) => {
-    const next = {
-      ...settings,
-      ...partial,
-      playerArgs: { ...settings.playerArgs, ...(partial.playerArgs || {}) },
-    };
-    setLocal(next);
-    if (
-      partial.player !== undefined ||
-      partial.customPlayerPath !== undefined
-    ) {
-      verifyPlayer(next);
-    }
-  };
-
-  const statusIcon = checking
-    ? "..."
+  const statusDot =
+    checking || playerStatus === "unknown" ? (
+      <span className="inline-block w-[7px] h-[7px] rounded-full bg-[var(--color-muted)] mr-1.5" />
+    ) : playerStatus === "ok" ? (
+      <span className="status-dot online inline-block mr-1.5" />
+    ) : (
+      <span className="status-dot offline inline-block mr-1.5" />
+    );
+  const statusText = checking
+    ? "checking…"
     : playerStatus === "ok"
-      ? "\u2705"
+      ? "detected"
       : playerStatus === "missing"
-        ? "\u274C"
+        ? "not found on this system"
         : "";
 
   return (
     <div>
-      <div className="mb-5">
-        <label className="block text-xs text-label mb-1.5 uppercase tracking-[0.5px]">
-          Server URL
-        </label>
-        <input
-          type="text"
-          value={settings.serverUrl}
-          onChange={(e) => update({ serverUrl: e.target.value })}
-          placeholder="http://localhost:5000"
-          className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-text text-sm outline-none focus:border-accent transition-colors"
-        />
-      </div>
-
-      <div className="mb-5">
-        <label className="block text-xs text-label mb-1.5 uppercase tracking-[0.5px]">
-          API token
-        </label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            readOnly
-            value={token}
-            className="flex-1 px-3 py-2.5 bg-surface border border-border rounded-lg text-text text-sm outline-none font-mono"
-          />
-          <button
-            type="button"
-            className="btn-primary px-3 py-2.5 text-sm whitespace-nowrap"
-            onClick={copyToken}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-base font-semibold text-text m-0">Settings</h2>
+        {saveState !== "idle" && (
+          <span
+            className={`flex items-center gap-1.5 text-[11px] ${
+              saveState === "error" ? "text-danger" : "text-muted"
+            }`}
           >
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
-        <p className="text-[11px] text-muted mt-1">
-          Paste this token in the browser extension options so it can talk to
-          the server.
-        </p>
-      </div>
-
-      <div className="mb-5">
-        <label className="block text-xs text-label mb-1.5 uppercase tracking-[0.5px]">
-          Media player{" "}
-          {statusIcon && <span className="ml-1.5 text-sm">{statusIcon}</span>}
-        </label>
-        <select
-          className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-text text-sm outline-none focus:border-accent transition-colors appearance-none cursor-pointer pr-8 bg-no-repeat"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M2 4l4 4 4-4'/%3E%3C/svg%3E")`,
-            backgroundPosition: "right 10px center",
-          }}
-          value={settings.player}
-          onChange={(e) => update({ player: e.target.value })}
-        >
-          {PLAYERS.map((p) => (
-            <option
-              key={p.value}
-              value={p.value}
-              className="bg-surface text-text"
-            >
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {playerStatus === "missing" && (
-        <p className="text-[11px] text-danger mb-3">
-          Player executable not found in PATH. Install it or switch to a
-          different player.
-        </p>
-      )}
-
-      {settings.player !== "custom" && (
-        <div className="mb-5">
-          <label className="block text-xs text-label mb-1.5 uppercase tracking-[0.5px]">
-            Extra arguments for{" "}
-            {PLAYERS.find((p) => p.value === settings.player)?.label ||
-              settings.player}
-          </label>
-          <input
-            type="text"
-            value={settings.playerArgs[settings.player] || ""}
-            onChange={(e) =>
-              update({
-                playerArgs: {
-                  ...settings.playerArgs,
-                  [settings.player]: e.target.value,
-                },
-              })
-            }
-            placeholder="e.g. --volume=50 --ytdl-format=best"
-            className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-text text-sm outline-none focus:border-accent transition-colors"
-          />
-        </div>
-      )}
-
-      {settings.player === "custom" && (
-        <>
-          <div className="mb-5">
-            <label className="block text-xs text-label mb-1.5 uppercase tracking-[0.5px]">
-              Player executable path
-            </label>
-            <input
-              type="text"
-              value={settings.customPlayerPath}
-              onChange={(e) => update({ customPlayerPath: e.target.value })}
-              placeholder="e.g. C:\Players\myplayer.exe"
-              className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-text text-sm outline-none focus:border-accent transition-colors"
-            />
-          </div>
-          <div className="mb-5">
-            <label className="block text-xs text-label mb-1.5 uppercase tracking-[0.5px]">
-              Command arguments
-            </label>
-            <input
-              type="text"
-              value={settings.customPlayerArgs}
-              onChange={(e) => update({ customPlayerArgs: e.target.value })}
-              placeholder={"use {url} as placeholder, e.g. --play {url}"}
-              className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-text text-sm outline-none focus:border-accent transition-colors"
-            />
-            <p className="text-[11px] text-muted mt-1">
-              Use <code className="text-accent text-xs">{`{url}`}</code> as a
-              placeholder for the video URL
-            </p>
-          </div>
-        </>
-      )}
-
-      <div className="mb-5">
-        <label className="flex items-center text-sm text-text normal-case tracking-normal">
-          <input
-            type="checkbox"
-            className="w-auto mr-2"
-            checked={settings.autoStart}
-            onChange={(e) => update({ autoStart: e.target.checked })}
-          />
-          Start on boot
-        </label>
-      </div>
-
-      <div className="mb-5">
-        <label className="flex items-center text-sm text-text normal-case tracking-normal">
-          <input
-            type="checkbox"
-            className="w-auto mr-2"
-            checked={settings.startMinimized}
-            onChange={(e) => update({ startMinimized: e.target.checked })}
-          />
-          Start minimized to tray
-        </label>
-      </div>
-
-      <div className="flex gap-2 mt-2">
-        <button type="button" className="btn-primary" onClick={save}>
-          Save
-        </button>
-      </div>
-
-      {toast && <div className="toast">{toast}</div>}
-
-      <hr className="border-none border-t border-border my-5" />
-
-      <h3 className="m-0 mb-1 text-sm font-semibold text-text">Downloads</h3>
-      <p className="text-[11px] text-[#777] m-0 mb-4">
-        Download portable binaries to the app's data directory. No admin rights
-        needed. Downloaded binaries are used automatically instead of
-        system-installed ones.
-      </p>
-
-      {downloads.map((d) => (
-        <div
-          key={d.id}
-          className="flex justify-between items-center bg-card p-3 rounded-lg mb-2.5 gap-3"
-        >
-          <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-            <strong>{d.name}</strong>
-            <span className="text-[11px] text-[#999] leading-tight">
-              {d.description}
-            </span>
-            <span className="text-[10px] text-[#666]">
-              {d.size}
-              {d.platform
-                ? ` \u2022 ${d.platform}`
-                : " \u2022 not available on this platform"}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {d.platform ? (
-              d.systemAvailable ? (
-                <span className="text-[11px] text-accent whitespace-nowrap">
-                  Already on system
-                </span>
-              ) : d.canDownload ? (
-                d.installed ? (
-                  <button
-                    type="button"
-                    className="px-3 py-1 text-xs bg-surface border border-border rounded-lg text-muted cursor-pointer hover:bg-[#444]"
-                    onClick={() => handleDelete(d.id)}
-                  >
-                    Remove
-                  </button>
-                ) : d.status === "downloading" || downloadingId === d.id ? (
-                  <span className="text-xs text-accent">Downloading...</span>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn-primary px-3 py-1 text-xs"
-                    onClick={() => handleDownload(d.id)}
-                  >
-                    Download
-                  </button>
-                )
-              ) : d.url ? (
-                <button
-                  type="button"
-                  className="px-3 py-1 text-xs bg-surface border border-border rounded-lg text-muted cursor-pointer hover:bg-[#444]"
-                  onClick={() => {
-                    if (d.url) openExternal(d.url);
-                  }}
-                >
-                  Website
-                </button>
-              ) : null
+            {saveState === "pending" || saveState === "saving" ? (
+              <>
+                <span className="spinner" /> Saving…
+              </>
+            ) : saveState === "saved" ? (
+              <>
+                <span className="status-dot online" /> Saved
+              </>
             ) : (
-              <span className="text-xs text-muted">N/A</span>
+              "Not saved"
             )}
-            {d.status === "error" && d.error && (
-              <span className="text-[11px] text-danger" title={d.error}>
-                Error
+          </span>
+        )}
+      </div>
+
+      <Section title="Connection">
+        <Field
+          label="Server URL"
+          hint={
+            urlInvalid ? (
+              <span className="text-danger">Enter a valid http(s) URL</span>
+            ) : probeResult ? (
+              <span className={probeResult.ok ? "text-success" : "text-danger"}>
+                {probeResult.ok
+                  ? "Server reachable — it's a media-launcher instance"
+                  : (probeResult.detail ?? "No response")}
               </span>
+            ) : undefined
+          }
+        >
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={settings.serverUrl}
+              onChange={(e) => update({ serverUrl: e.target.value })}
+              placeholder="http://localhost:5000"
+              className={`input font-mono text-[12px] ${
+                urlInvalid ? "border-danger/60" : ""
+              }`}
+              spellCheck={false}
+            />
+            <button
+              type="button"
+              className="btn-ghost flex-shrink-0 disabled:opacity-40 disabled:pointer-events-none"
+              disabled={probing || urlInvalid || !settings.serverUrl.trim()}
+              onClick={() => void handleProbe()}
+            >
+              {probing ? "Testing…" : "Test"}
+            </button>
+          </div>
+        </Field>
+        <Field
+          label="API token"
+          hint={
+            <>
+              Paste this token in the browser extension options so it can talk
+              to the server.
+            </>
+          }
+        >
+          <div className="relative">
+            <input
+              type={showToken ? "text" : "password"}
+              readOnly
+              value={token}
+              className="input pr-[76px] font-mono text-[12px]"
+              spellCheck={false}
+            />
+            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-1">
+              <button
+                type="button"
+                className="action-btn"
+                title={showToken ? "Hide token" : "Show token"}
+                onClick={() => setShowToken((v) => !v)}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="15"
+                  height="15"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  {showToken ? (
+                    <>
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                      <path d="m1 1 22 22" />
+                      <circle cx="12" cy="12" r="3" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </>
+                  )}
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="action-btn"
+                title="Copy token"
+                onClick={() => void copyToken()}
+              >
+                {copied ? (
+                  <span className="text-accent text-[11px] font-semibold">
+                    Copied
+                  </span>
+                ) : (
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="15"
+                    height="15"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
+                  >
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        </Field>
+      </Section>
+
+      <Section title="Playback">
+        <Field
+          label="Media player"
+          hint={
+            statusText ? (
+              <span
+                className={
+                  playerStatus === "missing" ? "text-warning" : "text-muted"
+                }
+              >
+                {statusDot}
+                {PLAYERS.find((p) => p.value === settings.player)?.label ||
+                  settings.player}{" "}
+                {statusText}
+                {playerStatus === "missing" &&
+                  settings.player === "mpv" &&
+                  " — you can download a portable copy in Downloads below"}
+              </span>
+            ) : undefined
+          }
+        >
+          <select
+            className="input select"
+            value={settings.player}
+            onChange={(e) => update({ player: e.target.value })}
+          >
+            {PLAYERS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {playerStatus === "missing" && (
+          <div className="flex items-center justify-between gap-3 mb-3 -mt-1">
+            <p className="text-[11px] text-warning leading-snug m-0">
+              Player executable not found in PATH. Install it, download it
+              below, or locate it manually.
+            </p>
+            {settings.player !== "custom" && (
+              <button
+                type="button"
+                className="btn-ghost flex-shrink-0"
+                onClick={() => void handleBrowsePlayer()}
+              >
+                Browse…
+              </button>
             )}
           </div>
-        </div>
-      ))}
+        )}
+
+        {settings.player !== "custom" && (
+          <Field
+            label={`Extra arguments for ${
+              PLAYERS.find((p) => p.value === settings.player)?.label ||
+              settings.player
+            }`}
+          >
+            <input
+              type="text"
+              value={settings.playerArgs[settings.player] || ""}
+              onChange={(e) =>
+                update({
+                  playerArgs: {
+                    ...settings.playerArgs,
+                    [settings.player]: e.target.value,
+                  },
+                })
+              }
+              placeholder="e.g. --volume=50 --ytdl-format=best"
+              className="input"
+              spellCheck={false}
+            />
+          </Field>
+        )}
+
+        {settings.player === "custom" && (
+          <>
+            <Field label="Player executable path">
+              <input
+                type="text"
+                value={settings.customPlayerPath}
+                onChange={(e) => update({ customPlayerPath: e.target.value })}
+                placeholder="e.g. C:\Players\myplayer.exe"
+                className="input"
+                spellCheck={false}
+              />
+            </Field>
+            <Field
+              label="Command arguments"
+              hint={
+                <>
+                  Use <code className="text-accent">{`{url}`}</code> as a
+                  placeholder for the video URL
+                </>
+              }
+            >
+              <input
+                type="text"
+                value={settings.customPlayerArgs}
+                onChange={(e) => update({ customPlayerArgs: e.target.value })}
+                placeholder="use {url} as placeholder, e.g. --play {url}"
+                className="input"
+                spellCheck={false}
+              />
+            </Field>
+          </>
+        )}
+      </Section>
+
+      <Section title="Startup">
+        <ToggleRow
+          label="Start on boot"
+          description="Launch Media Launcher when you sign in to Windows."
+          checked={settings.autoStart}
+          onChange={(checked) => update({ autoStart: checked })}
+        />
+        <ToggleRow
+          label="Start minimized to tray"
+          description="Open silently in the tray instead of showing the window."
+          checked={settings.startMinimized}
+          onChange={(checked) => update({ startMinimized: checked })}
+        />
+      </Section>
+
+      <Section title="Downloads">
+        <p className="text-[11px] text-muted -mt-1 mb-3 leading-snug">
+          Portable binaries saved to the app's data directory — no admin rights
+          needed. Downloaded copies are used automatically over system-installed
+          ones.
+        </p>
+        {downloads.map((d) => {
+          const hasUpdate = d.id === "yt-dlp" && updateCheck?.updateAvailable;
+          return (
+            <div
+              key={d.id}
+              className="flex justify-between items-center bg-surface border border-border rounded-lg p-3 mb-2 last:mb-0 gap-3"
+            >
+              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                <strong className="text-[13px]">{d.name}</strong>
+                <span className="text-[11px] text-muted leading-snug">
+                  {d.description}
+                </span>
+                <span className="text-[10px] text-muted/80">
+                  {d.size}
+                  {d.platform
+                    ? ` \u2022 ${d.platform}`
+                    : " \u2022 not available on this platform"}
+                </span>
+                {hasUpdate && (
+                  <span className="text-[10px] text-warning mt-0.5">
+                    Update available: v{updateCheck?.installedVersion} → v
+                    {updateCheck?.latestVersion}
+                  </span>
+                )}
+                {d.status === "downloading" && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="progress-track flex-1">
+                      <div
+                        className={`progress-fill ${
+                          d.progress === null || d.progress < 0
+                            ? "indeterminate"
+                            : ""
+                        }`}
+                        style={
+                          d.progress !== null && d.progress >= 0
+                            ? { width: `${Math.round(d.progress * 100)}%` }
+                            : undefined
+                        }
+                      />
+                    </div>
+                    <span className="text-[10px] text-accent whitespace-nowrap">
+                      {d.progress !== null && d.progress >= 0
+                        ? `${Math.round(d.progress * 100)}%`
+                        : "…"}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {d.platform ? (
+                  d.systemAvailable ? (
+                    <span className="text-[11px] text-success whitespace-nowrap">
+                      On system
+                    </span>
+                  ) : d.canDownload ? (
+                    d.status === "downloading" ? (
+                      <span className="text-xs text-accent">Downloading…</span>
+                    ) : !d.installed ? (
+                      <button
+                        type="button"
+                        className="btn-primary btn-sm"
+                        onClick={() => void handleDownload(d.id)}
+                      >
+                        Download
+                      </button>
+                    ) : hasUpdate ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => void handleDelete(d.id)}
+                        >
+                          Remove
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={() => void handleDownload(d.id)}
+                        >
+                          Update
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => void handleDelete(d.id)}
+                      >
+                        Remove
+                      </button>
+                    )
+                  ) : d.url ? (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => {
+                        if (d.url) void openExternal(d.url);
+                      }}
+                    >
+                      Website
+                    </button>
+                  ) : null
+                ) : (
+                  <span className="text-xs text-muted">N/A</span>
+                )}
+                {d.status === "error" && d.error && (
+                  <span className="text-[11px] text-danger" title={d.error}>
+                    Error
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </Section>
+
+      {toast && <div className={`toast ${toast.variant}`}>{toast.msg}</div>}
     </div>
   );
 }

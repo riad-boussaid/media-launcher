@@ -597,3 +597,70 @@ export async function deleteDownload(id: string): Promise<void> {
   downloadState.set(id, "idle");
   downloadErrors.delete(id);
 }
+
+export interface UpdateCheck {
+  id: string;
+  installedVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+}
+
+let latestYtDlpCache: { version: string; at: number } | null = null;
+
+/** Runs `yt-dlp --version` on the downloaded portable binary, if present. */
+function getInstalledBinaryVersion(id: string): Promise<string | null> {
+  if (id !== "yt-dlp") return Promise.resolve(null);
+  const exeName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+  const p = join(BIN_DIR, exeName);
+  if (!existsSync(p)) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    execFile(
+      p,
+      ["--version"],
+      { windowsHide: true, timeout: 10000 },
+      (err, stdout) => {
+        resolve(err ? null : stdout.trim() || null);
+      },
+    );
+  });
+}
+
+/** Latest yt-dlp release tag, cached for an hour to stay polite with GitHub. */
+async function getLatestYtDlpVersion(): Promise<string | null> {
+  if (latestYtDlpCache && Date.now() - latestYtDlpCache.at < 3600_000) {
+    return latestYtDlpCache.version;
+  }
+  try {
+    const res = await fetch(
+      "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest",
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          "User-Agent": "media-launcher",
+        },
+        signal: AbortSignal.timeout(10000),
+      },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { tag_name?: string };
+    const version = data.tag_name ?? null;
+    if (version) latestYtDlpCache = { version, at: Date.now() };
+    return version;
+  } catch {
+    return null;
+  }
+}
+
+export async function checkUpdate(id: string): Promise<UpdateCheck> {
+  const installedVersion = await getInstalledBinaryVersion(id);
+  const latestVersion = await getLatestYtDlpVersion();
+  return {
+    id,
+    installedVersion,
+    latestVersion,
+    updateAvailable:
+      !!installedVersion &&
+      !!latestVersion &&
+      installedVersion !== latestVersion,
+  };
+}

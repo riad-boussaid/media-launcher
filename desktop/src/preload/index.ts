@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from "electron";
 const api = {
   server: {
     getToken: () => ipcRenderer.invoke("server:token"),
+    status: () => ipcRenderer.invoke("server:status"),
+    probe: (url: string) => ipcRenderer.invoke("server:probe", url),
   },
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
@@ -22,9 +24,14 @@ const api = {
     list: () => ipcRenderer.invoke("downloads:list"),
     start: (id: string) => ipcRenderer.invoke("downloads:start", id),
     delete: (id: string) => ipcRenderer.invoke("downloads:delete", id),
+    updateCheck: (id: string) =>
+      ipcRenderer.invoke("downloads:updateCheck", id),
   },
   shell: {
     open: (url: string) => ipcRenderer.invoke("shell:open", url),
+  },
+  dialog: {
+    pickExecutable: () => ipcRenderer.invoke("dialog:pickExecutable"),
   },
   window: {
     toggle: () => ipcRenderer.invoke("window:toggle"),

@@ -11,12 +11,16 @@ interface DownloadItem {
   installed: boolean;
   systemAvailable: boolean;
   status: "idle" | "downloading" | "done" | "error";
+  /** 0..1 when the content length is known, -1 for indeterminate, null otherwise. */
+  progress: number | null;
   error?: string;
 }
 
 interface ElectronAPI {
   server: {
     getToken: () => Promise<string | null>;
+    status: () => Promise<{ online: boolean }>;
+    probe: (url: string) => Promise<{ ok: boolean; detail?: string }>;
   };
   settings: {
     get: () => Promise<{
@@ -69,9 +73,18 @@ interface ElectronAPI {
     list: () => Promise<DownloadItem[]>;
     start: (id: string) => Promise<DownloadItem[]>;
     delete: (id: string) => Promise<DownloadItem[]>;
+    updateCheck: (id: string) => Promise<{
+      id: string;
+      installedVersion: string | null;
+      latestVersion: string | null;
+      updateAvailable: boolean;
+    }>;
   };
   shell: {
     open: (url: string) => Promise<void>;
+  };
+  dialog: {
+    pickExecutable: () => Promise<string | null>;
   };
   window: {
     toggle: () => Promise<void>;
