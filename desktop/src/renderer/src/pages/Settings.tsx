@@ -24,6 +24,7 @@ import {
   setSettings,
   startDownload,
 } from "../lib/api";
+import { useTheme } from "../theme-provider";
 
 const PLAYERS = [
   { value: "mpv", label: "mpv" },
@@ -118,6 +119,7 @@ export default function SettingsPage() {
   const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
   const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
+  const { theme, setTheme } = useTheme();
 
   const loadedRef = useRef(false);
   const settingsRef = useRef<Settings | null>(null);
@@ -317,6 +319,26 @@ export default function SettingsPage() {
           </span>
         )}
       </div>
+
+      <Section title="Appearance">
+        <Field
+          label="Theme"
+          hint={<>System follows your OS light/dark setting.</>}
+        >
+          <div className="seg" role="radiogroup" aria-label="Theme">
+            {(["light", "dark", "system"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`seg-btn ${theme === t ? "active" : ""}`}
+                onClick={() => setTheme(t)}
+              >
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </div>
+        </Field>
+      </Section>
 
       <Section title="Connection">
         <Field

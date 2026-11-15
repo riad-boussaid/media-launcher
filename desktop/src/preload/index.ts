@@ -36,6 +36,8 @@ const api = {
   window: {
     toggle: () => ipcRenderer.invoke("window:toggle"),
     openHistory: () => ipcRenderer.invoke("window:openHistory"),
+    setThemeOverlay: (mode: "dark" | "light") =>
+      ipcRenderer.send("window:setThemeOverlay", mode),
     onNavigate: (cb: (tab: string) => void) => {
       const listener = (_e: Electron.IpcRendererEvent, tab: string) => cb(tab);
       ipcRenderer.on("navigate", listener);

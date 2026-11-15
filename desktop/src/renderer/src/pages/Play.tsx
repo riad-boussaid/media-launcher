@@ -96,7 +96,7 @@ export default function Play() {
     <div
       className={`flex flex-col items-center justify-center min-h-[62vh] rounded-xl transition-shadow ${
         dragOver
-          ? "shadow-[inset_0_0_0_2px_rgb(100_255_218/0.5)] bg-[rgb(100_255_218/0.03)]"
+          ? "shadow-[inset_0_0_0_2px_color-mix(in_oklab,var(--color-accent)_50%,transparent)] bg-[color-mix(in_oklab,var(--color-accent)_4%,transparent)]"
           : ""
       }`}
       onDragOver={(e) => {
@@ -132,7 +132,7 @@ export default function Play() {
 
         <div className="relative">
           <input
-            className="w-full px-3.5 py-3 pr-11 border border-border rounded-lg bg-surface text-text text-sm outline-none transition-colors placeholder:text-muted focus:border-[rgb(100_255_218/0.5)] focus:shadow-[0_0_0_3px_rgb(100_255_218/0.08)]"
+            className="w-full px-3.5 py-3 pr-11 border border-border rounded-lg bg-surface text-text text-sm outline-none transition-colors placeholder:text-muted focus:border-[color-mix(in_oklab,var(--color-accent)_50%,transparent)] focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-accent)_10%,transparent)]"
             type="text"
             placeholder="Paste a URL and press Enter…"
             value={urlInput}

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
-type Theme = "dark" | "light" | "system";
+export type Theme = "dark" | "light" | "system";
 
 type ThemeProviderProps = {
   children: React.ReactNode;
@@ -20,6 +20,23 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+/** Resolves "system" against the browser's color scheme. */
+export function resolveTheme(theme: Theme): "dark" | "light" {
+  if (theme !== "system") return theme;
+  return darkQuery.matches ? "dark" : "light";
+}
+
+/** Applies the resolved theme class to <html> and returns it. */
+export function applyTheme(theme: Theme): "dark" | "light" {
+  const root = window.document.documentElement;
+  const resolved = resolveTheme(theme);
+  root.classList.remove("light", "dark");
+  root.classList.add(resolved);
+  return resolved;
+}
+
 export function ThemeProvider({
   children,
   defaultTheme = "system",
@@ -31,21 +48,13 @@ export function ThemeProvider({
   );
 
   useEffect(() => {
-    const root = window.document.documentElement;
+    applyTheme(theme);
 
-    root.classList.remove("light", "dark");
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light";
-
-      root.classList.add(systemTheme);
-      return;
-    }
-
-    root.classList.add(theme);
+    // While on "system", follow live browser scheme switches.
+    if (theme !== "system") return;
+    const onChange = () => applyTheme("system");
+    darkQuery.addEventListener("change", onChange);
+    return () => darkQuery.removeEventListener("change", onChange);
   }, [theme]);
 
   const value = {

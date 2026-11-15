@@ -89,6 +89,7 @@ interface ElectronAPI {
   window: {
     toggle: () => Promise<void>;
     openHistory: () => Promise<void>;
+    setThemeOverlay: (mode: "dark" | "light") => void;
     onNavigate: (cb: (tab: string) => void) => () => void;
   };
 }

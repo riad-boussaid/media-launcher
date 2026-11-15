@@ -27,6 +27,45 @@
   --animate-slide-indeterminate: slideIndeterminate 1.4s ease-in-out infinite;
 }
 
+/* Raw colors the utilities don't cover, themed via html.light. */
+:root {
+  /* Text/icon color drawn on top of the accent (dark glyph on mint). */
+  --on-accent: #0b0d10;
+  --scrollbar-thumb: rgb(255 255 255 / 0.1);
+  --scrollbar-thumb-hover: rgb(255 255 255 / 0.22);
+  --progress-track: rgb(255 255 255 / 0.07);
+  --toast-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  --copy-hover: #7dc4fe;
+  --open-hover: #ffd54f;
+}
+
+/* Light palette — mirrors the extensions' light brand (teal-600 accent). */
+html.light {
+  --color-base: #f4f5f7;
+  --color-surface: #eceef1;
+  --color-card: #ffffff;
+  --color-elevated: #e4e7ec;
+  --color-accent: #0d9488;
+  --color-accent-hover: #0f766e;
+  --color-success: #059669;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-text: #181b21;
+  --color-text-dim: #3f4550;
+  --color-muted: #697080;
+  --color-label: #5d6572;
+  --color-border: rgb(0 0 0 / 0.1);
+  --color-border-strong: rgb(0 0 0 / 0.18);
+
+  --on-accent: #ffffff;
+  --scrollbar-thumb: rgb(0 0 0 / 0.15);
+  --scrollbar-thumb-hover: rgb(0 0 0 / 0.28);
+  --progress-track: rgb(0 0 0 / 0.08);
+  --toast-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+  --copy-hover: #2563eb;
+  --open-hover: #b45309;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -103,7 +142,7 @@
     content: "";
     width: 10px;
     height: 10px;
-    background: #0b0d10;
+    background: var(--on-accent);
     clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
     transform: scale(0);
     transition: transform 0.12s ease-out;
@@ -116,7 +155,7 @@
     transform: scale(1);
   }
   input[type="checkbox"]:focus-visible {
-    outline: 2px solid rgb(100 255 218 / 0.4);
+    outline: 2px solid color-mix(in oklab, var(--color-accent) 45%, transparent);
     outline-offset: 1px;
   }
   /* Custom drag-region titlebar (frameless window) */
@@ -136,13 +175,13 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgb(255 255 255 / 0.1);
+    background: var(--scrollbar-thumb);
     border-radius: 999px;
     border: 3px solid transparent;
     background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgb(255 255 255 / 0.22);
+    background: var(--scrollbar-thumb-hover);
     border: 3px solid transparent;
     background-clip: content-box;
   }
@@ -185,8 +224,9 @@
     color: var(--color-muted);
   }
   .input:focus {
-    border-color: rgb(100 255 218 / 0.5);
-    box-shadow: 0 0 0 3px rgb(100 255 218 / 0.08);
+    border-color: color-mix(in oklab, var(--color-accent) 50%, transparent);
+    box-shadow: 0 0 0 3px
+      color-mix(in oklab, var(--color-accent) 10%, transparent);
   }
 
   .select {
@@ -218,7 +258,7 @@
       background 0.15s,
       opacity 0.15s;
     background: var(--color-accent);
-    color: #0b0d10;
+    color: var(--on-accent);
   }
   .btn-primary:hover {
     background: var(--color-accent-hover);
@@ -319,15 +359,16 @@
       background 0.18s;
   }
   .toggle input:checked + .track {
-    background: rgb(100 255 218 / 0.22);
-    border-color: rgb(100 255 218 / 0.55);
+    background: color-mix(in oklab, var(--color-accent) 20%, transparent);
+    border-color: color-mix(in oklab, var(--color-accent) 55%, transparent);
   }
   .toggle input:checked + .track::after {
     transform: translateX(14px);
     background: var(--color-accent);
   }
   .toggle input:focus-visible + .track {
-    box-shadow: 0 0 0 3px rgb(100 255 218 / 0.15);
+    box-shadow: 0 0 0 3px
+      color-mix(in oklab, var(--color-accent) 20%, transparent);
   }
 
   /* Status dot */
@@ -350,7 +391,7 @@
   .progress-track {
     height: 4px;
     border-radius: 999px;
-    background: rgb(255 255 255 / 0.07);
+    background: var(--progress-track);
     overflow: hidden;
   }
   .progress-fill {
@@ -368,9 +409,39 @@
     width: 13px;
     height: 13px;
     border-radius: 999px;
-    border: 2px solid rgb(100 255 218 / 0.25);
+    border: 2px solid color-mix(in oklab, var(--color-accent) 25%, transparent);
     border-top-color: var(--color-accent);
     animation: spin 0.7s linear infinite;
+  }
+
+  /* Segmented control (theme picker) */
+  .seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+  }
+  .seg-btn {
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .seg-btn:hover {
+    color: var(--color-text);
+  }
+  .seg-btn.active {
+    background: var(--color-elevated);
+    color: var(--color-text);
   }
 }
 
@@ -395,10 +466,10 @@
   color: var(--color-accent);
 }
 .action-btn.copy:hover {
-  color: #7dc4fe;
+  color: var(--copy-hover);
 }
 .action-btn.open:hover {
-  color: #ffd54f;
+  color: var(--open-hover);
 }
 .action-btn.delete:hover {
   color: var(--color-danger);
@@ -417,11 +488,11 @@
   border-radius: 10px;
   font-size: 13px;
   z-index: 100;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  box-shadow: var(--toast-shadow);
   animation: fadeIn 0.25s;
 }
 .toast-success {
-  border-color: rgb(100 255 218 / 0.4);
+  border-color: color-mix(in oklab, var(--color-accent) 40%, transparent);
   color: var(--color-accent);
 }
 .toast-error {

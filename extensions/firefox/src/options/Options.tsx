@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -88,6 +89,7 @@ export default function Options() {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">(
     "idle",
   );
+  const { theme, setTheme } = useTheme();
   const importRef = useRef<HTMLInputElement>(null);
 
   const loadedRef = useRef(false);
@@ -258,6 +260,26 @@ export default function Options() {
           </span>
         )}
       </div>
+
+      <Section title="Appearance">
+        <Label>Theme</Label>
+        <div className="flex gap-2">
+          {(["light", "dark", "system"] as const).map((t) => (
+            <Button
+              key={t}
+              size="sm"
+              variant={theme === t ? "default" : "outline"}
+              onClick={() => setTheme(t)}
+            >
+              {t === "light" ? "Light" : t === "dark" ? "Dark" : "System"}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          "System" follows your browser's light/dark theme. The preference is
+          shared by the popup and sidebar.
+        </p>
+      </Section>
 
       <Section title="Server">
         <Label>Server URL</Label>

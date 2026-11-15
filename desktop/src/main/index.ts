@@ -6,6 +6,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  nativeTheme,
   screen,
   shell,
 } from "electron";
@@ -59,6 +60,13 @@ if (!gotTheLock) {
     }
   });
 
+  // Native titlebar overlay colors per theme; must match the renderer's
+  // .titlebar strip (--color-surface / --color-label) in renderer index.css.
+  const THEME_OVERLAY = {
+    dark: { color: "#14171c", symbolColor: "#9aa3b2" },
+    light: { color: "#eceef1", symbolColor: "#5d6572" },
+  } as const;
+
   function createWindow(): void {
     const { width: screenWidth, height: screenHeight } =
       screen.getPrimaryDisplay().workAreaSize;
@@ -72,8 +80,7 @@ if (!gotTheLock) {
       // Frameless look while keeping native window controls (WCO overlay).
       titleBarStyle: "hidden",
       titleBarOverlay: {
-        color: "#14171c",
-        symbolColor: "#9aa3b2",
+        ...THEME_OVERLAY[nativeTheme.shouldUseDarkColors ? "dark" : "light"],
         height: 36,
       },
       title: "media-launcher",
@@ -178,6 +185,14 @@ if (!gotTheLock) {
       if (win) {
         if (win.isVisible()) win.hide();
         else win.show();
+      }
+    });
+    ipcMain.on("window:setThemeOverlay", (_event, mode: "dark" | "light") => {
+      try {
+        // Only supported where window controls overlay is available (Windows).
+        win?.setTitleBarOverlay(THEME_OVERLAY[mode] ?? THEME_OVERLAY.dark);
+      } catch {
+        // No-op on platforms without WCO support.
       }
     });
   }
