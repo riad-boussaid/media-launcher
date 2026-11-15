@@ -15,6 +15,9 @@ interface DownloadItem {
 }
 
 interface ElectronAPI {
+  server: {
+    getToken: () => Promise<string | null>;
+  };
   settings: {
     get: () => Promise<{
       serverUrl: string;

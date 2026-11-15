@@ -23,10 +23,13 @@ export const SITES: Site[] = [
   {
     id: "youtube",
     name: "YouTube",
-    matches: (hostname) => host("youtube.com")(hostname) || hostname === "youtu.be",
+    matches: (hostname) =>
+      host("youtube.com")(hostname) || hostname === "youtu.be",
     isVideoLink: (a) => {
       const u = abs(a);
-      return /(youtube\.com\/(watch|shorts|embed|v)\/|youtube\.com\/watch\?v=|youtu\.be\/)/.test(u);
+      return /(youtube\.com\/(watch|shorts|embed|v)\/|youtube\.com\/watch\?v=|youtu\.be\/)/.test(
+        u,
+      );
     },
     resolveUrl: (a) => abs(a),
     buttonContainerSelector:
@@ -52,7 +55,8 @@ export const SITES: Site[] = [
     matches: host("dailymotion.com"),
     isVideoLink: (a) => /dailymotion\.com\/video\//.test(abs(a)),
     resolveUrl: (a) => abs(a),
-    buttonContainerSelector: ".PlayerHeader__titleActions__playerHeaderTitleActions",
+    buttonContainerSelector:
+      ".PlayerHeader__titleActions__playerHeaderTitleActions",
   },
   {
     id: "twitch",
@@ -99,8 +103,13 @@ export const SITES: Site[] = [
   {
     id: "twitter",
     name: "X / Twitter",
-    matches: (hostname) => hostname === "twitter.com" || hostname === "x.com" || host("twitter.com")(hostname) || host("x.com")(hostname),
-    isVideoLink: (a) => /\/(twitter\.com|x\.com)\/\w+\/status\/\d+/.test(abs(a)),
+    matches: (hostname) =>
+      hostname === "twitter.com" ||
+      hostname === "x.com" ||
+      host("twitter.com")(hostname) ||
+      host("x.com")(hostname),
+    isVideoLink: (a) =>
+      /\/(twitter\.com|x\.com)\/\w+\/status\/\d+/.test(abs(a)),
     resolveUrl: (a) => abs(a),
   },
   {
@@ -164,10 +173,9 @@ export function resolveVideoUrl(anchor: HTMLAnchorElement): string | null {
 }
 
 export function getPageThumbnail(doc: Document): string | null {
-  const meta =
-    doc.querySelector<HTMLMetaElement>(
-      'meta[property="og:image"], meta[name="twitter:image"], meta[property="og:image:secure_url"]',
-    );
+  const meta = doc.querySelector<HTMLMetaElement>(
+    'meta[property="og:image"], meta[name="twitter:image"], meta[property="og:image:secure_url"]',
+  );
   if (meta?.content) return meta.content;
   const link = doc.querySelector<HTMLLinkElement>('link[rel="image_src"]');
   return link?.href ?? null;

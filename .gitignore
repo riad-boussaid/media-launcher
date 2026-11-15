@@ -16,4 +16,6 @@ Thumbs.db
 *.njspro
 go-server/
 desktop-old/
-.pnpm-store
+.pnpm-store/
+.server-staging/
+data/

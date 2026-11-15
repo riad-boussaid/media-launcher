@@ -37,9 +37,7 @@ function isUrl(value: unknown): value is string {
 
 function isOptions(value: unknown): value is string[] {
   if (value === undefined) return true;
-  return (
-    Array.isArray(value) && value.every((o) => typeof o === "string")
-  );
+  return Array.isArray(value) && value.every((o) => typeof o === "string");
 }
 
 app.get("/api/health", (c) => {
@@ -100,6 +98,12 @@ app.put("/history/:id", async (c) => {
     const id = c.req.param("id");
     const body =
       await c.req.json<Partial<{ title: string; thumbnail: string }>>();
+    if (body.title !== undefined && typeof body.title !== "string") {
+      return c.json({ err: "title must be a string" }, 400);
+    }
+    if (body.thumbnail !== undefined && typeof body.thumbnail !== "string") {
+      return c.json({ err: "thumbnail must be a string" }, 400);
+    }
     updateHistoryEntry(id, body);
     return c.json({ data: "updated" });
   } catch (err: unknown) {

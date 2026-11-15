@@ -171,12 +171,14 @@ function isSettingsShape(value: unknown): value is Settings {
     s.speed >= 0.25 &&
     s.speed <= 3 &&
     typeof s.subLang === "string" &&
-    typeof s.loop === "boolean"
+    typeof s.loop === "boolean" &&
+    (s.authToken === undefined || typeof s.authToken === "string")
   );
 }
 
 export default function Options() {
   const [serverUrl, setServerUrl] = useState(defaultSettings.serverUrl);
+  const [authToken, setAuthToken] = useState(defaultSettings.authToken);
   const [maxHeight, setMaxHeight] = useState(defaultSettings.maxHeight);
   const [codec, setCodec] = useState(defaultSettings.codec);
   const [mpvArgs, setMpvArgs] = useState(defaultSettings.mpvArgs);
@@ -193,6 +195,7 @@ export default function Options() {
 
   const currentSettings = (): Settings => ({
     serverUrl,
+    authToken,
     maxHeight,
     codec,
     mpvArgs,
@@ -205,6 +208,7 @@ export default function Options() {
 
   const applySettings = (s: Settings) => {
     setServerUrl(s.serverUrl);
+    setAuthToken(s.authToken ?? defaultSettings.authToken);
     setMaxHeight(s.maxHeight);
     setCodec(s.codec);
     setMpvArgs(s.mpvArgs);
@@ -270,6 +274,7 @@ export default function Options() {
           : defaultSettings.speed;
       await chrome.storage.sync.set({
         serverUrl,
+        authToken,
         maxHeight: maxHeight ?? defaultSettings.maxHeight,
         codec,
         mpvArgs,
@@ -352,6 +357,21 @@ export default function Options() {
           The desktop app runs a local server. Auto-discovers on ports
           5000–5010.
         </p>
+        <label style={styles.label}>API token</label>
+        <input
+          style={styles.input}
+          type="password"
+          value={authToken}
+          onChange={(e) => {
+            setAuthToken(e.target.value);
+            markDirty();
+          }}
+          placeholder="Paste the token from the desktop app"
+        />
+        <p style={styles.hint}>
+          Copy the API token from the desktop app's Settings page. The server
+          rejects unauthenticated requests.
+        </p>
       </div>
 
       <div style={styles.section}>
@@ -409,7 +429,14 @@ export default function Options() {
             }}
             style={{ flex: 1 }}
           />
-          <span style={{ width: "48px", textAlign: "right", fontSize: "12px", color: "#888" }}>
+          <span
+            style={{
+              width: "48px",
+              textAlign: "right",
+              fontSize: "12px",
+              color: "#888",
+            }}
+          >
             {volume}%
           </span>
         </div>
@@ -498,7 +525,11 @@ export default function Options() {
           `--playlist-start=3`, `--loop-playlist=inf`.
         </p>
         <div style={{ display: "flex", gap: "8px" }}>
-          <button type="button" style={styles.btnSmall} onClick={exportSettings}>
+          <button
+            type="button"
+            style={styles.btnSmall}
+            onClick={exportSettings}
+          >
             Export settings
           </button>
           <button

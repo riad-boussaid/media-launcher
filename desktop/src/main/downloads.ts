@@ -6,7 +6,7 @@ import {
   rmSync,
   unlinkSync,
 } from "node:fs";
-import { accessSync, constants, rename } from "node:fs/promises";
+import { chmod, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { app } from "electron";
 
@@ -360,9 +360,13 @@ export async function startDownload(id: string): Promise<void> {
 
   let tempPath = "";
   try {
+    // Derive the archive extension from the actual URL (the mpv artifact is a
+    // .7z even though it's handled by the same zip extraction path).
+    const urlName = platform.url.split("?")[0].split("/").pop() ?? "";
+    const urlExt = urlName.match(/\.[a-z0-9]+$/i)?.[0] ?? "";
     const ext =
       platform.type === "zip"
-        ? ".zip"
+        ? urlExt || ".zip"
         : process.platform === "win32"
           ? ".exe"
           : "";
@@ -379,11 +383,11 @@ export async function startDownload(id: string): Promise<void> {
       const targetDest = join(BIN_DIR, targetName);
       await extractArchive(tempPath, BIN_DIR, extractPath);
       if (existsSync(tempPath)) unlinkSync(tempPath);
-      if (existsSync(targetDest)) {
+      if (process.platform !== "win32") {
         try {
-          accessSync(targetDest, constants.X_OK);
+          await chmod(targetDest, 0o755);
         } catch {
-          /* Windows doesn't need X_OK */
+          /* best-effort */
         }
       }
     } else {
@@ -393,7 +397,11 @@ export async function startDownload(id: string): Promise<void> {
         await rename(tempPath, targetDest);
       }
       if (process.platform !== "win32") {
-        execFile("chmod", ["+x", targetDest]);
+        try {
+          await chmod(targetDest, 0o755);
+        } catch {
+          /* best-effort */
+        }
       }
     }
 
@@ -441,8 +449,17 @@ export async function deleteDownload(id: string): Promise<void> {
       }
     }
   }
-  // Clean up any leftover temp/extract artifacts
-  for (const f of ["__extract", ".yt-dlp.zip", ".ffmpeg.zip", ".mpv.zip"]) {
+  // Clean up any leftover temp/extract artifacts (including names used by
+  // older versions)
+  for (const f of [
+    "__extract",
+    ".yt-dlp.zip",
+    ".yt-dlp.exe",
+    ".yt-dlp",
+    ".ffmpeg.zip",
+    ".mpv.zip",
+    ".mpv.7z",
+  ]) {
     const p = join(BIN_DIR, f);
     if (existsSync(p)) {
       try {

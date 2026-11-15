@@ -1,5 +1,6 @@
 export interface Settings {
   serverUrl: string;
+  authToken: string;
   maxHeight: string;
   codec: string;
   mpvArgs: string;
@@ -12,6 +13,7 @@ export interface Settings {
 
 export const defaultSettings: Settings = {
   serverUrl: "http://localhost:5000",
+  authToken: "",
   maxHeight: "a",
   codec: "any",
   mpvArgs: "",

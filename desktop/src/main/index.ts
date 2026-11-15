@@ -14,7 +14,7 @@ import {
   startDownload,
 } from "./downloads";
 import { checkPlayerExists } from "./player";
-import { startServer, stopServer } from "./server";
+import { readServerToken, startServer, stopServer } from "./server";
 import {
   clearHistory,
   deleteHistory,
@@ -96,6 +96,7 @@ if (!gotTheLock) {
   }
 
   function registerIPC(): void {
+    ipcMain.handle("server:token", () => readServerToken());
     ipcMain.handle("settings:get", () => getSettings());
     ipcMain.handle("settings:set", async (_event, partial) => {
       const updated = await setSettings(partial);

@@ -23,7 +23,6 @@
     "https://raven.rumble.com/*",
     "https://thumbnail.odycdn.com/*"
   ],
-  "optional_host_permissions": ["*://*/*"],
 
   "side_panel": {
     "default_path": "sidebar.html"

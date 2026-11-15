@@ -1,6 +1,41 @@
-import { sendUrl } from "@/lib/api";
-import { getPageThumbnail, isVideoLink, resolveVideoUrl, siteForHost } from "@/lib/sites";
+import {
+  getPageThumbnail,
+  isVideoLink,
+  resolveVideoUrl,
+  siteForHost,
+} from "@/lib/sites";
 import { isPlaylistUrl } from "@/lib/url";
+
+interface SendResult {
+  success: boolean;
+  error?: string;
+}
+
+// MV3 content scripts inherit the page's CORS, so a direct fetch to the
+// localhost server would fail preflight on every site. Route sends through
+// the background worker instead, which holds the host permissions.
+async function relaySendUrl(url: string): Promise<SendResult> {
+  try {
+    const response: unknown = await chrome.runtime.sendMessage({
+      type: "send-url",
+      url,
+    });
+    if (
+      response &&
+      typeof response === "object" &&
+      "success" in response &&
+      typeof (response as { success: unknown }).success === "boolean"
+    ) {
+      return response as SendResult;
+    }
+    return { success: false, error: "No response from background worker" };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
 
 let btn: HTMLButtonElement | null = null;
 let btnState: "idle" | "sending" | "sent" = "idle";
@@ -64,7 +99,7 @@ function injectButton(): void {
       btn.style.opacity = "0.6";
       btn.style.pointerEvents = "none";
       const url = window.location.href;
-      const result = await sendUrl(url);
+      const result = await relaySendUrl(url);
       btn.textContent = result.success ? "Sent ✓" : "Error ✗";
       btnState = result.success ? "sent" : "idle";
       btn.style.opacity = "1";
@@ -147,7 +182,7 @@ function injectBadge(a: HTMLAnchorElement): void {
     if (!url) return;
     badge.style.opacity = "0.5";
     badge.style.pointerEvents = "none";
-    const result = await sendUrl(url);
+    const result = await relaySendUrl(url);
     badge.style.opacity = "0.9";
     badge.style.pointerEvents = "auto";
     const videoId = getVideoIdFromHref(url);
@@ -227,7 +262,7 @@ function injectPlaylistBadge(): void {
     e.stopPropagation();
     badge.style.opacity = "0.5";
     badge.style.pointerEvents = "none";
-    const result = await sendUrl(window.location.href);
+    const result = await relaySendUrl(window.location.href);
     badge.style.opacity = "0.9";
     badge.style.pointerEvents = "auto";
     chrome.runtime

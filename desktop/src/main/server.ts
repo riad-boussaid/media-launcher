@@ -1,5 +1,10 @@
-import { type ChildProcess, execSync, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import {
+  type ChildProcess,
+  execSync,
+  openSync,
+  spawn,
+} from "node:child_process";
+import { closeSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { app } from "electron";
 
@@ -15,6 +20,30 @@ function getServerEntry(): string {
 
 function getServerUrl(): string {
   return "http://localhost:5000";
+}
+
+// The embedded server stores its database and auth token here. Overriding
+// DATA_DIR keeps writes out of the (read-only) install directory.
+function getDataDir(): string {
+  return join(app.getPath("userData"), "server-data");
+}
+
+function getTokenPath(): string {
+  return join(getDataDir(), "auth-token");
+}
+
+/**
+ * The token the embedded server requires on every route except /api/health.
+ * AUTH_TOKEN env passthrough covers talking to an externally started server.
+ */
+export function readServerToken(): string | null {
+  const envToken = process.env.AUTH_TOKEN?.trim();
+  if (envToken) return envToken;
+  try {
+    return readFileSync(getTokenPath(), "utf-8").trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 interface HealthResponse {
@@ -53,10 +82,30 @@ export async function startServer(): Promise<void> {
     return;
   }
 
-  const proc = spawn("node", [entry], {
-    stdio: "ignore",
+  // Run the server on Electron's bundled Node instead of a system `node`,
+  // which end users won't have. Server output goes to a log file.
+  let logFd: number | null = null;
+  try {
+    const logDir = app.getPath("logs");
+    mkdirSync(logDir, { recursive: true });
+    logFd = openSync(join(logDir, "server.log"), "a");
+  } catch {
+    logFd = null;
+  }
+
+  const proc = spawn(process.execPath, [entry], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", DATA_DIR: getDataDir() },
+    stdio: ["ignore", logFd ?? "ignore", logFd ?? "ignore"],
     detached: false,
   });
+  if (logFd !== null) {
+    // The child holds its own duplicate of the handle; release ours.
+    try {
+      closeSync(logFd);
+    } catch {
+      /* ignore */
+    }
+  }
   serverProcess = proc;
 
   proc.on("error", (err) => {
@@ -87,7 +136,7 @@ export async function startServer(): Promise<void> {
     await new Promise((r) => setTimeout(r, 200));
   }
 
-  console.warn("Server did not become ready within timeout");
+  console.warn("Server did not become ready within timeout; see server.log");
   serverProcess = null;
 }
 

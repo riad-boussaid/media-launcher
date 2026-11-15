@@ -8,7 +8,10 @@ function getYouTubeId(u: string): string | null {
     if (url.hostname === "youtu.be") {
       return url.pathname.slice(1).match(/^[a-zA-Z0-9_-]{11}/)?.[0] ?? null;
     }
-    if (url.hostname === "youtube.com" || url.hostname.endsWith(".youtube.com")) {
+    if (
+      url.hostname === "youtube.com" ||
+      url.hostname.endsWith(".youtube.com")
+    ) {
       const v = url.searchParams.get("v");
       if (v) return v;
       const m = url.pathname.match(/^\/(shorts|embed|v)\/([a-zA-Z0-9_-]{11})/);
@@ -122,6 +125,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     updatePersistentBadge();
     sendResponse();
     return undefined;
+  }
+  if (msg?.type === "send-url" && typeof msg.url === "string") {
+    // Content scripts must not fetch the server directly: in MV3 their
+    // requests are subject to the page's CORS and would fail preflight.
+    // Relay through the background worker, which has host permissions.
+    void (async () => {
+      const result = await sendUrl(msg.url as string);
+      sendResponse(result);
+    })();
+    return true;
   }
   if (msg?.type === "notify") {
     void (async () => {

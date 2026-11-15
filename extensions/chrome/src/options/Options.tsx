@@ -47,7 +47,8 @@ function isSettingsShape(value: unknown): value is Settings {
     s.speed >= 0.25 &&
     s.speed <= 3 &&
     typeof s.subLang === "string" &&
-    typeof s.loop === "boolean"
+    typeof s.loop === "boolean" &&
+    (s.authToken === undefined || typeof s.authToken === "string")
   );
 }
 
@@ -68,6 +69,7 @@ function Section({
 
 export default function Options() {
   const [serverUrl, setServerUrl] = useState(defaultSettings.serverUrl);
+  const [authToken, setAuthToken] = useState(defaultSettings.authToken);
   const [maxHeight, setMaxHeight] = useState<string | null>(
     defaultSettings.maxHeight,
   );
@@ -85,6 +87,7 @@ export default function Options() {
 
   const currentSettings = (): Settings => ({
     serverUrl,
+    authToken,
     maxHeight: maxHeight ?? defaultSettings.maxHeight,
     codec,
     mpvArgs,
@@ -97,6 +100,7 @@ export default function Options() {
 
   const applySettings = (s: Settings) => {
     setServerUrl(s.serverUrl);
+    setAuthToken(s.authToken ?? defaultSettings.authToken);
     setMaxHeight(s.maxHeight);
     setCodec(s.codec);
     setMpvArgs(s.mpvArgs);
@@ -159,6 +163,7 @@ export default function Options() {
           : defaultSettings.speed;
       await chrome.storage.sync.set({
         serverUrl,
+        authToken,
         maxHeight: maxHeight ?? defaultSettings.maxHeight,
         codec,
         mpvArgs,
@@ -248,6 +253,22 @@ export default function Options() {
             </p>
           </div>
         </div>
+        <Label htmlFor="auth-token">API token</Label>
+        <Input
+          id="auth-token"
+          type="password"
+          value={authToken}
+          onChange={(e) => {
+            setAuthToken(e.target.value);
+            markDirty();
+          }}
+          placeholder="Paste the token from the desktop app"
+          className="font-mono"
+        />
+        <p className="text-xs text-muted-foreground">
+          Copy the API token from the desktop app's Settings page. The server
+          rejects unauthenticated requests.
+        </p>
       </Section>
 
       <Section title="Playback">
@@ -395,8 +416,8 @@ export default function Options() {
           />
           <p className="flex items-center gap-1 text-xs text-muted-foreground">
             <Info className="size-3" />
-            One per line. Appended after the auto-generated flags.
-            Playlist tips: `--playlist-start=3`, `--loop-playlist=inf`.
+            One per line. Appended after the auto-generated flags. Playlist
+            tips: `--playlist-start=3`, `--loop-playlist=inf`.
             <Button variant="link" className="h-auto px-1 text-xs">
               <a
                 href="https://mpv.io/manual/stable/#options"

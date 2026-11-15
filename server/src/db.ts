@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema.js";
 import type { HistoryEntry, Settings, SettingsUpdate } from "./types.js";
@@ -11,7 +11,15 @@ import type { HistoryEntry, Settings, SettingsUpdate } from "./types.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const DATA_DIR = join(__dirname, "..", "data");
+// Overridable so the packaged desktop app can point this at a writable
+// per-user directory instead of the read-only install location.
+const DATA_DIR = process.env.DATA_DIR?.trim()
+  ? resolve(process.env.DATA_DIR.trim())
+  : join(__dirname, "..", "data");
+
+export function getDataDir(): string {
+  return DATA_DIR;
+}
 
 const PLAYER_KEYS = ["mpv", "iina", "potplayer", "custom"];
 
@@ -99,7 +107,9 @@ function migrateMpvArgs(sqlite: Database.Database): void {
   }
 }
 
-function parsePlayerArgs(raw: string | null | undefined): Record<string, string> {
+function parsePlayerArgs(
+  raw: string | null | undefined,
+): Record<string, string> {
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -140,10 +150,7 @@ export function getSettings(): Settings {
 }
 
 export function setSettings(partial: SettingsUpdate): Settings {
-  if (
-    partial.player !== undefined &&
-    !PLAYER_KEYS.includes(partial.player)
-  ) {
+  if (partial.player !== undefined && !PLAYER_KEYS.includes(partial.player)) {
     throw new Error(`Invalid player: ${partial.player}`);
   }
   if (
@@ -164,7 +171,8 @@ export function setSettings(partial: SettingsUpdate): Settings {
   if (partial.playerArgs !== undefined)
     update.playerArgs = JSON.stringify(partial.playerArgs);
   if (partial.binDir !== undefined) update.binDir = partial.binDir;
-  if (partial.autoStart !== undefined) update.autoStart = Boolean(partial.autoStart);
+  if (partial.autoStart !== undefined)
+    update.autoStart = Boolean(partial.autoStart);
   if (partial.startMinimized !== undefined)
     update.startMinimized = Boolean(partial.startMinimized);
 
@@ -177,13 +185,15 @@ export function setSettings(partial: SettingsUpdate): Settings {
   return getSettings();
 }
 
+const HISTORY_LIMIT = 200;
+
 export function getHistory(): HistoryEntry[] {
   return db
     .select()
     .from(schema.history)
-    .orderBy(schema.history.timestamp)
-    .all()
-    .reverse();
+    .orderBy(desc(schema.history.timestamp))
+    .limit(HISTORY_LIMIT)
+    .all();
 }
 
 export function addHistory(

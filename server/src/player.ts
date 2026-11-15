@@ -3,11 +3,14 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { getSettings } from "./db.js";
 
+// Split a user-supplied command-line string into argv tokens. Shell-like
+// quoting only: an unclosed quote keeps the quote character in the token.
 function parseArgs(str: string): string[] {
   const args: string[] = [];
   const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(str)) !== null) {
+  for (;;) {
+    const m = re.exec(str);
+    if (m === null) break;
     args.push(m[1] ?? m[2] ?? m[3]);
   }
   return args;

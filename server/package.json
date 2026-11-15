@@ -13,7 +13,7 @@
     "format": "biome format --write src/"
   },
   "author": "riad boussaid",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@hono/node-server": "^1.14.1",
     "better-sqlite3": "^13.0.1",

@@ -48,6 +48,11 @@ export async function checkServerHealth(): Promise<boolean> {
   }
 }
 
+async function getAuthToken(): Promise<string> {
+  const opts = await chrome.storage.sync.get(defaultSettings);
+  return typeof opts.authToken === "string" ? opts.authToken : "";
+}
+
 const CODEC_PREFIXES: Record<string, string[]> = {
   h264: ["avc1"],
   vp9: ["vp09"],
@@ -98,12 +103,23 @@ export async function sendUrl(url: string): Promise<SendResult> {
   }
 
   try {
+    const token = await getAuthToken();
     const res = await fetch(serverUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({ url, options: mpvArgs }),
       signal: AbortSignal.timeout(10000),
     });
+
+    if (res.status === 401) {
+      return {
+        success: false,
+        error: "Unauthorized — paste the server token in options.",
+      };
+    }
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");

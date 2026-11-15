@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { checkServerHealth, type SendResult, sendUrl } from "@/lib/api";
-import { addHistory, clearHistory, getHistory, type HistoryEntry } from "@/lib/history";
+import {
+  addHistory,
+  clearHistory,
+  getHistory,
+  type HistoryEntry,
+} from "@/lib/history";
 import { defaultSettings } from "@/lib/settings";
 import { isPlaylistUrl } from "@/lib/url";
 
@@ -321,7 +326,9 @@ export default function Popup({
 
   return (
     <div style={mode === "sidebar" ? s.wrapSidebar : s.wrap}>
-      <div style={mode === "sidebar" ? { ...s.inner, padding: "16px" } : s.inner}>
+      <div
+        style={mode === "sidebar" ? { ...s.inner, padding: "16px" } : s.inner}
+      >
         {mode === "sidebar" && (
           <div
             style={{
@@ -358,10 +365,12 @@ export default function Popup({
                 type="button"
                 style={s.settingsBtn}
                 onClick={() => {
-                  void (chrome as typeof chrome & {
-                    sidebarAction: { open: () => Promise<void> };
-                  })
-                    .sidebarAction.open()
+                  void (
+                    chrome as typeof chrome & {
+                      sidebarAction: { open: () => Promise<void> };
+                    }
+                  ).sidebarAction
+                    .open()
                     .catch(() => {});
                 }}
                 title="Open in sidebar"
@@ -386,16 +395,18 @@ export default function Popup({
               <img
                 src={thumbUrl}
                 alt={tabTitle || "Video thumbnail"}
-                style={mode === "sidebar" ? { ...s.thumb, width: "64px", height: "64px" } : s.thumb}
+                style={
+                  mode === "sidebar"
+                    ? { ...s.thumb, width: "64px", height: "64px" }
+                    : s.thumb
+                }
               />
             )}
             <div style={s.tabInfo}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                {isPlaylist && (
-                  <span style={s.badge}>
-                    Playlist
-                  </span>
-                )}
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              >
+                {isPlaylist && <span style={s.badge}>Playlist</span>}
                 {tabTitle && <p style={s.tabTitle}>{tabTitle}</p>}
               </div>
               <p style={s.tabUrl}>{tabUrl}</p>
@@ -405,7 +416,14 @@ export default function Popup({
 
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           <div style={{ display: "flex", gap: "8px" }}>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+              }}
+            >
               <span style={s.selectLabel}>Resolution</span>
               <select
                 style={s.select}
@@ -424,7 +442,14 @@ export default function Popup({
               </select>
             </div>
 
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+              }}
+            >
               <span style={s.selectLabel}>Codec</span>
               <select
                 style={s.select}
@@ -454,7 +479,11 @@ export default function Popup({
           disabled={sending || !tabUrl}
           style={sending || !tabUrl ? s.btnDisabled : s.btn}
         >
-          {sending ? "Sending..." : isPlaylist ? "▶ Play playlist" : "▶ Play with Media Launcher"}
+          {sending
+            ? "Sending..."
+            : isPlaylist
+              ? "▶ Play playlist"
+              : "▶ Play with Media Launcher"}
         </button>
 
         {status && !status.success && (
@@ -466,7 +495,9 @@ export default function Popup({
           <>
             <hr style={s.separator} />
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              >
                 <span style={s.historyLabel}>🕐 Recent</span>
                 <button
                   type="button"

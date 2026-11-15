@@ -19,7 +19,12 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { checkServerHealth, type SendResult, sendUrl } from "@/lib/api";
-import { addHistory, clearHistory, getHistory, type HistoryEntry } from "@/lib/history";
+import {
+  addHistory,
+  clearHistory,
+  getHistory,
+  type HistoryEntry,
+} from "@/lib/history";
 import { defaultSettings } from "@/lib/settings";
 import { isPlaylistUrl } from "@/lib/url";
 
@@ -43,7 +48,11 @@ function getYoutubeId(url: string): string | null {
 
 type ServerStatus = "checking" | "connected" | "disconnected";
 
-export default function Popup({ mode = "popup" }: { mode?: "popup" | "sidebar" }) {
+export default function Popup({
+  mode = "popup",
+}: {
+  mode?: "popup" | "sidebar";
+}) {
   const [tabUrl, setTabUrl] = useState("");
   const [tabTitle, setTabTitle] = useState("");
   const [status, setStatus] = useState<SendResult | null>(null);
@@ -266,7 +275,9 @@ export default function Popup({ mode = "popup" }: { mode?: "popup" | "sidebar" }
               >
                 <SelectTrigger
                   className={
-                    mode === "popup" ? "h-8 w-full text-xs" : "h-9 w-full text-sm"
+                    mode === "popup"
+                      ? "h-8 w-full text-xs"
+                      : "h-9 w-full text-sm"
                   }
                 >
                   <SelectValue />
@@ -295,7 +306,9 @@ export default function Popup({ mode = "popup" }: { mode?: "popup" | "sidebar" }
               >
                 <SelectTrigger
                   className={
-                    mode === "popup" ? "h-8 w-full text-xs" : "h-9 w-full text-sm"
+                    mode === "popup"
+                      ? "h-8 w-full text-xs"
+                      : "h-9 w-full text-sm"
                   }
                 >
                   <SelectValue />

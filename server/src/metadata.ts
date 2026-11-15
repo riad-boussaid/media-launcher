@@ -17,7 +17,23 @@ function findYtDlp(binDir: string): string {
   return name;
 }
 
+// Rapid replays of the same URL would otherwise pile up yt-dlp processes.
+const inflight = new Map<string, Promise<VideoMetadata>>();
+
 export function fetchMetadata(
+  url: string,
+  signal?: AbortSignal,
+): Promise<VideoMetadata> {
+  const existing = inflight.get(url);
+  if (existing) return existing;
+  const promise = runFetchMetadata(url, signal).finally(() =>
+    inflight.delete(url),
+  );
+  inflight.set(url, promise);
+  return promise;
+}
+
+function runFetchMetadata(
   url: string,
   signal?: AbortSignal,
 ): Promise<VideoMetadata> {
@@ -25,17 +41,12 @@ export function fetchMetadata(
     const settings = getSettings();
     const ytDlpPath = findYtDlp(settings.binDir);
 
+    // --print-json emits a single JSON object per video on stdout, which is
+    // robust against titles containing newlines (unlike separate --print
+    // fields, where line parsing breaks).
     const proc = spawn(
       ytDlpPath,
-      [
-        "--no-playlist",
-        "--print",
-        "%(title)s",
-        "--print",
-        "%(thumbnail)s",
-        "--no-download",
-        url,
-      ],
+      ["--no-playlist", "--no-download", "--print-json", url],
       { stdio: ["ignore", "pipe", "ignore"], timeout: 15000 },
     );
 
@@ -44,24 +55,35 @@ export function fetchMetadata(
       stdout += chunk.toString();
     });
 
-    const onError = (err: Error) => {
+    proc.on("error", (err) => {
       console.error(`[metadata] yt-dlp error: ${err.message}`);
       resolve({ title: "", thumbnail: "" });
-    };
+    });
 
-    proc.on("error", onError);
     proc.on("close", (code) => {
       if (code !== 0 || !stdout.trim()) {
         resolve({ title: "", thumbnail: "" });
         return;
       }
       const lines = stdout
-        .trim()
         .split("\n")
-        .map((l) => l.trim());
-      const title = lines[0] ?? "";
-      const thumbnail = lines[lines.length - 1] ?? "";
-      resolve({ title, thumbnail });
+        .map((l) => l.trim())
+        .filter(Boolean);
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const obj = JSON.parse(lines[i]) as Record<string, unknown>;
+          const title = typeof obj.title === "string" ? obj.title : "";
+          const thumbnail =
+            typeof obj.thumbnail === "string" ? obj.thumbnail : "";
+          if (title || thumbnail) {
+            resolve({ title, thumbnail });
+            return;
+          }
+        } catch {
+          // Not JSON (e.g. a warning leaked to stdout) — keep scanning.
+        }
+      }
+      resolve({ title: "", thumbnail: "" });
     });
 
     if (signal) {

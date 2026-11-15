@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 const api = {
+  server: {
+    getToken: () => ipcRenderer.invoke("server:token"),
+  },
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     set: (partial: Record<string, unknown>) =>

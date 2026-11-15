@@ -33,6 +33,23 @@ export default function SettingsPage() {
   const [checking, setChecking] = useState(false);
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [token, setToken] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    window.electronAPI.server.getToken().then((t) => setToken(t ?? ""));
+  }, []);
+
+  const copyToken = async () => {
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setToast("Copy failed — select the token manually");
+      setTimeout(() => setToast(""), 2000);
+    }
+  };
 
   const refreshDownloads = async () => {
     setDownloads(await getDownloads());
@@ -121,6 +138,31 @@ export default function SettingsPage() {
           placeholder="http://localhost:5000"
           className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-text text-sm outline-none focus:border-accent transition-colors"
         />
+      </div>
+
+      <div className="mb-5">
+        <label className="block text-xs text-label mb-1.5 uppercase tracking-[0.5px]">
+          API token
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            readOnly
+            value={token}
+            className="flex-1 px-3 py-2.5 bg-surface border border-border rounded-lg text-text text-sm outline-none font-mono"
+          />
+          <button
+            type="button"
+            className="btn-primary px-3 py-2.5 text-sm whitespace-nowrap"
+            onClick={copyToken}
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+        <p className="text-[11px] text-muted mt-1">
+          Paste this token in the browser extension options so it can talk to
+          the server.
+        </p>
       </div>
 
       <div className="mb-5">

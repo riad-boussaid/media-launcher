@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { app } from "electron";
+import { readServerToken } from "./server";
 
 export interface HistoryEntry {
   id: string;
@@ -68,7 +69,10 @@ function getServerUrl(): string {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getServerUrl()}${path}`, init);
+  const headers = new Headers(init?.headers);
+  const token = readServerToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${getServerUrl()}${path}`, { ...init, headers });
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -166,9 +170,14 @@ export async function replayUrl(
   url: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    const token = readServerToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(`${getServerUrl()}/`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ url }),
     });
     if (!res.ok) {

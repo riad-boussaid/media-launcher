@@ -42,9 +42,24 @@ pnpm build
 
 # Firefox extension
 cd extensions/firefox
-npm install
-npm run build
+pnpm install
+pnpm build
 ```
+
+## Security
+
+The API server binds to `127.0.0.1` only, rejects requests with non-loopback
+`Host` headers (DNS-rebinding defense), and requires a shared auth token on
+every route except `GET /api/health`.
+
+The token is generated on first run and stored next to the database:
+
+- **Desktop app:** Settings → API token → Copy
+- **Standalone server:** `server/data/auth-token` (or override with the
+  `AUTH_TOKEN` / `DATA_DIR` / `HOST` / `PORT` env vars)
+
+Paste the token into the browser extension's options page (Server → API
+token). Requests without a valid token get `401`.
 
 ## Development
 
@@ -71,6 +86,9 @@ pnpm format
 1. Go to about:debugging#/runtime/this-firefox
 2. Click "Load Temporary Add-on"
 3. Select extensions/firefox/dist/manifest.json
+
+After loading, open the extension options and paste the API token from the
+desktop app's Settings page.
 
 ## License
 
