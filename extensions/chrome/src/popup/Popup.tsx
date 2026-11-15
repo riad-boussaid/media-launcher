@@ -1,10 +1,10 @@
 import { checkServerHealth, type SendResult, sendUrl } from "@shared/api";
 import {
-  addHistory,
-  clearHistory,
-  getHistory,
+  clearAll,
+  getRecent,
   type HistoryEntry,
-  removeHistory,
+  migrateLegacy,
+  removeEntry,
 } from "@shared/history";
 import { defaultSettings } from "@shared/settings";
 import { isPlaylistUrl } from "@shared/url";
@@ -178,7 +178,7 @@ export default function Popup({
       if (opts.codec) setCodec(opts.codec);
     });
 
-    getHistory().then(setHistory);
+    void migrateLegacy().then(getRecent).then(setHistory);
 
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       if (tab?.url) setTabUrl(tab.url);
@@ -190,20 +190,25 @@ export default function Popup({
       .catch(() => setServerStatus("disconnected"));
   }, []);
 
+  // yt-dlp metadata enrichment can take a while — keep polling while a visible
+  // entry still lacks both title and thumbnail (mirrors the desktop History
+  // page's poll).
+  useEffect(() => {
+    if (!history.some((e) => !e.title && !e.thumbnail)) return;
+    const t = setInterval(() => void getRecent().then(setHistory), 3000);
+    return () => clearInterval(t);
+  }, [history]);
+
   const handlePlay = async (url: string, title: string) => {
     if (!url.trim() || sending) return;
     setSending(true);
     setStatus(null);
     try {
-      const result = await sendUrl(url);
+      const result = await sendUrl(url, title);
       setStatus(result);
       if (result.success) {
-        addHistory(url, title);
-        const updated = [
-          { url, title, timestamp: Date.now() },
-          ...history.filter((e) => e.url !== url),
-        ].slice(0, 20);
-        setHistory(updated);
+        // The server recorded the play (move-to-top) — refresh the list.
+        void getRecent().then(setHistory);
         setTimeout(() => setStatus(null), 2000);
       }
     } finally {
@@ -213,9 +218,8 @@ export default function Popup({
 
   const handlePlayCurrent = () => handlePlay(tabUrl, tabTitle);
 
-  const handleRemove = async (url: string) => {
-    await removeHistory(url);
-    setHistory((entries) => entries.filter((e) => e.url !== url));
+  const handleRemove = async (id: string) => {
+    setHistory(await removeEntry(id));
   };
 
   const dot =
@@ -538,8 +542,14 @@ export default function Popup({
                     className="flex items-center gap-0.5 rounded p-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     title="Clear history"
                     onClick={async () => {
-                      await clearHistory();
-                      setHistory([]);
+                      if (await clearAll()) {
+                        setHistory([]);
+                      } else {
+                        setStatus({
+                          success: false,
+                          error: "Server unreachable — history not cleared",
+                        });
+                      }
                     }}
                   >
                     <Trash2 className="size-3" />
@@ -561,9 +571,14 @@ export default function Popup({
                     .slice(0, isSidebar || showAllHistory ? 20 : 10)
                     .map((entry) => {
                       const id = getYoutubeId(entry.url);
+                      const thumbSrc =
+                        entry.thumbnail ||
+                        (id
+                          ? `https://img.youtube.com/vi/${id}/mqdefault.jpg`
+                          : null);
                       return (
                         <div
-                          key={entry.url + entry.timestamp}
+                          key={entry.id}
                           className="group flex items-center gap-0.5 rounded-lg pr-0.5 hover:bg-accent"
                         >
                           <button
@@ -574,9 +589,9 @@ export default function Popup({
                             }`}
                             title={entry.title || entry.url}
                           >
-                            {id ? (
+                            {thumbSrc ? (
                               <img
-                                src={`https://img.youtube.com/vi/${id}/mqdefault.jpg`}
+                                src={thumbSrc}
                                 alt=""
                                 className={`${
                                   isSidebar ? "h-9 w-16" : "h-6 w-11"
@@ -603,7 +618,7 @@ export default function Popup({
                             size="icon-xs"
                             className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
                             title="Remove"
-                            onClick={() => void handleRemove(entry.url)}
+                            onClick={() => void handleRemove(entry.id)}
                           >
                             <X className="size-3" />
                           </Button>

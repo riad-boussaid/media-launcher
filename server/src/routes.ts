@@ -46,9 +46,11 @@ app.get("/api/health", (c) => {
 
 app.post("/", async (c) => {
   try {
-    const { url, options } = await c.req.json<{
+    const { url, options, title, thumbnail } = await c.req.json<{
       url?: string;
       options?: string[];
+      title?: string;
+      thumbnail?: string;
     }>();
     if (!isUrl(url)) {
       return c.json({ err: "url must be a valid http(s) URL" }, 400);
@@ -60,7 +62,11 @@ app.post("/", async (c) => {
     if (!result.success) {
       return c.json({ err: result.error }, 503);
     }
-    const entry = addHistory(url);
+    const entry = addHistory(
+      url,
+      typeof title === "string" ? title : "",
+      typeof thumbnail === "string" ? thumbnail : "",
+    );
     enrichMetadata(entry.id, url);
     return c.json({ data: "success" });
   } catch (err: unknown) {
@@ -76,15 +82,23 @@ app.get("/history", (c) => {
 
 app.post("/history", async (c) => {
   try {
-    const { url, title, thumbnail } = await c.req.json<{
+    const { url, title, thumbnail, timestamp } = await c.req.json<{
       url?: string;
       title?: string;
       thumbnail?: string;
+      timestamp?: number;
     }>();
     if (!isUrl(url)) {
       return c.json({ err: "url must be a valid http(s) URL" }, 400);
     }
-    const entry = addHistory(url, title ?? "", thumbnail ?? "");
+    const entry = addHistory(
+      url,
+      typeof title === "string" ? title : "",
+      typeof thumbnail === "string" ? thumbnail : "",
+      typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0
+        ? timestamp
+        : undefined,
+    );
     enrichMetadata(entry.id, url);
     return c.json(entry);
   } catch (err: unknown) {

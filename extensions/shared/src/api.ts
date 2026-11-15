@@ -48,7 +48,7 @@ export async function checkServerHealth(): Promise<boolean> {
   }
 }
 
-async function getAuthToken(): Promise<string> {
+export async function getAuthToken(): Promise<string> {
   const opts = await chrome.storage.sync.get(defaultSettings);
   return typeof opts.authToken === "string" ? opts.authToken : "";
 }
@@ -60,7 +60,7 @@ const CODEC_PREFIXES: Record<string, string[]> = {
   h265: ["hvc1", "hev1"],
 };
 
-export async function sendUrl(url: string): Promise<SendResult> {
+export async function sendUrl(url: string, title?: string): Promise<SendResult> {
   const opts = await chrome.storage.sync.get(defaultSettings);
   const mpvArgs: string[] = [];
 
@@ -110,7 +110,7 @@ export async function sendUrl(url: string): Promise<SendResult> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ url, options: mpvArgs }),
+      body: JSON.stringify({ url, options: mpvArgs, title }),
       signal: AbortSignal.timeout(10000),
     });
 
@@ -143,5 +143,99 @@ export async function sendUrl(url: string): Promise<SendResult> {
       success: false,
       error: `Connection failed: ${(error as Error).message}`,
     };
+  }
+}
+
+export interface HistoryEntry {
+  id: string;
+  url: string;
+  title: string;
+  thumbnail: string;
+  timestamp: number;
+}
+
+/** Server watch history, or null when the server can't be reached. */
+export async function getServerHistory(): Promise<HistoryEntry[] | null> {
+  const serverUrl = await getServerUrl();
+  if (!serverUrl) return null;
+  try {
+    const token = await getAuthToken();
+    const res = await fetch(`${serverUrl}/history`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data: unknown = await res.json();
+    return Array.isArray(data) ? (data as HistoryEntry[]) : null;
+  } catch {
+    // The cached server URL may be stale — clear it so the next call re-discovers.
+    cachedServerUrl = null;
+    return null;
+  }
+}
+
+/** Deletes one entry; returns the fresh history, or null on failure. */
+export async function deleteServerHistory(
+  id: string,
+): Promise<HistoryEntry[] | null> {
+  const serverUrl = await getServerUrl();
+  if (!serverUrl) return null;
+  try {
+    const token = await getAuthToken();
+    const res = await fetch(`${serverUrl}/history/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data: unknown = await res.json();
+    return Array.isArray(data) ? (data as HistoryEntry[]) : null;
+  } catch {
+    cachedServerUrl = null;
+    return null;
+  }
+}
+
+export async function clearServerHistory(): Promise<boolean> {
+  const serverUrl = await getServerUrl();
+  if (!serverUrl) return false;
+  try {
+    const token = await getAuthToken();
+    const res = await fetch(`${serverUrl}/history`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok;
+  } catch {
+    cachedServerUrl = null;
+    return false;
+  }
+}
+
+/** Records an entry (legacy-history migration); timestamp kept if provided. */
+export async function addServerHistory(entry: {
+  url: string;
+  title?: string;
+  thumbnail?: string;
+  timestamp?: number;
+}): Promise<boolean> {
+  const serverUrl = await getServerUrl();
+  if (!serverUrl) return false;
+  try {
+    const token = await getAuthToken();
+    const res = await fetch(`${serverUrl}/history`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(entry),
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }

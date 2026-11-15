@@ -200,13 +200,24 @@ export function addHistory(
   url: string,
   title = "",
   thumbnail = "",
+  timestamp?: number,
 ): HistoryEntry {
+  // Dedupe by URL: replaying moves the entry to the top with a fresh
+  // timestamp, carrying over metadata the new row doesn't provide.
+  const existing = db
+    .select()
+    .from(schema.history)
+    .where(eq(schema.history.url, url))
+    .get();
+  if (existing) {
+    db.delete(schema.history).where(eq(schema.history.id, existing.id)).run();
+  }
   const entry: HistoryEntry = {
     id: randomUUID(),
     url,
-    title,
-    thumbnail,
-    timestamp: Date.now(),
+    title: title || existing?.title || "",
+    thumbnail: thumbnail || existing?.thumbnail || "",
+    timestamp: timestamp ?? Date.now(),
   };
   db.insert(schema.history).values(entry).run();
   return entry;

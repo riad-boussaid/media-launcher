@@ -1,42 +1,69 @@
-export interface HistoryEntry {
-  url: string;
-  title: string;
-  timestamp: number;
+import {
+  addServerHistory,
+  clearServerHistory,
+  deleteServerHistory,
+  getServerHistory,
+  type HistoryEntry,
+} from "@shared/api";
+
+export type { HistoryEntry };
+
+// The server's SQLite history is the single source of truth (the desktop
+// History page reads the same rows). chrome.storage.local holds a mirror as
+// an offline cache so the popup's Recent list survives server hiccups.
+const CACHE_KEY = "media-launcher-history-cache";
+const LEGACY_KEY = "media-launcher-history";
+
+/** Reads the server history; falls back to the last-known cache offline. */
+export async function getRecent(): Promise<HistoryEntry[]> {
+  const history = await getServerHistory();
+  if (history) {
+    await chrome.storage.local.set({ [CACHE_KEY]: history });
+    return history;
+  }
+  const cached = await chrome.storage.local.get(CACHE_KEY);
+  const list = cached[CACHE_KEY];
+  return Array.isArray(list) ? (list as HistoryEntry[]) : [];
 }
 
-const HISTORY_KEY = "media-launcher-history";
-const MAX_ENTRIES = 20;
-
-export async function getHistory(): Promise<HistoryEntry[]> {
-  const data = await chrome.storage.local.get(HISTORY_KEY);
-  return data[HISTORY_KEY] ?? [];
+/** Deletes one server entry; returns the fresh list, or the cache offline. */
+export async function removeEntry(id: string): Promise<HistoryEntry[]> {
+  const history = await deleteServerHistory(id);
+  if (history) {
+    await chrome.storage.local.set({ [CACHE_KEY]: history });
+    return history;
+  }
+  return getRecent();
 }
 
-let writeQueue: Promise<unknown> = Promise.resolve();
-
-export async function addHistory(url: string, title: string): Promise<void> {
-  const run = writeQueue.then(async () => {
-    const history = await getHistory();
-    const filtered = history.filter((e) => e.url !== url);
-    filtered.unshift({ url, title, timestamp: Date.now() });
-    if (filtered.length > MAX_ENTRIES) filtered.length = MAX_ENTRIES;
-    await chrome.storage.local.set({ [HISTORY_KEY]: filtered });
-  });
-  writeQueue = run.catch(() => undefined);
-  return run;
+/** Clears all history. Returns false when the server is unreachable. */
+export async function clearAll(): Promise<boolean> {
+  const ok = await clearServerHistory();
+  if (ok) {
+    await chrome.storage.local.set({ [CACHE_KEY]: [] });
+  }
+  return ok;
 }
 
-export async function removeHistory(url: string): Promise<void> {
-  const run = (async () => {
-    const history = await getHistory();
-    await chrome.storage.local.set({
-      [HISTORY_KEY]: history.filter((e) => e.url !== url),
+// One-time migration: push the legacy chrome.storage.local history (the
+// pre-unification popup list) into the server, oldest first so relative
+// ordering survives, then drop the legacy key. Safe to rerun.
+export async function migrateLegacy(): Promise<void> {
+  const stored = await chrome.storage.local.get(LEGACY_KEY);
+  const legacy = stored[LEGACY_KEY];
+  if (!Array.isArray(legacy) || legacy.length === 0) return;
+  for (const raw of [...legacy].reverse()) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as { url?: unknown; title?: unknown; timestamp?: unknown };
+    if (typeof entry.url !== "string") continue;
+    await addServerHistory({
+      url: entry.url,
+      title: typeof entry.title === "string" ? entry.title : "",
+      timestamp:
+        typeof entry.timestamp === "number" && entry.timestamp > 0
+          ? entry.timestamp
+          : undefined,
     });
-  })();
-  writeQueue = run.catch(() => undefined);
-  return run;
-}
-
-export async function clearHistory(): Promise<void> {
-  await chrome.storage.local.remove(HISTORY_KEY);
+  }
+  await chrome.storage.local.remove(LEGACY_KEY);
 }
