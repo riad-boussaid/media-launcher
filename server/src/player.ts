@@ -36,6 +36,45 @@ function getBinDir(binDir: string): string {
   return join(process.cwd(), "bin");
 }
 
+// Common per-OS install locations for players that don't register on PATH
+// (PotPlayer installs to Program Files with no PATH entry). Mirrors the table
+// in the desktop app's player.ts.
+const COMMON_PATHS: Record<string, string[]> = {
+  PotPlayerMini64: [
+    "C:\\Program Files\\DAUM\\PotPlayer\\PotPlayerMini64.exe",
+    "C:\\Program Files (x86)\\DAUM\\PotPlayer\\PotPlayerMini64.exe",
+  ],
+  "PotPlayerMini64.exe": [
+    "C:\\Program Files\\DAUM\\PotPlayer\\PotPlayerMini64.exe",
+    "C:\\Program Files (x86)\\DAUM\\PotPlayer\\PotPlayerMini64.exe",
+  ],
+  ffmpeg: [
+    "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+    "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
+  ],
+  "ffmpeg.exe": [
+    "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+    "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
+  ],
+  iina: ["/Applications/IINA.app/Contents/MacOS/iina"],
+  mpv: ["/usr/bin/mpv", "/usr/local/bin/mpv"],
+};
+
+function lookupCommonPath(name: string): string | null {
+  const keys = [
+    name,
+    process.platform === "win32" && !name.endsWith(".exe")
+      ? `${name}.exe`
+      : "",
+  ].filter(Boolean);
+  for (const key of keys) {
+    for (const p of COMMON_PATHS[key] ?? []) {
+      if (existsSync(p)) return p;
+    }
+  }
+  return null;
+}
+
 function resolvePlayerPath(
   key: string,
   settings: { customPlayerPath: string; binDir: string },
@@ -51,10 +90,8 @@ function resolvePlayerPath(
       : name;
   const inBinExe = join(bin, exeName);
   if (existsSync(inBinExe)) return inBinExe;
-  if (key === "iina") {
-    const iina = "/Applications/IINA.app/Contents/MacOS/iina";
-    if (existsSync(iina)) return iina;
-  }
+  const common = lookupCommonPath(name);
+  if (common) return common;
   return name;
 }
 
@@ -75,11 +112,15 @@ function spawnPlayer(
       resolve({ success: false, error: `Timed out launching ${exe}` });
     }, timeoutMs);
 
-    proc.once("error", (err) => {
+    proc.once("error", (err: NodeJS.ErrnoException) => {
       clearTimeout(timer);
+      const message =
+        err.code === "ENOENT"
+          ? `${exe} was not found. Install it, download it from Settings → Downloads, or point the app to its executable with a custom player.`
+          : err.message;
       resolve({
         success: false,
-        error: `Failed to launch ${exe}: ${err.message}`,
+        error: `Failed to launch ${exe}: ${message}`,
       });
     });
     proc.once("spawn", () => {
