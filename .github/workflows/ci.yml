@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # Type-check and bundling never launch Electron, so skip the ~200 MB
+      # binary download in CI.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm (version from packageManager field)
+        uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            server/pnpm-lock.yaml
+            desktop/pnpm-lock.yaml
+            extensions/chrome/pnpm-lock.yaml
+            extensions/firefox/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm -C server install --frozen-lockfile
+          pnpm -C desktop install --frozen-lockfile
+          pnpm -C extensions/chrome install --frozen-lockfile
+          pnpm -C extensions/firefox install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: pnpm type-check
+
+      - name: Build
+        run: pnpm build
