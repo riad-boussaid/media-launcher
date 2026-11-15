@@ -26,6 +26,17 @@ export async function addHistory(url: string, title: string): Promise<void> {
   return run;
 }
 
+export async function removeHistory(url: string): Promise<void> {
+  const run = (async () => {
+    const history = await getHistory();
+    await chrome.storage.local.set({
+      [HISTORY_KEY]: history.filter((e) => e.url !== url),
+    });
+  })();
+  writeQueue = run.catch(() => undefined);
+  return run;
+}
+
 export async function clearHistory(): Promise<void> {
   await chrome.storage.local.remove(HISTORY_KEY);
 }

@@ -129,3 +129,34 @@
     @apply font-sans;
   }
 }
+
+/* Thin, theme-matched scrollbars (matches the desktop app) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Popup view scrolls at the document level — hide the native scrollbar there. */
+html.popup-doc::-webkit-scrollbar {
+  display: none;
+}
+html.popup-doc {
+  scrollbar-width: none;
+}

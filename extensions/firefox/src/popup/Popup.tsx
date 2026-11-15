@@ -4,17 +4,22 @@ import {
   clearHistory,
   getHistory,
   type HistoryEntry,
+  removeHistory,
 } from "@shared/history";
 import { defaultSettings } from "@shared/settings";
 import { isPlaylistUrl } from "@shared/url";
 import {
   CheckCircle2,
+  ChevronDown,
   History,
+  Info,
   Loader2,
+  MonitorPlay,
   PanelRightOpen,
   Play,
   Settings,
   Trash2,
+  X,
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -46,6 +51,72 @@ function getYoutubeId(url: string): string | null {
   return null;
 }
 
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function timeAgo(timestamp: number): string {
+  const s = Math.floor((Date.now() - timestamp) / 1000);
+  if (s < 60) return "now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/** 16:9 YouTube thumbnail, falling back to hqdefault when maxres is missing. */
+function HeroThumb({
+  videoId,
+  alt,
+  className,
+}: {
+  videoId: string;
+  alt: string;
+  className?: string;
+}) {
+  return (
+    <img
+      src={`https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`}
+      alt={alt}
+      className={className}
+      onError={(e) => {
+        const img = e.currentTarget;
+        if (img.dataset.fallback !== "1") {
+          img.dataset.fallback = "1";
+          img.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+        }
+      }}
+    />
+  );
+}
+
+const QUALITY_ITEMS = [
+  { value: "2160", label: "4K" },
+  { value: "1440", label: "1440p" },
+  { value: "1080", label: "1080p" },
+  { value: "720", label: "720p" },
+  { value: "480", label: "480p" },
+  { value: "a", label: "Audio only" },
+];
+
+const CODEC_ITEMS = [
+  { value: "any", label: "Any" },
+  { value: "h264", label: "H.264" },
+  { value: "vp9", label: "VP9" },
+  { value: "av1", label: "AV1" },
+  { value: "h265", label: "H.265" },
+];
+
 type ServerStatus = "checking" | "connected" | "disconnected";
 
 export default function Popup({
@@ -61,12 +132,37 @@ export default function Popup({
   const [maxHeight, setMaxHeight] = useState(defaultSettings.maxHeight);
   const [codec, setCodec] = useState(defaultSettings.codec);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(
+    () => localStorage.getItem("ml-history-open") !== "0",
+  );
+
+  const toggleHistory = () => {
+    setHistoryOpen((open) => {
+      localStorage.setItem("ml-history-open", open ? "0" : "1");
+      return !open;
+    });
+  };
+
+  // Popup only: expand the list past its 3-row cap to show every entry; the
+  // popup document scrolls (its scrollbar is hidden).
+  const [showAllHistory, setShowAllHistory] = useState(
+    () => localStorage.getItem("ml-history-show-all") === "1",
+  );
+
+  const toggleShowAll = () => {
+    setShowAllHistory((v) => {
+      localStorage.setItem("ml-history-show-all", v ? "0" : "1");
+      return !v;
+    });
+  };
 
   const youtubeId = getYoutubeId(tabUrl);
   const thumbUrl = youtubeId
-    ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`
+    ? `https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`
     : null;
   const isPlaylist = isPlaylistUrl(tabUrl);
+  // Only http(s) tabs can be handed to the player.
+  const isWebUrl = /^https?:/i.test(tabUrl);
   // Firefox has no sidePanel API — hide the "open in sidebar" shortcut there.
   const canOpenSidePanel = typeof chrome.sidePanel?.open === "function";
 
@@ -117,6 +213,11 @@ export default function Popup({
 
   const handlePlayCurrent = () => handlePlay(tabUrl, tabTitle);
 
+  const handleRemove = async (url: string) => {
+    await removeHistory(url);
+    setHistory((entries) => entries.filter((e) => e.url !== url));
+  };
+
   const dot =
     serverStatus === "connected" ? (
       <span
@@ -132,15 +233,67 @@ export default function Popup({
       <Loader2 className="size-3 animate-spin text-muted-foreground" />
     );
 
+  const isSidebar = mode === "sidebar";
+
+  // The popup view scrolls at the document level (Chrome caps popups at 600px);
+  // hide the native document scrollbar there — wheel scrolling and the clipped
+  // last row keep the affordance.
+  useEffect(() => {
+    if (isSidebar) return;
+    document.documentElement.classList.add("popup-doc");
+    return () => document.documentElement.classList.remove("popup-doc");
+  }, [isSidebar]);
+
+  // Keep the toolbar icon in sync with the panel: while the sidebar is open,
+  // the icon focuses the panel instead of opening the popup. The panel document
+  // stays loaded across open/close cycles in Chrome, so track visibility (not
+  // mount) and set the icon target directly from this page — no message to the
+  // service worker that could be lost. Chrome only; Firefox has no sidePanel.
+  useEffect(() => {
+    if (!isSidebar || typeof chrome.sidePanel === "undefined") return;
+
+    const syncIcon = async () => {
+      const visible = document.visibilityState === "visible";
+      const win = await chrome.windows.getCurrent();
+      if (win.id === undefined) return;
+      const key = `sidebar-open:${win.id}`;
+      if (visible) {
+        await chrome.storage.session.set({ [key]: true });
+        await chrome.action.setPopup({ popup: "" });
+      } else {
+        await chrome.storage.session.remove(key);
+        await chrome.action.setPopup({ popup: "popup.html" });
+      }
+    };
+
+    void syncIcon();
+    document.addEventListener("visibilitychange", syncIcon);
+    // If Chrome unloads the panel on close instead of hiding it, pagehide is
+    // the last chance to restore the popup target.
+    const onPageHide = () => {
+      void chrome.windows.getCurrent().then((win) => {
+        if (win.id !== undefined) {
+          void chrome.storage.session.remove(`sidebar-open:${win.id}`);
+        }
+        void chrome.action.setPopup({ popup: "popup.html" });
+      });
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", syncIcon);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [isSidebar]);
+
   return (
     <div
       className={
-        mode === "popup"
-          ? "w-80 rounded-xl border bg-card text-card-foreground shadow-sm"
-          : "min-h-full bg-background text-card-foreground"
+        isSidebar
+          ? "min-h-dvh bg-background text-card-foreground"
+          : "w-80 bg-card text-card-foreground"
       }
     >
-      {mode === "sidebar" && (
+      {isSidebar && (
         <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-card/95 px-4 py-3 backdrop-blur">
           <img
             src={chrome.runtime.getURL("play-logo.png")}
@@ -167,12 +320,12 @@ export default function Popup({
 
       <div
         className={
-          mode === "popup"
-            ? "space-y-3 p-3"
-            : "mx-auto w-full max-w-md space-y-4 p-4"
+          isSidebar
+            ? "mx-auto flex w-full min-h-dvh max-w-md flex-col space-y-4 p-4"
+            : "space-y-3 p-3"
         }
       >
-        {mode === "popup" && (
+        {!isSidebar && (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="text-sm font-semibold tracking-tight">
@@ -184,8 +337,8 @@ export default function Popup({
               {canOpenSidePanel && (
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="size-6 text-muted-foreground hover:text-foreground"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:text-foreground"
                   onClick={async () => {
                     const [tab] = await chrome.tabs.query({
                       active: true,
@@ -202,8 +355,8 @@ export default function Popup({
               )}
               <Button
                 variant="ghost"
-                size="icon"
-                className="size-6 text-muted-foreground hover:text-foreground"
+                size="icon-xs"
+                className="text-muted-foreground hover:text-foreground"
                 onClick={() => chrome.runtime.openOptionsPage()}
                 title="Settings"
               >
@@ -213,143 +366,136 @@ export default function Popup({
           </div>
         )}
 
-        {tabUrl && (
-          <div
-            className={
-              mode === "popup"
-                ? "flex items-start gap-2.5 rounded-lg border bg-muted/40 p-2"
-                : "flex items-start gap-3 rounded-xl border bg-card p-3"
-            }
-          >
-            {thumbUrl && (
-              <img
-                src={thumbUrl}
-                alt={tabTitle || "Video thumbnail"}
-                className={
-                  mode === "popup"
-                    ? "size-11 shrink-0 rounded-md object-cover shadow-xs"
-                    : "size-16 shrink-0 rounded-lg object-cover shadow-sm"
-                }
-              />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
+        {isWebUrl ? (
+          <>
+            {/* Hero: the focused video. Clicking the artwork plays it. */}
+            <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+              <button
+                type="button"
+                onClick={handlePlayCurrent}
+                disabled={sending}
+                className="group/hero relative block w-full cursor-pointer"
+                title="Play this video"
+              >
+                {thumbUrl ? (
+                  <HeroThumb
+                    videoId={youtubeId ?? ""}
+                    alt={tabTitle || "Video thumbnail"}
+                    className="aspect-video w-full bg-muted object-cover"
+                  />
+                ) : (
+                  <span className="flex aspect-video w-full items-center justify-center bg-muted">
+                    <MonitorPlay className="size-8 text-muted-foreground" />
+                  </span>
+                )}
                 {isPlaylist && (
-                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span className="absolute top-2 left-2 rounded bg-background/85 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-foreground uppercase backdrop-blur">
                     Playlist
                   </span>
                 )}
-                {tabTitle && (
-                  <p
-                    className={
-                      mode === "popup"
-                        ? "truncate text-xs font-medium leading-tight"
-                        : "truncate text-sm font-medium leading-tight"
-                    }
+                <span className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/45 text-sm font-medium text-white opacity-0 transition-opacity group-hover/hero:opacity-100">
+                  <Play className="size-4 fill-current" />
+                  Play
+                </span>
+              </button>
+              <div className={isSidebar ? "space-y-1 p-3" : "space-y-1 p-2.5"}>
+                <p
+                  className={`truncate font-medium leading-tight ${
+                    isSidebar ? "text-sm" : "text-xs"
+                  }`}
+                >
+                  {tabTitle}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {hostnameOf(tabUrl)}
+                </p>
+                <div className="flex items-center gap-1.5 pt-0.5">
+                  <Select
+                    value={maxHeight}
+                    onValueChange={(v) => {
+                      if (v) setMaxHeight(v);
+                      chrome.storage.sync.set({ maxHeight: v });
+                    }}
                   >
-                    {tabTitle}
-                  </p>
-                )}
+                    <SelectTrigger
+                      size="sm"
+                      aria-label="Resolution"
+                      className="h-7! rounded-full bg-muted/60 px-2.5! text-[11px]"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {QUALITY_ITEMS.map((q) => (
+                        <SelectItem key={q.value} value={q.value}>
+                          {q.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={codec}
+                    onValueChange={(v) => {
+                      if (v) setCodec(v);
+                      chrome.storage.sync.set({ codec: v });
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      aria-label="Codec"
+                      className="h-7! rounded-full bg-muted/60 px-2.5! text-[11px]"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CODEC_ITEMS.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span
+                    className="ml-auto shrink-0 text-muted-foreground"
+                    title="Falls back to the best available option if the video doesn't offer the selected quality or codec."
+                  >
+                    <Info className="size-3.5" />
+                  </span>
+                </div>
               </div>
-              <p
-                className={
-                  mode === "popup"
-                    ? "mt-0.5 truncate text-[11px] text-muted-foreground"
-                    : "mt-1 truncate text-xs text-muted-foreground"
-                }
-              >
-                {tabUrl}
+            </div>
+
+            <Button
+              className="h-9 w-full gap-1.5"
+              onClick={handlePlayCurrent}
+              disabled={sending}
+            >
+              {sending ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin" /> Sending...
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <Play className="size-4 fill-current" />
+                  {isPlaylist ? "Play playlist" : "Play"}
+                </span>
+              )}
+            </Button>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed bg-muted/30 px-4 py-6 text-center">
+              <MonitorPlay className="size-5 text-muted-foreground" />
+              <p className="text-xs font-medium">No video on this tab</p>
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                Open a video site (YouTube, etc.), then hit Play.
               </p>
             </div>
-          </div>
+            <Button className="h-9 w-full gap-1.5" disabled>
+              <Play className="size-4 fill-current" />
+              Play
+            </Button>
+          </>
         )}
-
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <div className="flex-1 space-y-1">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Resolution
-              </span>
-              <Select
-                value={maxHeight}
-                onValueChange={(v) => {
-                  if (v) setMaxHeight(v);
-                  chrome.storage.sync.set({ maxHeight: v });
-                }}
-              >
-                <SelectTrigger
-                  className={
-                    mode === "popup"
-                      ? "h-8 w-full text-xs"
-                      : "h-9 w-full text-sm"
-                  }
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="2160">4K</SelectItem>
-                  <SelectItem value="1440">1440p</SelectItem>
-                  <SelectItem value="1080">1080p</SelectItem>
-                  <SelectItem value="720">720p</SelectItem>
-                  <SelectItem value="480">480p</SelectItem>
-                  <SelectItem value="a">Audio only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex-1 space-y-1">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Codec
-              </span>
-              <Select
-                value={codec}
-                onValueChange={(v) => {
-                  if (v) setCodec(v);
-                  chrome.storage.sync.set({ codec: v });
-                }}
-              >
-                <SelectTrigger
-                  className={
-                    mode === "popup"
-                      ? "h-8 w-full text-xs"
-                      : "h-9 w-full text-sm"
-                  }
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any</SelectItem>
-                  <SelectItem value="h264">H.264</SelectItem>
-                  <SelectItem value="vp9">VP9</SelectItem>
-                  <SelectItem value="av1">AV1</SelectItem>
-                  <SelectItem value="h265">H.265</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            Falls back to the best available option if the video doesn't offer
-            the selected quality or codec.
-          </p>
-        </div>
-
-        <Button
-          size={mode === "popup" ? "sm" : "default"}
-          className="w-full gap-1.5"
-          onClick={handlePlayCurrent}
-          disabled={sending || !tabUrl}
-        >
-          {sending ? (
-            <span className="flex items-center gap-2">
-              <Loader2 className="size-4 animate-spin" /> Sending...
-            </span>
-          ) : (
-            <span className="flex items-center gap-1.5">
-              <Play className="size-3.5 fill-current" />
-              {isPlaylist ? "Play playlist" : "Play with Media Launcher"}
-            </span>
-          )}
-        </Button>
 
         {status && !status.success && (
           <div className="flex items-start gap-1.5 rounded-md bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
@@ -367,36 +513,119 @@ export default function Popup({
         {history.length > 0 && (
           <>
             <Separator />
-            <div>
-              <div className="mb-1.5 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                <History className="size-3" />
-                <span>Recent</span>
+            <div className={isSidebar ? "flex min-h-0 flex-1 flex-col" : ""}>
+              <div className="mb-1 flex shrink-0 items-center gap-1">
                 <button
                   type="button"
-                  className="ml-auto flex items-center gap-0.5 rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  title="Clear history"
-                  onClick={async () => {
-                    await clearHistory();
-                    setHistory([]);
-                  }}
+                  aria-expanded={historyOpen}
+                  className="flex flex-1 items-center gap-1 rounded p-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase transition-colors hover:bg-accent hover:text-foreground"
+                  onClick={toggleHistory}
                 >
-                  <Trash2 className="size-3" />
-                  <span className="text-[10px]">Clear</span>
+                  <History className="size-3" />
+                  <span>Recent</span>
+                  <span className="text-[10px] tracking-normal normal-case opacity-70">
+                    {history.length}
+                  </span>
+                  <ChevronDown
+                    className={`ml-auto size-3 transition-transform ${
+                      historyOpen ? "" : "-rotate-90"
+                    }`}
+                  />
                 </button>
-              </div>
-              <div className="max-h-40 space-y-1 overflow-y-auto">
-                {history.slice(0, 10).map((entry) => (
+                {historyOpen && (
                   <button
                     type="button"
-                    key={entry.url + entry.timestamp}
-                    onClick={() => handlePlay(entry.url, entry.title)}
-                    className="w-full truncate rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    title={entry.url}
+                    className="flex items-center gap-0.5 rounded p-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    title="Clear history"
+                    onClick={async () => {
+                      await clearHistory();
+                      setHistory([]);
+                    }}
                   >
-                    {entry.title || entry.url}
+                    <Trash2 className="size-3" />
+                    <span>Clear</span>
                   </button>
-                ))}
+                )}
               </div>
+              {historyOpen && (
+                <div
+                  className={
+                    isSidebar
+                      ? "no-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto"
+                      : `no-scrollbar space-y-0.5 ${
+                          showAllHistory ? "" : "max-h-30 overflow-y-auto"
+                        }`
+                  }
+                >
+                  {history
+                    .slice(0, isSidebar || showAllHistory ? 20 : 10)
+                    .map((entry) => {
+                      const id = getYoutubeId(entry.url);
+                      return (
+                        <div
+                          key={entry.url + entry.timestamp}
+                          className="group flex items-center gap-0.5 rounded-lg pr-0.5 hover:bg-accent"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handlePlay(entry.url, entry.title)}
+                            className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 text-left ${
+                              isSidebar ? "py-1" : "py-0.5"
+                            }`}
+                            title={entry.title || entry.url}
+                          >
+                            {id ? (
+                              <img
+                                src={`https://img.youtube.com/vi/${id}/mqdefault.jpg`}
+                                alt=""
+                                className={`${
+                                  isSidebar ? "h-9 w-16" : "h-6 w-11"
+                                } shrink-0 rounded-md border object-cover`}
+                              />
+                            ) : (
+                              <span
+                                className={`${
+                                  isSidebar ? "flex h-9 w-16" : "flex h-6 w-11"
+                                } shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground`}
+                              >
+                                <History className="size-3.5" />
+                              </span>
+                            )}
+                            <span className="min-w-0 flex-1 truncate text-xs">
+                              {entry.title || entry.url}
+                            </span>
+                            <span className="shrink-0 text-[10px] text-muted-foreground">
+                              {timeAgo(entry.timestamp)}
+                            </span>
+                          </button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
+                            title="Remove"
+                            onClick={() => void handleRemove(entry.url)}
+                          >
+                            <X className="size-3" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+              {historyOpen && !isSidebar && history.length > 10 && (
+                <button
+                  type="button"
+                  className="mt-0.5 flex w-full items-center justify-center gap-1 rounded-md py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  onClick={toggleShowAll}
+                >
+                  <ChevronDown
+                    className={`size-3 transition-transform ${
+                      showAllHistory ? "rotate-180" : ""
+                    }`}
+                  />
+                  {showAllHistory ? "Show less" : `Show all ${history.length}`}
+                </button>
+              )}
             </div>
           </>
         )}

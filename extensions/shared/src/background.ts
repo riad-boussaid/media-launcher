@@ -88,6 +88,43 @@ function setTemporaryBadge(text: string, color: string) {
   chrome.alarms.create("revert-badge", { when: Date.now() + 3000 });
 }
 
+// While the side panel is open, the toolbar icon focuses the panel instead of
+// opening the popup. Chrome exposes no sidePanel.isOpen(), so the panel page
+// syncs its visibility directly into storage.session and flips the action
+// target: empty popup -> onClicked fires (focus panel), popup path restored
+// when the panel hides. Keys here must match the panel page (Popup.tsx).
+const SIDEBAR_FLAG_PREFIX = "sidebar-open:";
+
+async function setIconTarget(target: "sidebar" | "popup"): Promise<void> {
+  await chrome.action.setPopup({
+    popup: target === "sidebar" ? "" : "popup.html",
+  });
+}
+
+const hasSidePanel = typeof chrome.sidePanel !== "undefined";
+
+if (hasSidePanel) {
+  chrome.action.onClicked.addListener((tab) => {
+    void (async () => {
+      const key = SIDEBAR_FLAG_PREFIX + tab.windowId;
+      const flag = await chrome.storage.session.get(key);
+      if (flag[key]) {
+        try {
+          await chrome.sidePanel.open({ windowId: tab.windowId });
+          return;
+        } catch {
+          // Panel may have closed without a pagehide event — fall through.
+          await chrome.storage.session.remove(key);
+          await setIconTarget("popup");
+          return;
+        }
+      }
+      // Stale icon target without a flag: restore the popup for next click.
+      await setIconTarget("popup");
+    })();
+  });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "play-page",
