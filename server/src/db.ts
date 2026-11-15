@@ -49,7 +49,8 @@ export function initDatabase(): void {
       custom_player_args TEXT NOT NULL DEFAULT '{url}',
       bin_dir TEXT NOT NULL DEFAULT '',
       auto_start INTEGER NOT NULL DEFAULT 0,
-      start_minimized INTEGER NOT NULL DEFAULT 0
+      start_minimized INTEGER NOT NULL DEFAULT 0,
+      resume_enabled INTEGER NOT NULL DEFAULT 1
     )
   `);
   sqlite.exec(`
@@ -58,12 +59,15 @@ export function initDatabase(): void {
       url TEXT NOT NULL,
       title TEXT NOT NULL DEFAULT '',
       thumbnail TEXT NOT NULL DEFAULT '',
-      timestamp INTEGER NOT NULL
+      timestamp INTEGER NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0
     )
   `);
   sqlite.exec(
     "CREATE INDEX IF NOT EXISTS idx_history_ts ON history(timestamp DESC)",
   );
+
+  migrateAddColumns(sqlite);
 
   // Seed default settings if empty
   const existing = db.select().from(schema.settings).get();
@@ -85,6 +89,27 @@ export function initDatabase(): void {
 
   // Legacy migration: merge mpv_args into player_args if needed
   migrateMpvArgs(sqlite);
+}
+
+// Adds columns introduced after the initial release to databases created by
+// older builds (CREATE TABLE IF NOT EXISTS won't touch existing tables).
+function migrateAddColumns(sqlite: Database.Database): void {
+  const historyCols = sqlite.prepare("PRAGMA table_info(history)").all() as {
+    name: string;
+  }[];
+  if (!historyCols.some((c) => c.name === "position")) {
+    sqlite.exec(
+      "ALTER TABLE history ADD COLUMN position INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  const settingsCols = sqlite.prepare("PRAGMA table_info(settings)").all() as {
+    name: string;
+  }[];
+  if (!settingsCols.some((c) => c.name === "resume_enabled")) {
+    sqlite.exec(
+      "ALTER TABLE settings ADD COLUMN resume_enabled INTEGER NOT NULL DEFAULT 1",
+    );
+  }
 }
 
 function migrateMpvArgs(sqlite: Database.Database): void {
@@ -136,6 +161,7 @@ export function getSettings(): Settings {
       binDir: "",
       autoStart: false,
       startMinimized: false,
+      resumePlayback: true,
     };
   }
   return {
@@ -146,6 +172,7 @@ export function getSettings(): Settings {
     binDir: r.binDir,
     autoStart: r.autoStart,
     startMinimized: r.startMinimized,
+    resumePlayback: r.resumeEnabled,
   };
 }
 
@@ -175,6 +202,8 @@ export function setSettings(partial: SettingsUpdate): Settings {
     update.autoStart = Boolean(partial.autoStart);
   if (partial.startMinimized !== undefined)
     update.startMinimized = Boolean(partial.startMinimized);
+  if (partial.resumePlayback !== undefined)
+    update.resumeEnabled = Boolean(partial.resumePlayback);
 
   if (Object.keys(update).length > 0) {
     db.update(schema.settings)
@@ -218,9 +247,29 @@ export function addHistory(
     title: title || existing?.title || "",
     thumbnail: thumbnail || existing?.thumbnail || "",
     timestamp: timestamp ?? Date.now(),
+    position: existing?.position ?? 0,
   };
   db.insert(schema.history).values(entry).run();
   return entry;
+}
+
+export function getHistoryPosition(url: string): number {
+  const row = db
+    .select({ position: schema.history.position })
+    .from(schema.history)
+    .where(eq(schema.history.url, url))
+    .get();
+  return row?.position ?? 0;
+}
+
+export function updateHistoryPositionByUrl(
+  url: string,
+  position: number,
+): void {
+  db.update(schema.history)
+    .set({ position: Math.max(0, Math.floor(position)) })
+    .where(eq(schema.history.url, url))
+    .run();
 }
 
 export function deleteHistory(id: string): HistoryEntry[] {
@@ -234,11 +283,14 @@ export function clearHistory(): void {
 
 export function updateHistoryEntry(
   id: string,
-  partial: Partial<Pick<HistoryEntry, "title" | "thumbnail">>,
+  partial: Partial<Pick<HistoryEntry, "title" | "thumbnail" | "position">>,
 ): void {
-  const update: Record<string, string> = {};
+  const update: Record<string, string | number> = {};
   if (partial.title !== undefined) update.title = partial.title;
   if (partial.thumbnail !== undefined) update.thumbnail = partial.thumbnail;
+  if (partial.position !== undefined) {
+    update.position = Math.max(0, Math.floor(partial.position));
+  }
   if (Object.keys(update).length > 0) {
     db.update(schema.history)
       .set(update)

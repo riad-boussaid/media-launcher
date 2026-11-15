@@ -1,5 +1,13 @@
 import { type DragEvent, useEffect, useState } from "react";
-import { getHistory, type HistoryEntry, replayUrl } from "../lib/api";
+import {
+  getHistory,
+  getPlayerStatus,
+  type HistoryEntry,
+  type PlayerStatus,
+  replayUrl,
+  skipTrack,
+  togglePause,
+} from "../lib/api";
 
 function isValidUrl(value: string): boolean {
   try {
@@ -18,6 +26,13 @@ function hostOf(url: string): string {
   }
 }
 
+function formatTime(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
 export default function Play() {
   const [urlInput, setUrlInput] = useState("");
   const [toast, setToast] = useState<{ msg: string; variant: string } | null>(
@@ -26,16 +41,27 @@ export default function Play() {
   const [playing, setPlaying] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [recent, setRecent] = useState<HistoryEntry[]>([]);
+  const [player, setPlayer] = useState<PlayerStatus | null>(null);
 
   const showToast = (msg: string, variant = "toast-success") => {
     setToast({ msg, variant });
     setTimeout(() => setToast(null), 2200);
   };
 
+  const loadPlayer = () => {
+    void getPlayerStatus()
+      .then(setPlayer)
+      .catch(() => {});
+  };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
   useEffect(() => {
     void getHistory()
       .then((items) => setRecent(items.slice(0, 3)))
       .catch(() => {});
+    loadPlayer();
+    const t = setInterval(loadPlayer, 3000);
+    return () => clearInterval(t);
   }, []);
 
   const playUrl = async (url: string) => {
@@ -52,6 +78,7 @@ export default function Play() {
       void getHistory()
         .then((items) => setRecent(items.slice(0, 3)))
         .catch(() => {});
+      loadPlayer();
     } finally {
       setPlaying(false);
     }
@@ -192,6 +219,89 @@ export default function Play() {
         >
           {playing ? "Sending…" : "Play"}
         </button>
+
+        {player?.alive && player.url && (
+          <div className="card p-4 mt-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] text-muted uppercase tracking-[0.06em] font-semibold mb-1">
+                  Now playing
+                </div>
+                <div
+                  className="text-sm text-text font-medium truncate"
+                  title={player.title || player.url}
+                >
+                  {player.title || hostOf(player.url)}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  title={player.paused ? "Resume" : "Pause"}
+                  disabled={!player.ipcReady}
+                  onClick={() => {
+                    void togglePause().then(loadPlayer);
+                  }}
+                >
+                  {player.paused ? "Resume" : "Pause"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  title="Skip to next in queue"
+                  disabled={!player.ipcReady || player.queue.length === 0}
+                  onClick={() => {
+                    void skipTrack().then(loadPlayer);
+                  }}
+                >
+                  Skip
+                </button>
+              </div>
+            </div>
+
+            {player.duration > 0 && (
+              <div className="mt-2.5">
+                <div className="progress-track">
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round((player.position / player.duration) * 100),
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] text-muted mt-1">
+                  <span>{formatTime(player.position)}</span>
+                  <span>{formatTime(player.duration)}</span>
+                </div>
+              </div>
+            )}
+
+            {player.queue.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-border">
+                <div className="text-[10px] text-muted uppercase tracking-[0.06em] font-semibold mb-1.5">
+                  Up next
+                </div>
+                {player.queue.slice(0, 3).map((item, index) => (
+                  <div
+                    key={`${item.url}-${index}`}
+                    className="flex gap-1.5 text-xs text-text-dim leading-snug"
+                  >
+                    <span className="text-muted flex-shrink-0">
+                      {index + 1}.
+                    </span>
+                    <span className="truncate">
+                      {item.title || hostOf(item.url)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {recent.length > 0 && (
           <div className="mt-7">

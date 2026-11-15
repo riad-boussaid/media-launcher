@@ -1,9 +1,19 @@
 import { join } from "node:path";
 import { app, type BrowserWindow, Menu, nativeImage, Tray } from "electron";
-import { getNowPlaying, getSettings, setSettings } from "./store";
+import {
+  getPlayerStatus,
+  getSettings,
+  type PlayerStatus,
+  setSettings,
+  skipTrack,
+  togglePause,
+} from "./store";
 
 let tray: Tray | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+// Snapshot of the player state the current menu was built from — the menu is
+// only rebuilt when it changes, so an open menu isn't dismissed every 5 s.
+let lastMenuState = "";
 
 function displayName(url: string, title: string): string {
   if (title) return title;
@@ -15,7 +25,14 @@ function displayName(url: string, title: string): string {
   }
 }
 
-async function buildMenu(win: BrowserWindow): Promise<Menu> {
+function truncate(text: string, max = 50): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+async function buildMenu(
+  win: BrowserWindow,
+  player: PlayerStatus,
+): Promise<Menu> {
   const settings = await getSettings();
 
   const items: Electron.MenuItemConstructorOptions[] = [
@@ -37,6 +54,28 @@ async function buildMenu(win: BrowserWindow): Promise<Menu> {
         win.webContents.send("navigate", "history");
       },
     },
+  ];
+
+  if (player.alive && player.url) {
+    items.push(
+      {
+        label: `Now playing: ${truncate(player.title || displayName(player.url))}`,
+        enabled: false,
+      },
+      {
+        label: player.paused ? "Resume" : "Pause",
+        enabled: player.ipcReady,
+        click: () => void togglePause(),
+      },
+      {
+        label: "Skip",
+        enabled: player.ipcReady,
+        click: () => void skipTrack(),
+      },
+    );
+  }
+
+  items.push(
     {
       label: "Start on boot",
       type: "checkbox",
@@ -55,7 +94,7 @@ async function buildMenu(win: BrowserWindow): Promise<Menu> {
         app.quit();
       },
     },
-  ];
+  );
 
   return Menu.buildFromTemplate(items);
 }
@@ -69,12 +108,26 @@ export function createTray(win: BrowserWindow): void {
 
   const refresh = async () => {
     try {
-      const nowPlaying = await getNowPlaying();
+      const player = await getPlayerStatus();
       tray?.setToolTip(
-        nowPlaying
-          ? `media-launcher — ${displayName(nowPlaying.url, nowPlaying.title)}`
+        player.alive
+          ? `media-launcher — ${truncate(
+              player.title || displayName(player.url ?? ""),
+            )}`
           : "media-launcher",
       );
+      // Rebuild the context menu only when playback state changed.
+      const state = JSON.stringify([
+        player.alive,
+        player.ipcReady,
+        player.paused,
+        player.title,
+        player.queue.length,
+      ]);
+      if (state !== lastMenuState) {
+        lastMenuState = state;
+        void buildMenu(win, player).then((menu) => tray?.setContextMenu(menu));
+      }
     } catch {
       // Server unreachable — keep last known state
     }
@@ -89,7 +142,6 @@ export function createTray(win: BrowserWindow): void {
   });
 
   void refresh();
-  void buildMenu(win).then((menu) => tray?.setContextMenu(menu));
   pollTimer = setInterval(() => void refresh(), 5000);
   win.on("show", () => void refresh());
   win.on("hide", () => void refresh());
@@ -97,7 +149,10 @@ export function createTray(win: BrowserWindow): void {
 
 export function refreshTrayMenu(win: BrowserWindow): void {
   if (!tray) return;
-  void buildMenu(win).then((menu) => tray?.setContextMenu(menu));
+  lastMenuState = "";
+  void getPlayerStatus()
+    .then((player) => buildMenu(win, player))
+    .then((menu) => tray?.setContextMenu(menu));
 }
 
 export function destroyTray(): void {

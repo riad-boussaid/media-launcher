@@ -9,6 +9,7 @@ export interface HistoryEntry {
   title: string;
   thumbnail: string;
   timestamp: number;
+  position: number;
 }
 
 export interface Settings {
@@ -20,6 +21,24 @@ export interface Settings {
   binDir: string;
   autoStart: boolean;
   startMinimized: boolean;
+  resumePlayback: boolean;
+}
+
+export interface PlayerQueueEntry {
+  url: string;
+  title: string;
+}
+
+export interface PlayerStatus {
+  supported: boolean;
+  alive: boolean;
+  ipcReady: boolean;
+  url: string | null;
+  title: string;
+  position: number;
+  duration: number;
+  paused: boolean;
+  queue: PlayerQueueEntry[];
 }
 
 const DEFAULT_SERVER_URL = "http://localhost:5000";
@@ -100,6 +119,7 @@ export async function getSettings(): Promise<Settings> {
       binDir: serverSettings.binDir ?? "",
       autoStart: serverSettings.autoStart ?? false,
       startMinimized: serverSettings.startMinimized ?? false,
+      resumePlayback: serverSettings.resumePlayback ?? true,
     };
   } catch {
     return {
@@ -111,6 +131,7 @@ export async function getSettings(): Promise<Settings> {
       binDir: "",
       autoStart: false,
       startMinimized: false,
+      resumePlayback: true,
     };
   }
 }
@@ -145,6 +166,8 @@ export async function setSettings(
     serverPayload.autoStart = partial.autoStart;
   if (partial.startMinimized !== undefined)
     serverPayload.startMinimized = partial.startMinimized;
+  if (partial.resumePlayback !== undefined)
+    serverPayload.resumePlayback = partial.resumePlayback;
 
   if (Object.keys(serverPayload).length > 0) {
     await api<Record<string, unknown>>("/settings", {
@@ -164,6 +187,42 @@ export async function getHistory(): Promise<HistoryEntry[]> {
 export async function getNowPlaying(): Promise<HistoryEntry | null> {
   const history = await api<HistoryEntry[]>("/history");
   return history[0] ?? null;
+}
+
+export async function getPlayerStatus(): Promise<PlayerStatus> {
+  try {
+    return await api<PlayerStatus>("/player");
+  } catch {
+    return {
+      supported: false,
+      alive: false,
+      ipcReady: false,
+      url: null,
+      title: "",
+      position: 0,
+      duration: 0,
+      paused: false,
+      queue: [],
+    };
+  }
+}
+
+export async function togglePause(): Promise<boolean> {
+  try {
+    await api("/player/pause", { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function skipTrack(): Promise<boolean> {
+  try {
+    await api("/player/skip", { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function replayUrl(

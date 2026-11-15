@@ -1,0 +1,292 @@
+import type { ChildProcess } from "node:child_process";
+import { connect, type Socket } from "node:net";
+import { getSettings, updateHistoryPositionByUrl } from "./db.js";
+
+// Talks to mpv over its JSON IPC socket (--input-ipc-server): observes
+// playback properties, exposes now-playing state and controls, and persists
+// the playback position into history for resume. The socket is created per
+// mpv launch and dies with the process, so everything here is session-local.
+
+export interface QueueEntry {
+  url: string;
+  title: string;
+}
+
+export interface PlayerStatus {
+  /** True when the configured player is mpv (the only one with IPC support). */
+  supported: boolean;
+  /** The mpv process is running. */
+  alive: boolean;
+  /** The IPC socket is connected — controls work. */
+  ipcReady: boolean;
+  url: string | null;
+  title: string;
+  position: number;
+  duration: number;
+  paused: boolean;
+  queue: QueueEntry[];
+}
+
+interface PlaylistEntry {
+  filename: string;
+  title?: string;
+  current?: boolean;
+}
+
+interface NowPlaying {
+  url: string;
+  title: string;
+  position: number;
+  duration: number;
+  paused: boolean;
+}
+
+const OBSERVED = [
+  "time-pos",
+  "duration",
+  "pause",
+  "media-title",
+  "playlist",
+];
+
+let proc: ChildProcess | null = null;
+let socket: Socket | null = null;
+let ipcReady = false;
+let playlist: PlaylistEntry[] = [];
+let current: NowPlaying | null = null;
+let flushTimer: ReturnType<typeof setInterval> | null = null;
+let buffer = "";
+let requestId = 0;
+const pending = new Map<number, { resolve: (value: unknown) => void }>();
+
+function handleLine(line: string): void {
+  if (!line.trim()) return;
+  let msg: Record<string, unknown>;
+  try {
+    msg = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+
+  if (typeof msg.request_id === "number") {
+    const waiter = pending.get(msg.request_id);
+    if (waiter) {
+      pending.delete(msg.request_id);
+      waiter.resolve(msg.error === "success" ? msg.data : null);
+    }
+    return;
+  }
+
+  if (msg.event === "property-change" && current) {
+    const data = msg.data;
+    switch (msg.name) {
+      case "time-pos":
+        current.position = typeof data === "number" ? data : 0;
+        break;
+      case "duration":
+        current.duration = typeof data === "number" ? data : 0;
+        break;
+      case "pause":
+        current.paused = data === true;
+        break;
+      case "media-title":
+        if (typeof data === "string" && data) current.title = data;
+        break;
+      case "playlist":
+        if (Array.isArray(data)) {
+          playlist = data as PlaylistEntry[];
+          const cur = playlist.find((e) => e.current === true);
+          // Advancing to the next queued track resets playback state.
+          if (cur && cur.filename !== current.url) {
+            current = {
+              url: cur.filename,
+              title: "",
+              position: 0,
+              duration: 0,
+              paused: false,
+            };
+          }
+        }
+        break;
+    }
+    return;
+  }
+
+  if (msg.event === "end-file" && current) {
+    if (msg.reason === "eof") {
+      // Watched to the end — a replay should start over.
+      updateHistoryPositionByUrl(current.url, 0);
+    } else {
+      flushPosition();
+    }
+  }
+}
+
+/** Persists the current position, unless the video is effectively finished. */
+function flushPosition(): void {
+  if (!current?.url || current.position <= 0) return;
+  let position = current.position;
+  if (current.duration > 0 && position / current.duration >= 0.95) {
+    position = 0;
+  }
+  if (position > 0) {
+    updateHistoryPositionByUrl(current.url, Math.floor(position));
+  }
+}
+
+/**
+ * Sends a command. `sent` is false only when there is no connected socket.
+ * A sent command whose response was lost (e.g. the socket churns during a
+ * track transition) still executed — observed properties re-sync the state.
+ */
+function request(
+  command: unknown[],
+  timeoutMs = 3000,
+): Promise<{ sent: boolean; data: unknown }> {
+  return new Promise((resolve) => {
+    if (!socket || !ipcReady) return resolve({ sent: false, data: null });
+    requestId += 1;
+    const id = requestId;
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      resolve({ sent: true, data: null });
+    }, timeoutMs);
+    pending.set(id, {
+      resolve: (value) => {
+        clearTimeout(timer);
+        resolve({ sent: true, data: value });
+      },
+    });
+    socket.write(`${JSON.stringify({ command, request_id: id })}\n`);
+  });
+}
+
+function observeAll(): void {
+  OBSERVED.forEach((name, index) => {
+    void request(["observe_property", index + 1, name], 1000);
+  });
+}
+
+function connectPipe(pipePath: string): void {
+  let attempts = 20; // mpv creates the socket shortly after spawning
+  const tryConnect = () => {
+    if (!proc || proc.exitCode !== null) return;
+    const s = connect({ path: pipePath });
+    s.setEncoding("utf8");
+    s.once("connect", () => {
+      socket = s;
+      ipcReady = true;
+      buffer = "";
+      observeAll();
+    });
+    s.on("data", (chunk: string) => {
+      buffer += chunk;
+      let index: number;
+      while ((index = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, index);
+        buffer = buffer.slice(index + 1);
+        handleLine(line);
+      }
+    });
+    s.once("error", () => {
+      s.destroy();
+    });
+    s.once("close", () => {
+      ipcReady = false;
+      if (socket === s) socket = null;
+      // mpv recreates nothing — but while it lives the pipe should exist, so
+      // retry briefly (covers a slow first connect too).
+      if (proc && proc.exitCode === null && attempts > 0) {
+        attempts -= 1;
+        setTimeout(tryConnect, 1000);
+      }
+    });
+  };
+  tryConnect();
+}
+
+/** Tracks a freshly spawned mpv instance and starts observing it. */
+export function registerPlayer(
+  child: ChildProcess,
+  pipePath: string,
+  url: string,
+): void {
+  proc = child;
+  current = { url, title: "", position: 0, duration: 0, paused: false };
+  connectPipe(pipePath);
+  flushTimer = setInterval(() => flushPosition(), 10000);
+  child.once("exit", () => {
+    flushPosition();
+    if (flushTimer) {
+      clearInterval(flushTimer);
+      flushTimer = null;
+    }
+    if (socket) socket.destroy();
+    socket = null;
+    ipcReady = false;
+    playlist = [];
+    current = null;
+    proc = null;
+  });
+}
+
+export function getPlayerStatus(): PlayerStatus {
+  const alive =
+    proc !== null && proc.exitCode === null && proc.signalCode === null;
+  const currentIndex = playlist.findIndex((e) => e.current === true);
+  const queue =
+    currentIndex >= 0
+      ? playlist
+          .slice(currentIndex + 1)
+          .map((e) => ({ url: e.filename, title: e.title ?? "" }))
+      : [];
+  return {
+    supported: getSettings().player === "mpv",
+    alive,
+    ipcReady,
+    url: current?.url ?? null,
+    title: current?.title ?? "",
+    position: current?.position ?? 0,
+    duration: current?.duration ?? 0,
+    paused: current?.paused ?? false,
+    queue,
+  };
+}
+
+/** Replaces the currently playing video. */
+export async function playNow(url: string): Promise<boolean> {
+  if (!ipcReady || !current) return false;
+  flushPosition();
+  current = { url, title: "", position: 0, duration: 0, paused: false };
+  const res = await request(["loadfile", url, "replace"]);
+  return res.sent;
+}
+
+/** Appends to mpv's playlist, playing it when the current file ends. */
+export async function queueUrl(url: string): Promise<boolean> {
+  if (!ipcReady) return false;
+  const res = await request(["loadfile", url, "append-play"]);
+  return res.sent;
+}
+
+export async function togglePause(): Promise<boolean> {
+  if (!ipcReady || !current) return false;
+  const next = !current.paused;
+  const res = await request(["set_property", "pause", next]);
+  if (res.sent) current.paused = next;
+  return res.sent;
+}
+
+export async function skipTrack(): Promise<boolean> {
+  if (!ipcReady) return false;
+  const res = await request(["playlist-next", "force"]);
+  return res.sent;
+}
+
+// Best-effort position flush when the server is asked to terminate (unix).
+// On Windows the desktop kills the process tree hard, so the 10 s interval
+// flush is what keeps positions fresh there.
+process.once("SIGTERM", () => {
+  flushPosition();
+  process.exit(0);
+});

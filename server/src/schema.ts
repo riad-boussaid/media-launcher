@@ -14,6 +14,9 @@ export const settings = sqliteTable("settings", {
   startMinimized: integer("start_minimized", { mode: "boolean" })
     .notNull()
     .default(false),
+  resumeEnabled: integer("resume_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
 });
 
 export const history = sqliteTable("history", {
@@ -22,4 +25,5 @@ export const history = sqliteTable("history", {
   title: text("title").notNull().default(""),
   thumbnail: text("thumbnail").notNull().default(""),
   timestamp: integer("timestamp").notNull(),
+  position: integer("position").notNull().default(0),
 });

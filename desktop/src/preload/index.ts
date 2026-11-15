@@ -19,6 +19,9 @@ const api = {
   },
   player: {
     check: (exe: string) => ipcRenderer.invoke("player:check", exe),
+    status: () => ipcRenderer.invoke("player:status"),
+    togglePause: () => ipcRenderer.invoke("player:togglePause"),
+    skip: () => ipcRenderer.invoke("player:skip"),
   },
   downloads: {
     list: () => ipcRenderer.invoke("downloads:list"),

@@ -4,11 +4,20 @@ import {
   clearHistory,
   deleteHistory,
   getHistory,
+  getHistoryPosition,
   getSettings,
   setSettings,
   updateHistoryEntry,
 } from "./db.js";
 import { fetchMetadata } from "./metadata.js";
+import {
+  getPlayerStatus,
+  playNow,
+  queueUrl,
+  registerPlayer,
+  skipTrack,
+  togglePause,
+} from "./player-ipc.js";
 import { launchPlayer } from "./player.js";
 
 const app = new Hono();
@@ -46,11 +55,12 @@ app.get("/api/health", (c) => {
 
 app.post("/", async (c) => {
   try {
-    const { url, options, title, thumbnail } = await c.req.json<{
+    const { url, options, title, thumbnail, queue } = await c.req.json<{
       url?: string;
       options?: string[];
       title?: string;
       thumbnail?: string;
+      queue?: boolean;
     }>();
     if (!isUrl(url)) {
       return c.json({ err: "url must be a valid http(s) URL" }, 400);
@@ -58,9 +68,44 @@ app.post("/", async (c) => {
     if (!isOptions(options)) {
       return c.json({ err: "options must be an array of strings" }, 400);
     }
-    const result = await launchPlayer(url, options ?? []);
+
+    const settings = getSettings();
+    const isMpv = (settings.player || "mpv") === "mpv";
+    const player = getPlayerStatus();
+
+    // An mpv instance is already playing — enqueue, or replace it in place.
+    if (isMpv && player.alive && player.ipcReady) {
+      const ok = queue === true ? await queueUrl(url) : await playNow(url);
+      if (!ok) {
+        return c.json(
+          { err: "Could not control the running mpv instance" },
+          503,
+        );
+      }
+      const entry = addHistory(
+        url,
+        typeof title === "string" ? title : "",
+        typeof thumbnail === "string" ? thumbnail : "",
+      );
+      enrichMetadata(entry.id, url);
+      return c.json({ data: queue ? "queued" : "success" });
+    }
+
+    const launchOptions = [...(options ?? [])];
+    // Auto-resume: continue a partially watched video where it left off.
+    if (isMpv && settings.resumePlayback) {
+      const position = getHistoryPosition(url);
+      if (position > 60) {
+        launchOptions.unshift(`--start=${Math.floor(position)}`);
+      }
+    }
+
+    const result = await launchPlayer(url, launchOptions);
     if (!result.success) {
       return c.json({ err: result.error }, 503);
+    }
+    if (result.proc && result.pipePath) {
+      registerPlayer(result.proc, result.pipePath, url);
     }
     const entry = addHistory(
       url,
@@ -74,6 +119,26 @@ app.post("/", async (c) => {
     console.error(message);
     return c.json({ err: message }, 500);
   }
+});
+
+app.get("/player", (c) => {
+  return c.json(getPlayerStatus());
+});
+
+app.post("/player/pause", async (c) => {
+  const ok = await togglePause();
+  if (!ok) {
+    return c.json({ err: "No mpv instance with IPC connected" }, 409);
+  }
+  return c.json({ data: "ok" });
+});
+
+app.post("/player/skip", async (c) => {
+  const ok = await skipTrack();
+  if (!ok) {
+    return c.json({ err: "No mpv instance with IPC connected" }, 409);
+  }
+  return c.json({ data: "ok" });
 });
 
 app.get("/history", (c) => {
@@ -111,12 +176,18 @@ app.put("/history/:id", async (c) => {
   try {
     const id = c.req.param("id");
     const body =
-      await c.req.json<Partial<{ title: string; thumbnail: string }>>();
+      await c.req.json<Partial<{ title: string; thumbnail: string; position: number }>>();
     if (body.title !== undefined && typeof body.title !== "string") {
       return c.json({ err: "title must be a string" }, 400);
     }
     if (body.thumbnail !== undefined && typeof body.thumbnail !== "string") {
       return c.json({ err: "thumbnail must be a string" }, 400);
+    }
+    if (
+      body.position !== undefined &&
+      (typeof body.position !== "number" || !Number.isFinite(body.position))
+    ) {
+      return c.json({ err: "position must be a number" }, 400);
     }
     updateHistoryEntry(id, body);
     return c.json({ data: "updated" });

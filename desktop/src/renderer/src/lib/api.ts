@@ -4,6 +4,7 @@ export interface HistoryEntry {
   title: string;
   thumbnail: string;
   timestamp: number;
+  position: number;
 }
 
 export interface Settings {
@@ -15,6 +16,24 @@ export interface Settings {
   binDir: string;
   autoStart: boolean;
   startMinimized: boolean;
+  resumePlayback: boolean;
+}
+
+export interface PlayerQueueEntry {
+  url: string;
+  title: string;
+}
+
+export interface PlayerStatus {
+  supported: boolean;
+  alive: boolean;
+  ipcReady: boolean;
+  url: string | null;
+  title: string;
+  position: number;
+  duration: number;
+  paused: boolean;
+  queue: PlayerQueueEntry[];
 }
 
 export interface DownloadItem {
@@ -93,6 +112,18 @@ export async function replayUrl(
 
 export async function checkPlayer(exe: string): Promise<boolean> {
   return api.player.check(exe);
+}
+
+export async function getPlayerStatus(): Promise<PlayerStatus> {
+  return api.player.status();
+}
+
+export async function togglePause(): Promise<boolean> {
+  return api.player.togglePause();
+}
+
+export async function skipTrack(): Promise<boolean> {
+  return api.player.skip();
 }
 
 export async function getDownloads(): Promise<DownloadItem[]> {

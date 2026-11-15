@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { getSettings } from "./db.js";
+import { getDataDir, getSettings } from "./db.js";
 
 // Split a user-supplied command-line string into argv tokens. Shell-like
 // quoting only: an unclosed quote keeps the quote character in the token.
@@ -93,16 +93,19 @@ function resolvePlayerPath(
   return name;
 }
 
-export interface PlayerResult {
+export interface LaunchResult {
   success: boolean;
   error?: string;
+  /** The spawned process — only set for mpv (the player with IPC support). */
+  proc?: ChildProcess;
+  pipePath?: string;
 }
 
 function spawnPlayer(
   exe: string,
   args: string[],
   timeoutMs = 10000,
-): Promise<PlayerResult> {
+): Promise<LaunchResult> {
   return new Promise((resolve) => {
     const proc = spawn(exe, args, { stdio: "ignore" });
     const timer = setTimeout(() => {
@@ -124,27 +127,43 @@ function spawnPlayer(
     proc.once("spawn", () => {
       clearTimeout(timer);
       console.log(`[${exe}] ${args.join(" ")}`);
-      resolve({ success: true });
+      resolve({ success: true, proc });
     });
   });
+}
+
+// Unique per launch so concurrent mpv instances never collide, and so user
+// mpv processes with their own IPC sockets are never touched.
+function makeIpcPipePath(): string {
+  const unique = `${process.pid}-${Date.now()}`;
+  if (process.platform === "win32") {
+    return `\\\\.\\pipe\\media-launcher-${unique}`;
+  }
+  return join(getDataDir(), `mpv-${unique}.sock`);
 }
 
 export async function launchPlayer(
   url: string,
   extensionOptions: string[] = [],
-): Promise<PlayerResult> {
+): Promise<LaunchResult> {
   const settings = getSettings();
   const key = settings.player || "mpv";
   const exe = resolvePlayerPath(key, settings);
 
   let args: string[];
+  let pipePath: string | undefined;
 
   switch (key) {
     case "mpv": {
+      pipePath = makeIpcPipePath();
       const userArgs = parseArgs(settings.playerArgs?.mpv || "");
       args = [
         "--keep-open=yes",
         "--no-resume-playback",
+        // Start playing immediately, even if the user's mpv.conf says pause.
+        // User args come last and can still override.
+        "--pause=no",
+        `--input-ipc-server=${pipePath}`,
         ...extensionOptions,
         ...userArgs,
         "--",
@@ -171,5 +190,6 @@ export async function launchPlayer(
     }
   }
 
-  return spawnPlayer(exe, args);
+  const result = await spawnPlayer(exe, args);
+  return { ...result, pipePath: result.success ? pipePath : undefined };
 }

@@ -378,6 +378,14 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
                       <div className="text-xs overflow-hidden text-ellipsis whitespace-nowrap">
                         <span className="text-accent">{host}</span>
                         <span className="text-muted">{path}</span>
+                        {item.position > 60 && (
+                          <span className="text-muted ml-1.5">
+                            · resume {Math.floor(item.position / 60)}:
+                            {Math.floor(item.position % 60)
+                              .toString()
+                              .padStart(2, "0")}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div

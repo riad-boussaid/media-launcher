@@ -563,6 +563,13 @@ export default function SettingsPage() {
             </Field>
           </>
         )}
+
+        <ToggleRow
+          label="Resume where you left off"
+          description="Continue partially watched videos from their last position."
+          checked={settings.resumePlayback}
+          onChange={(checked) => update({ resumePlayback: checked })}
+        />
       </Section>
 
       <Section title="Startup">

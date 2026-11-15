@@ -60,7 +60,11 @@ const CODEC_PREFIXES: Record<string, string[]> = {
   h265: ["hvc1", "hev1"],
 };
 
-export async function sendUrl(url: string, title?: string): Promise<SendResult> {
+export async function sendUrl(
+  url: string,
+  title?: string,
+  queue?: boolean,
+): Promise<SendResult> {
   const opts = await chrome.storage.sync.get(defaultSettings);
   const mpvArgs: string[] = [];
 
@@ -110,7 +114,7 @@ export async function sendUrl(url: string, title?: string): Promise<SendResult> 
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ url, options: mpvArgs, title }),
+      body: JSON.stringify({ url, options: mpvArgs, title, queue }),
       signal: AbortSignal.timeout(10000),
     });
 

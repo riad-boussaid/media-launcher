@@ -6,6 +6,7 @@ export interface Settings {
   binDir: string;
   autoStart: boolean;
   startMinimized: boolean;
+  resumePlayback: boolean;
 }
 
 export type SettingsUpdate = Partial<Settings>;
@@ -16,4 +17,5 @@ export interface HistoryEntry {
   title: string;
   thumbnail: string;
   timestamp: number;
+  position: number;
 }

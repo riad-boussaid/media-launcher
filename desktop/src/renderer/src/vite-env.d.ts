@@ -26,22 +26,24 @@ interface ElectronAPI {
     get: () => Promise<{
       serverUrl: string;
       player: string;
-      mpvArgs: string;
       playerArgs: Record<string, string>;
       customPlayerPath: string;
       customPlayerArgs: string;
+      binDir: string;
       autoStart: boolean;
       startMinimized: boolean;
+      resumePlayback: boolean;
     }>;
     set: (partial: Record<string, unknown>) => Promise<{
       serverUrl: string;
       player: string;
-      mpvArgs: string;
       playerArgs: Record<string, string>;
       customPlayerPath: string;
       customPlayerArgs: string;
+      binDir: string;
       autoStart: boolean;
       startMinimized: boolean;
+      resumePlayback: boolean;
     }>;
   };
   history: {
@@ -52,6 +54,7 @@ interface ElectronAPI {
         title: string;
         thumbnail: string;
         timestamp: number;
+        position: number;
       }[]
     >;
     delete: (id: string) => Promise<
@@ -61,6 +64,7 @@ interface ElectronAPI {
         title: string;
         thumbnail: string;
         timestamp: number;
+        position: number;
       }[]
     >;
     clear: () => Promise<void>;
@@ -68,6 +72,19 @@ interface ElectronAPI {
   };
   player: {
     check: (exe: string) => Promise<boolean>;
+    status: () => Promise<{
+      supported: boolean;
+      alive: boolean;
+      ipcReady: boolean;
+      url: string | null;
+      title: string;
+      position: number;
+      duration: number;
+      paused: boolean;
+      queue: { url: string; title: string }[];
+    }>;
+    togglePause: () => Promise<boolean>;
+    skip: () => Promise<boolean>;
   };
   downloads: {
     list: () => Promise<DownloadItem[]>;

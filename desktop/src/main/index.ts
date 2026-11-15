@@ -29,10 +29,13 @@ import {
   clearHistory,
   deleteHistory,
   getHistory,
+  getPlayerStatus,
   getSettings,
   initDatabase,
   replayUrl,
   setSettings,
+  skipTrack,
+  togglePause,
 } from "./store";
 import { createTray, destroyTray, refreshTrayMenu } from "./tray";
 
@@ -139,6 +142,9 @@ if (!gotTheLock) {
     ipcMain.handle("player:check", async (_event, exe) =>
       checkPlayerExists(exe),
     );
+    ipcMain.handle("player:status", () => getPlayerStatus());
+    ipcMain.handle("player:togglePause", () => togglePause());
+    ipcMain.handle("player:skip", () => skipTrack());
     ipcMain.handle("downloads:list", () => listDownloads());
     ipcMain.handle("downloads:start", async (_event, id) => {
       await startDownload(id);

@@ -1,4 +1,4 @@
-import { checkServerHealth, type SendResult, sendUrl } from "@shared/api";
+import { checkServerHealth, sendUrl } from "@shared/api";
 import {
   clearAll,
   getRecent,
@@ -13,6 +13,7 @@ import {
   ChevronDown,
   History,
   Info,
+  ListPlus,
   Loader2,
   MonitorPlay,
   PanelRightOpen,
@@ -126,7 +127,13 @@ export default function Popup({
 }) {
   const [tabUrl, setTabUrl] = useState("");
   const [tabTitle, setTabTitle] = useState("");
-  const [status, setStatus] = useState<SendResult | null>(null);
+  // status extends SendResult with a custom success message (e.g. "Added to queue").
+  const [status, setStatus] = useState<{
+    success: boolean;
+    error?: string;
+    message?: string;
+  } | null>(null);
+  const [queueing, setQueueing] = useState(false);
   const [sending, setSending] = useState(false);
   const [serverStatus, setServerStatus] = useState<ServerStatus>("checking");
   const [maxHeight, setMaxHeight] = useState(defaultSettings.maxHeight);
@@ -217,6 +224,24 @@ export default function Popup({
   };
 
   const handlePlayCurrent = () => handlePlay(tabUrl, tabTitle);
+
+  const handleQueueCurrent = async () => {
+    if (!tabUrl.trim() || queueing) return;
+    setQueueing(true);
+    setStatus(null);
+    try {
+      const result = await sendUrl(tabUrl, tabTitle, true);
+      setStatus(
+        result.success ? { success: true, message: "Added to queue" } : result,
+      );
+      if (result.success) {
+        void getRecent().then(setHistory);
+        setTimeout(() => setStatus(null), 2000);
+      }
+    } finally {
+      setQueueing(false);
+    }
+  };
 
   const handleRemove = async (id: string) => {
     setHistory(await removeEntry(id));
@@ -484,6 +509,24 @@ export default function Popup({
                 </span>
               )}
             </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={handleQueueCurrent}
+              disabled={queueing || sending}
+            >
+              {queueing ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" /> Adding…
+                </>
+              ) : (
+                <>
+                  <ListPlus className="size-3.5" /> Add to queue
+                </>
+              )}
+            </Button>
           </>
         ) : (
           <>
@@ -510,7 +553,7 @@ export default function Popup({
         {status?.success && (
           <div className="flex items-center gap-1.5 rounded-md bg-green-500/10 px-2.5 py-2 text-xs text-green-600 dark:text-green-400">
             <CheckCircle2 className="size-3.5" />
-            <span>Sent to player</span>
+            <span>{status.message ?? "Sent to player"}</span>
           </div>
         )}
 
