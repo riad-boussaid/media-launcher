@@ -1,9 +1,13 @@
 import { discoverServer } from "@shared/discovery";
 import { defaultSettings, type Settings } from "@shared/settings";
 import {
+  CheckCircle2,
   Download,
   ExternalLink,
+  Eye,
+  EyeOff,
   Info,
+  Loader2,
   RefreshCw,
   Upload,
   Wifi,
@@ -22,7 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 
 const MAX_HEIGHTS = ["2160", "1440", "1080", "720", "480", "a"];
@@ -81,8 +84,28 @@ export default function Options() {
   const [loop, setLoop] = useState(defaultSettings.loop);
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<boolean | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">(
+    "idle",
+  );
   const importRef = useRef<HTMLInputElement>(null);
+
+  const loadedRef = useRef(false);
+  const lastSavedRef = useRef("");
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const applySettings = useCallback((s: Settings) => {
+    setServerUrl(s.serverUrl);
+    setAuthToken(s.authToken ?? defaultSettings.authToken);
+    setMaxHeight(s.maxHeight);
+    setCodec(s.codec);
+    setMpvArgs(s.mpvArgs);
+    setShowThumb(s.showThumb);
+    setVolume(s.volume);
+    setSpeed(s.speed);
+    setSubLang(s.subLang);
+    setLoop(s.loop);
+  }, []);
 
   const currentSettings = (): Settings => ({
     serverUrl,
@@ -96,19 +119,57 @@ export default function Options() {
     subLang,
     loop,
   });
+  const currentRef = useRef(currentSettings);
+  currentRef.current = currentSettings;
 
-  const applySettings = (s: Settings) => {
-    setServerUrl(s.serverUrl);
-    setAuthToken(s.authToken ?? defaultSettings.authToken);
-    setMaxHeight(s.maxHeight);
-    setCodec(s.codec);
-    setMpvArgs(s.mpvArgs);
-    setShowThumb(s.showThumb);
-    setVolume(s.volume);
-    setSpeed(s.speed);
-    setSubLang(s.subLang);
-    setLoop(s.loop);
-  };
+  // JSON signature of the form values; changing it schedules a save.
+  const signature = JSON.stringify(currentRef.current());
+
+  const persist = useCallback(async (s: Settings) => {
+    const safeSpeed =
+      Number.isFinite(s.speed) && s.speed >= 0.25 && s.speed <= 3
+        ? s.speed
+        : defaultSettings.speed;
+    await chrome.storage.sync.set({ ...s, speed: safeSpeed });
+  }, []);
+
+  // Auto-save: any change to the form is debounced straight into
+  // chrome.storage.sync, matching the desktop app's behavior.
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    if (signature === lastSavedRef.current) return;
+    setSaveState("saving");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void persist(JSON.parse(signature) as Settings)
+        .then(() => {
+          lastSavedRef.current = signature;
+          setSaveState("saved");
+          setTimeout(
+            () => setSaveState((s) => (s === "saved" ? "idle" : s)),
+            1500,
+          );
+        })
+        .catch(() => {
+          setSaveState("idle");
+          toast.error("Failed to save options.");
+        });
+    }, 600);
+  }, [signature, persist]);
+
+  // Flush a pending debounced save when the options page closes.
+  useEffect(
+    () => () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        if (lastSavedRef.current !== JSON.stringify(currentRef.current())) {
+          void persist(currentRef.current()).catch(() => {});
+        }
+      }
+    },
+    [persist],
+  );
 
   const exportSettings = () => {
     const blob = new Blob([JSON.stringify(currentSettings(), null, 2)], {
@@ -131,8 +192,7 @@ export default function Options() {
         throw new Error("invalid shape");
       }
       applySettings(parsed);
-      markDirty();
-      toast.success("Settings imported — review then Save.");
+      toast.success("Settings imported.");
     } catch {
       toast.error("Invalid settings file.");
     }
@@ -145,55 +205,29 @@ export default function Options() {
     if (result) {
       setServerUrl(result.serverUrl);
       setDiscovered(true);
-      markDirty();
     } else {
       setDiscovered(false);
     }
     setDiscovering(false);
   }, [serverUrl]);
 
-  const markDirty = () => setDirty(true);
-
-  const saveOptions = async () => {
-    try {
-      const safeSpeed =
-        Number.isFinite(speed) && speed >= 0.25 && speed <= 3
-          ? speed
-          : defaultSettings.speed;
-      await chrome.storage.sync.set({
-        serverUrl,
-        authToken,
-        maxHeight: maxHeight ?? defaultSettings.maxHeight,
-        codec,
-        mpvArgs,
-        showThumb,
-        volume,
-        speed: safeSpeed,
-        subLang,
-        loop,
-      });
-      setDirty(false);
-      toast.success("Options saved.");
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to save options.");
-    }
-  };
-
-  const resetOptions = async () => {
-    await chrome.storage.sync.set(defaultSettings);
-    toast.success("Reset to defaults.");
+  const resetOptions = () => {
+    void persist(defaultSettings).then(() => {
+      lastSavedRef.current = JSON.stringify(defaultSettings);
+      toast.success("Reset to defaults.");
+    });
     applySettings(defaultSettings);
-    setDirty(false);
   };
 
   const restoreOptions = useCallback(async () => {
     const opts = (await chrome.storage.sync.get(defaultSettings)) as Settings;
     applySettings(opts);
-  }, []);
+    lastSavedRef.current = JSON.stringify(currentRef.current());
+    loadedRef.current = true;
+  }, [applySettings]);
 
   useEffect(() => {
-    restoreOptions();
+    void restoreOptions();
   }, [restoreOptions]);
 
   const hasAutoDiscovered = useRef(false);
@@ -202,7 +236,7 @@ export default function Options() {
     if (hasAutoDiscovered.current) return;
     if (serverUrl && serverUrl === defaultSettings.serverUrl) {
       hasAutoDiscovered.current = true;
-      runDiscovery();
+      void runDiscovery();
     }
   }, [serverUrl, runDiscovery]);
 
@@ -210,60 +244,87 @@ export default function Options() {
     <div className="mx-auto w-4/5 max-w-2xl space-y-6 p-4">
       <div className="flex items-center justify-between">
         <h4 className="pb-2 text-4xl font-semibold">Configure options</h4>
-        {dirty && (
-          <span className="text-xs text-amber-500">Unsaved changes</span>
+        {saveState !== "idle" && (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {saveState === "saving" ? (
+              <>
+                <Loader2 className="size-3 animate-spin" /> Saving…
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-3.5 text-green-500" /> Saved
+              </>
+            )}
+          </span>
         )}
       </div>
 
       <Section title="Server">
         <Label>Server URL</Label>
-        <div className="flex gap-2 items-start">
-          <div className="flex-1 space-y-1">
-            <Input
-              value={serverUrl}
-              onChange={(e) => {
-                setServerUrl(e.target.value);
-                setDiscovered(null);
-                markDirty();
-              }}
-              placeholder="http://localhost:5000"
-            />
-            <div className="flex items-center gap-2 text-xs">
-              {discovering ? (
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  <RefreshCw className="size-3 animate-spin" /> Discovering...
-                </span>
-              ) : discovered === true ? (
-                <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                  <Wifi className="size-3" /> Server found
-                </span>
-              ) : discovered === false ? (
-                <span className="flex items-center gap-1 text-destructive">
-                  <WifiOff className="size-3" /> Server not found
-                </span>
-              ) : null}
-              <Button variant="ghost" size="xs" onClick={runDiscovery}>
-                <RefreshCw className="size-3" />
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              The desktop app runs a local server. The extension auto-discovers
-              it on ports 5000–5010.
-            </p>
+        <div className="flex-1 space-y-1">
+          <Input
+            value={serverUrl}
+            onChange={(e) => {
+              setServerUrl(e.target.value);
+              setDiscovered(null);
+            }}
+            placeholder="http://localhost:5000"
+          />
+          <div className="flex items-center gap-2 text-xs">
+            {discovering ? (
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" /> Discovering…
+              </span>
+            ) : discovered === true ? (
+              <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                <Wifi className="size-3" /> Server found
+              </span>
+            ) : discovered === false ? (
+              <span className="flex items-center gap-1 text-destructive">
+                <WifiOff className="size-3" /> Server not found
+              </span>
+            ) : null}
+            <Button
+              variant="outline"
+              size="xs"
+              className="gap-1"
+              disabled={discovering}
+              onClick={() => void runDiscovery()}
+            >
+              <RefreshCw className="size-3" />
+              Detect server
+            </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            The desktop app runs a local server. The extension auto-discovers it
+            on ports 5000–5010.
+          </p>
         </div>
         <Label htmlFor="auth-token">API token</Label>
-        <Input
-          id="auth-token"
-          type="password"
-          value={authToken}
-          onChange={(e) => {
-            setAuthToken(e.target.value);
-            markDirty();
-          }}
-          placeholder="Paste the token from the desktop app"
-          className="font-mono"
-        />
+        <div className="relative">
+          <Input
+            id="auth-token"
+            type={showToken ? "text" : "password"}
+            value={authToken}
+            onChange={(e) => setAuthToken(e.target.value)}
+            placeholder="Paste the token from the desktop app"
+            className="pr-9 font-mono"
+          />
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            type="button"
+            className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            onClick={() => setShowToken((v) => !v)}
+            title={showToken ? "Hide token" : "Show token"}
+          >
+            {showToken ? (
+              <EyeOff className="size-3.5" />
+            ) : (
+              <Eye className="size-3.5" />
+            )}
+          </Button>
+        </div>
         <p className="text-xs text-muted-foreground">
           Copy the API token from the desktop app's Settings page. The server
           rejects unauthenticated requests.
@@ -273,11 +334,8 @@ export default function Options() {
       <Section title="Playback">
         <Label>Maximum resolution</Label>
         <Select
-          value={maxHeight}
-          onValueChange={(value) => {
-            setMaxHeight(value);
-            markDirty();
-          }}
+          value={maxHeight ?? undefined}
+          onValueChange={(value) => setMaxHeight(value)}
         >
           <SelectTrigger>
             <SelectValue placeholder="Maximum" />
@@ -300,7 +358,6 @@ export default function Options() {
           value={codec}
           onValueChange={(value) => {
             if (value) setCodec(value);
-            markDirty();
           }}
         >
           <SelectTrigger>
@@ -326,11 +383,8 @@ export default function Options() {
             min={0}
             max={100}
             value={volume}
-            onChange={(e) => {
-              setVolume(Number(e.target.value));
-              markDirty();
-            }}
-            className="flex-1"
+            onChange={(e) => setVolume(Number(e.target.value))}
+            className="flex-1 accent-primary cursor-pointer"
           />
           <span className="w-10 text-right text-sm text-muted-foreground">
             {volume}%
@@ -344,10 +398,7 @@ export default function Options() {
           max={3}
           step={0.05}
           value={speed}
-          onChange={(e) => {
-            setSpeed(Number(e.target.value));
-            markDirty();
-          }}
+          onChange={(e) => setSpeed(Number(e.target.value))}
           onBlur={() => {
             const v = Number(speed);
             if (!Number.isFinite(v) || v < 0.25 || v > 3) {
@@ -360,10 +411,7 @@ export default function Options() {
         <Input
           placeholder="en"
           value={subLang}
-          onChange={(e) => {
-            setSubLang(e.target.value);
-            markDirty();
-          }}
+          onChange={(e) => setSubLang(e.target.value)}
         />
         <p className="text-xs text-muted-foreground">
           ISO 639-1 code, e.g. en, fr, es. Empty = default.
@@ -373,10 +421,7 @@ export default function Options() {
           <Checkbox
             id="loop"
             checked={loop}
-            onCheckedChange={(checked) => {
-              setLoop(checked === true);
-              markDirty();
-            }}
+            onCheckedChange={(checked) => setLoop(checked === true)}
           />
           <Label htmlFor="loop" className="text-sm font-normal">
             Loop the video
@@ -388,10 +433,7 @@ export default function Options() {
             <Checkbox
               id="show-thumb"
               checked={showThumb}
-              onCheckedChange={(checked) => {
-                setShowThumb(checked === true);
-                markDirty();
-              }}
+              onCheckedChange={(checked) => setShowThumb(checked === true)}
             />
             <Label htmlFor="show-thumb" className="text-sm font-normal">
               Show video thumbnail for audio-only playback
@@ -407,10 +449,7 @@ export default function Options() {
             placeholder="--ytdl-format=bestvideo+bestaudio"
             id="mpv-args"
             value={mpvArgs}
-            onChange={(e) => {
-              setMpvArgs(e.target.value);
-              markDirty();
-            }}
+            onChange={(e) => setMpvArgs(e.target.value)}
             className="min-h-40"
           />
           <p className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -442,6 +481,14 @@ export default function Options() {
               <Upload className="size-3" />
               Import settings
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={resetOptions}
+            >
+              Reset to defaults
+            </Button>
             <input
               ref={importRef}
               type="file"
@@ -456,22 +503,6 @@ export default function Options() {
           </div>
         </div>
       </Section>
-
-      <Separator />
-
-      <div className="flex items-center justify-between">
-        {dirty && (
-          <span className="text-xs text-muted-foreground">
-            You have unsaved changes
-          </span>
-        )}
-        <div className="ml-auto flex gap-2">
-          <Button variant="secondary" onClick={resetOptions}>
-            Reset
-          </Button>
-          <Button onClick={saveOptions}>Save</Button>
-        </div>
-      </div>
     </div>
   );
 }
