@@ -1,154 +1,32 @@
 import { discoverServer } from "@shared/discovery";
 import { defaultSettings, type Settings } from "@shared/settings";
+import {
+  CheckCircle2,
+  Download,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Info,
+  Loader2,
+  RefreshCw,
+  Upload,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-const styles = {
-  page: {
-    maxWidth: "500px",
-    margin: "0 auto",
-    padding: "24px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "20px",
-  } as React.CSSProperties,
-  heading: {
-    fontSize: "24px",
-    fontWeight: 600,
-    margin: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-  } as React.CSSProperties,
-  section: {
-    border: "1px solid #333",
-    borderRadius: "8px",
-    padding: "16px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-  } as React.CSSProperties,
-  sectionTitle: {
-    fontSize: "13px",
-    fontWeight: 600,
-    margin: 0,
-    color: "#e0e0e0",
-  } as React.CSSProperties,
-  label: {
-    display: "block",
-    fontSize: "12px",
-    color: "#888",
-    marginBottom: "4px",
-  } as React.CSSProperties,
-  hint: {
-    fontSize: "11px",
-    color: "#666",
-    margin: 0,
-    lineHeight: 1.4,
-  } as React.CSSProperties,
-  input: {
-    width: "100%",
-    padding: "8px 12px",
-    borderRadius: "6px",
-    border: "1px solid #333",
-    background: "#1e1e2e",
-    color: "#e0e0e0",
-    fontSize: "13px",
-    outline: "none",
-    boxSizing: "border-box",
-  } as React.CSSProperties,
-  textarea: {
-    width: "100%",
-    padding: "8px 12px",
-    borderRadius: "6px",
-    border: "1px solid #333",
-    background: "#1e1e2e",
-    color: "#e0e0e0",
-    fontSize: "13px",
-    outline: "none",
-    minHeight: "160px",
-    resize: "vertical",
-    boxSizing: "border-box",
-  } as React.CSSProperties,
-  select: {
-    width: "100%",
-    padding: "8px 12px",
-    borderRadius: "6px",
-    border: "1px solid #333",
-    background: "#1e1e2e",
-    color: "#e0e0e0",
-    fontSize: "13px",
-    outline: "none",
-  } as React.CSSProperties,
-  serverRow: {
-    display: "flex",
-    gap: "8px",
-    alignItems: "center",
-  } as React.CSSProperties,
-  btn: {
-    padding: "8px 20px",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "13px",
-    cursor: "pointer",
-  } as React.CSSProperties,
-  btnPrimary: {
-    padding: "8px 20px",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "13px",
-    cursor: "pointer",
-    background: "#64ffda",
-    color: "#1a1a2e",
-    fontWeight: 600,
-  } as React.CSSProperties,
-  btnSecondary: {
-    padding: "8px 20px",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "13px",
-    cursor: "pointer",
-    background: "#333",
-    color: "#e0e0e0",
-  } as React.CSSProperties,
-  btnSmall: {
-    padding: "6px 12px",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "12px",
-    cursor: "pointer",
-    background: "#333",
-    color: "#e0e0e0",
-    whiteSpace: "nowrap",
-  } as React.CSSProperties,
-  footer: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: "8px",
-    paddingTop: "8px",
-  } as React.CSSProperties,
-  status: {
-    fontSize: "12px",
-    color: "#4ade80",
-  } as React.CSSProperties,
-  error: {
-    fontSize: "12px",
-    color: "#ff6b6b",
-  } as React.CSSProperties,
-  dirty: {
-    fontSize: "11px",
-    color: "#f59e0b",
-  } as React.CSSProperties,
-  checkboxRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-  } as React.CSSProperties,
-  discoveryStatus: {
-    fontSize: "11px",
-    marginTop: "4px",
-  } as React.CSSProperties,
-};
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 const MAX_HEIGHTS = ["2160", "1440", "1080", "720", "480", "a"];
 const CODECS = ["any", "h264", "vp9", "av1", "h265"];
@@ -176,11 +54,28 @@ function isSettingsShape(value: unknown): value is Settings {
   );
 }
 
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-3 rounded-lg border p-4">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
 export default function Options() {
   const [serverUrl, setServerUrl] = useState(defaultSettings.serverUrl);
   const [authToken, setAuthToken] = useState(defaultSettings.authToken);
-  const [maxHeight, setMaxHeight] = useState(defaultSettings.maxHeight);
-  const [codec, setCodec] = useState(defaultSettings.codec);
+  const [maxHeight, setMaxHeight] = useState<string | null>(
+    defaultSettings.maxHeight,
+  );
+  const [codec, setCodec] = useState<string>(defaultSettings.codec);
   const [mpvArgs, setMpvArgs] = useState(defaultSettings.mpvArgs);
   const [showThumb, setShowThumb] = useState(defaultSettings.showThumb);
   const [volume, setVolume] = useState(defaultSettings.volume);
@@ -189,24 +84,17 @@ export default function Options() {
   const [loop, setLoop] = useState(defaultSettings.loop);
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<boolean | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">(
+    "idle",
+  );
   const importRef = useRef<HTMLInputElement>(null);
 
-  const currentSettings = (): Settings => ({
-    serverUrl,
-    authToken,
-    maxHeight,
-    codec,
-    mpvArgs,
-    showThumb,
-    volume,
-    speed,
-    subLang,
-    loop,
-  });
+  const loadedRef = useRef(false);
+  const lastSavedRef = useRef("");
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const applySettings = (s: Settings) => {
+  const applySettings = useCallback((s: Settings) => {
     setServerUrl(s.serverUrl);
     setAuthToken(s.authToken ?? defaultSettings.authToken);
     setMaxHeight(s.maxHeight);
@@ -217,7 +105,71 @@ export default function Options() {
     setSpeed(s.speed);
     setSubLang(s.subLang);
     setLoop(s.loop);
-  };
+  }, []);
+
+  const currentSettings = (): Settings => ({
+    serverUrl,
+    authToken,
+    maxHeight: maxHeight ?? defaultSettings.maxHeight,
+    codec,
+    mpvArgs,
+    showThumb,
+    volume,
+    speed,
+    subLang,
+    loop,
+  });
+  const currentRef = useRef(currentSettings);
+  currentRef.current = currentSettings;
+
+  // JSON signature of the form values; changing it schedules a save.
+  const signature = JSON.stringify(currentRef.current());
+
+  const persist = useCallback(async (s: Settings) => {
+    const safeSpeed =
+      Number.isFinite(s.speed) && s.speed >= 0.25 && s.speed <= 3
+        ? s.speed
+        : defaultSettings.speed;
+    await chrome.storage.sync.set({ ...s, speed: safeSpeed });
+  }, []);
+
+  // Auto-save: any change to the form is debounced straight into
+  // chrome.storage.sync, matching the desktop app's behavior.
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    if (signature === lastSavedRef.current) return;
+    setSaveState("saving");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void persist(JSON.parse(signature) as Settings)
+        .then(() => {
+          lastSavedRef.current = signature;
+          setSaveState("saved");
+          setTimeout(
+            () => setSaveState((s) => (s === "saved" ? "idle" : s)),
+            1500,
+          );
+        })
+        .catch(() => {
+          setSaveState("idle");
+          toast.error("Failed to save options.");
+        });
+    }, 600);
+  }, [signature, persist]);
+
+  // Flush a pending debounced save when the options page closes.
+  useEffect(
+    () => () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        if (lastSavedRef.current !== JSON.stringify(currentRef.current())) {
+          void persist(currentRef.current()).catch(() => {});
+        }
+      }
+    },
+    [persist],
+  );
 
   const exportSettings = () => {
     const blob = new Blob([JSON.stringify(currentSettings(), null, 2)], {
@@ -229,6 +181,7 @@ export default function Options() {
     a.download = "media-launcher-settings.json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast.success("Settings exported.");
   };
 
   const importSettings = async (file: File) => {
@@ -239,17 +192,10 @@ export default function Options() {
         throw new Error("invalid shape");
       }
       applySettings(parsed);
-      markDirty();
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      toast.success("Settings imported.");
     } catch {
-      setSaved(false);
+      toast.error("Invalid settings file.");
     }
-  };
-
-  const markDirty = () => {
-    setDirty(true);
-    setSaved(false);
   };
 
   const runDiscovery = useCallback(async () => {
@@ -259,54 +205,29 @@ export default function Options() {
     if (result) {
       setServerUrl(result.serverUrl);
       setDiscovered(true);
-      markDirty();
     } else {
       setDiscovered(false);
     }
     setDiscovering(false);
   }, [serverUrl]);
 
-  const saveOptions = async () => {
-    try {
-      const safeSpeed =
-        Number.isFinite(speed) && speed >= 0.25 && speed <= 3
-          ? speed
-          : defaultSettings.speed;
-      await chrome.storage.sync.set({
-        serverUrl,
-        authToken,
-        maxHeight: maxHeight ?? defaultSettings.maxHeight,
-        codec,
-        mpvArgs,
-        showThumb,
-        volume,
-        speed: safeSpeed,
-        subLang,
-        loop,
-      });
-      setDirty(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch {
-      setSaved(false);
-    }
-  };
-
-  const resetOptions = async () => {
-    await chrome.storage.sync.set(defaultSettings);
+  const resetOptions = () => {
+    void persist(defaultSettings).then(() => {
+      lastSavedRef.current = JSON.stringify(defaultSettings);
+      toast.success("Reset to defaults.");
+    });
     applySettings(defaultSettings);
-    setDirty(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   };
 
   const restoreOptions = useCallback(async () => {
     const opts = (await chrome.storage.sync.get(defaultSettings)) as Settings;
     applySettings(opts);
-  }, []);
+    lastSavedRef.current = JSON.stringify(currentRef.current());
+    loadedRef.current = true;
+  }, [applySettings]);
 
   useEffect(() => {
-    restoreOptions();
+    void restoreOptions();
   }, [restoreOptions]);
 
   const hasAutoDiscovered = useRef(false);
@@ -315,144 +236,169 @@ export default function Options() {
     if (hasAutoDiscovered.current) return;
     if (serverUrl && serverUrl === defaultSettings.serverUrl) {
       hasAutoDiscovered.current = true;
-      runDiscovery();
+      void runDiscovery();
     }
   }, [serverUrl, runDiscovery]);
 
-  const discoveryIndicator = discovering ? (
-    <span style={{ color: "#888" }}>Scanning ports 5000–5010...</span>
-  ) : discovered === true ? (
-    <span style={{ color: "#4ade80" }}>Server found</span>
-  ) : discovered === false ? (
-    <span style={{ color: "#ff6b6b" }}>Server not found</span>
-  ) : null;
-
   return (
-    <div style={styles.page}>
-      <div style={styles.heading}>
-        media-launcher Options
-        {dirty && <span style={styles.dirty}>Unsaved changes</span>}
+    <div className="mx-auto w-4/5 max-w-2xl space-y-6 p-4">
+      <div className="flex items-center justify-between">
+        <h4 className="pb-2 text-4xl font-semibold">Configure options</h4>
+        {saveState !== "idle" && (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {saveState === "saving" ? (
+              <>
+                <Loader2 className="size-3 animate-spin" /> Saving…
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-3.5 text-green-500" /> Saved
+              </>
+            )}
+          </span>
+        )}
       </div>
 
-      <div style={styles.section}>
-        <p style={styles.sectionTitle}>Server</p>
-        <label style={styles.label}>Server URL</label>
-        <div style={styles.serverRow}>
-          <input
-            style={{ ...styles.input, flex: 1 }}
+      <Section title="Server">
+        <Label>Server URL</Label>
+        <div className="flex-1 space-y-1">
+          <Input
             value={serverUrl}
             onChange={(e) => {
               setServerUrl(e.target.value);
               setDiscovered(null);
-              markDirty();
             }}
             placeholder="http://localhost:5000"
           />
-          <button type="button" style={styles.btnSmall} onClick={runDiscovery}>
-            {discovering ? "..." : "Scan"}
-          </button>
+          <div className="flex items-center gap-2 text-xs">
+            {discovering ? (
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" /> Discovering…
+              </span>
+            ) : discovered === true ? (
+              <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                <Wifi className="size-3" /> Server found
+              </span>
+            ) : discovered === false ? (
+              <span className="flex items-center gap-1 text-destructive">
+                <WifiOff className="size-3" /> Server not found
+              </span>
+            ) : null}
+            <Button
+              variant="outline"
+              size="xs"
+              className="gap-1"
+              disabled={discovering}
+              onClick={() => void runDiscovery()}
+            >
+              <RefreshCw className="size-3" />
+              Detect server
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The desktop app runs a local server. The extension auto-discovers it
+            on ports 5000–5010.
+          </p>
         </div>
-        <div style={styles.discoveryStatus}>{discoveryIndicator}</div>
-        <p style={styles.hint}>
-          The desktop app runs a local server. Auto-discovers on ports
-          5000–5010.
-        </p>
-        <label style={styles.label}>API token</label>
-        <input
-          style={styles.input}
-          type="password"
-          value={authToken}
-          onChange={(e) => {
-            setAuthToken(e.target.value);
-            markDirty();
-          }}
-          placeholder="Paste the token from the desktop app"
-        />
-        <p style={styles.hint}>
+        <Label htmlFor="auth-token">API token</Label>
+        <div className="relative">
+          <Input
+            id="auth-token"
+            type={showToken ? "text" : "password"}
+            value={authToken}
+            onChange={(e) => setAuthToken(e.target.value)}
+            placeholder="Paste the token from the desktop app"
+            className="pr-9 font-mono"
+          />
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            type="button"
+            className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            onClick={() => setShowToken((v) => !v)}
+            title={showToken ? "Hide token" : "Show token"}
+          >
+            {showToken ? (
+              <EyeOff className="size-3.5" />
+            ) : (
+              <Eye className="size-3.5" />
+            )}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
           Copy the API token from the desktop app's Settings page. The server
           rejects unauthenticated requests.
         </p>
-      </div>
+      </Section>
 
-      <div style={styles.section}>
-        <p style={styles.sectionTitle}>Playback</p>
-        <label style={styles.label}>Maximum resolution</label>
-        <select
-          style={styles.select}
-          value={maxHeight}
-          onChange={(e) => {
-            setMaxHeight(e.target.value);
-            markDirty();
-          }}
+      <Section title="Playback">
+        <Label>Maximum resolution</Label>
+        <Select
+          value={maxHeight ?? undefined}
+          onValueChange={(value) => setMaxHeight(value)}
         >
-          <option value="2160">4K</option>
-          <option value="1440">1440p</option>
-          <option value="1080">1080p</option>
-          <option value="720">720p</option>
-          <option value="480">480p</option>
-          <option value="a">Audio only</option>
-        </select>
-        <p style={styles.hint}>
+          <SelectTrigger>
+            <SelectValue placeholder="Maximum" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="2160">4K</SelectItem>
+            <SelectItem value="1440">1440p</SelectItem>
+            <SelectItem value="1080">1080p</SelectItem>
+            <SelectItem value="720">720p</SelectItem>
+            <SelectItem value="480">480p</SelectItem>
+            <SelectItem value="a">Audio only</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
           Limits video quality. "Audio only" skips video entirely.
         </p>
 
-        <label style={styles.label}>Preferred codec</label>
-        <select
-          style={styles.select}
+        <Label>Preferred codec</Label>
+        <Select
           value={codec}
-          onChange={(e) => {
-            setCodec(e.target.value);
-            markDirty();
+          onValueChange={(value) => {
+            if (value) setCodec(value);
           }}
         >
-          <option value="any">Any</option>
-          <option value="h264">H.264</option>
-          <option value="vp9">VP9</option>
-          <option value="av1">AV1</option>
-          <option value="h265">H.265</option>
-        </select>
-        <p style={styles.hint}>
+          <SelectTrigger>
+            <SelectValue placeholder="Any" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">Any</SelectItem>
+            <SelectItem value="h264">H.264</SelectItem>
+            <SelectItem value="vp9">VP9</SelectItem>
+            <SelectItem value="av1">AV1</SelectItem>
+            <SelectItem value="h265">H.265</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
           Prefers this video codec, falling back to the best available if the
           video doesn't offer it.
         </p>
 
-        <label style={styles.label}>Volume</label>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <Label>Volume</Label>
+        <div className="flex items-center gap-2">
           <input
             type="range"
             min={0}
             max={100}
             value={volume}
-            onChange={(e) => {
-              setVolume(Number(e.target.value));
-              markDirty();
-            }}
-            style={{ flex: 1 }}
+            onChange={(e) => setVolume(Number(e.target.value))}
+            className="flex-1 accent-primary cursor-pointer"
           />
-          <span
-            style={{
-              width: "48px",
-              textAlign: "right",
-              fontSize: "12px",
-              color: "#888",
-            }}
-          >
+          <span className="w-10 text-right text-sm text-muted-foreground">
             {volume}%
           </span>
         </div>
 
-        <label style={styles.label}>Playback speed</label>
-        <input
+        <Label>Playback speed</Label>
+        <Input
           type="number"
           min={0.25}
           max={3}
           step={0.05}
-          style={styles.input}
           value={speed}
-          onChange={(e) => {
-            setSpeed(Number(e.target.value));
-            markDirty();
-          }}
+          onChange={(e) => setSpeed(Number(e.target.value))}
           onBlur={() => {
             const v = Number(speed);
             if (!Number.isFinite(v) || v < 0.25 || v > 3) {
@@ -461,124 +407,102 @@ export default function Options() {
           }}
         />
 
-        <label style={styles.label}>Preferred subtitle language</label>
-        <input
-          style={styles.input}
+        <Label>Preferred subtitle language</Label>
+        <Input
           placeholder="en"
           value={subLang}
-          onChange={(e) => {
-            setSubLang(e.target.value);
-            markDirty();
-          }}
+          onChange={(e) => setSubLang(e.target.value)}
         />
-        <p style={styles.hint}>
+        <p className="text-xs text-muted-foreground">
           ISO 639-1 code, e.g. en, fr, es. Empty = default.
         </p>
 
-        <div style={styles.checkboxRow}>
-          <input
-            type="checkbox"
+        <div className="flex items-center space-x-2">
+          <Checkbox
             id="loop"
             checked={loop}
-            onChange={(e) => {
-              setLoop(e.target.checked);
-              markDirty();
-            }}
+            onCheckedChange={(checked) => setLoop(checked === true)}
           />
-          <label htmlFor="loop" style={{ fontSize: "12px" }}>
+          <Label htmlFor="loop" className="text-sm font-normal">
             Loop the video
-          </label>
+          </Label>
         </div>
 
         {maxHeight === "a" && (
-          <div style={styles.checkboxRow}>
-            <input
-              type="checkbox"
+          <div className="flex items-center space-x-2">
+            <Checkbox
               id="show-thumb"
               checked={showThumb}
-              onChange={(e) => {
-                setShowThumb(e.target.checked);
-                markDirty();
-              }}
+              onCheckedChange={(checked) => setShowThumb(checked === true)}
             />
-            <label htmlFor="show-thumb" style={{ fontSize: "12px" }}>
+            <Label htmlFor="show-thumb" className="text-sm font-normal">
               Show video thumbnail for audio-only playback
-            </label>
+            </Label>
           </div>
         )}
-      </div>
+      </Section>
 
-      <div style={styles.section}>
-        <p style={styles.sectionTitle}>Advanced</p>
-        <label style={styles.label}>Extra MPV arguments</label>
-        <textarea
-          style={styles.textarea}
-          value={mpvArgs}
-          onChange={(e) => {
-            setMpvArgs(e.target.value);
-            markDirty();
-          }}
-          placeholder="--ytdl-format=bestvideo+bestaudio"
-        />
-        <p style={styles.hint}>
-          One per line. Appended after the auto-generated flags. Playlist tips:
-          `--playlist-start=3`, `--loop-playlist=inf`.
-        </p>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            type="button"
-            style={styles.btnSmall}
-            onClick={exportSettings}
-          >
-            Export settings
-          </button>
-          <button
-            type="button"
-            style={styles.btnSmall}
-            onClick={() => importRef.current?.click()}
-          >
-            Import settings
-          </button>
-          <input
-            ref={importRef}
-            type="file"
-            accept="application/json,.json"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void importSettings(file);
-              e.target.value = "";
-            }}
+      <Section title="Advanced">
+        <div className="grid w-full gap-4">
+          <Label htmlFor="mpv-args">Extra MPV arguments</Label>
+          <Textarea
+            placeholder="--ytdl-format=bestvideo+bestaudio"
+            id="mpv-args"
+            value={mpvArgs}
+            onChange={(e) => setMpvArgs(e.target.value)}
+            className="min-h-40"
           />
+          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Info className="size-3" />
+            One per line. Appended after the auto-generated flags. Playlist
+            tips: `--playlist-start=3`, `--loop-playlist=inf`.
+            <Button variant="link" className="h-auto px-1 text-xs">
+              <a
+                href="https://mpv.io/manual/stable/#options"
+                target="_blank"
+                className="flex items-center"
+                rel="noopener"
+              >
+                mpv manual
+                <ExternalLink className="ml-1 size-3" />
+              </a>
+            </Button>
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={exportSettings}>
+              <Download className="size-3" />
+              Export settings
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => importRef.current?.click()}
+            >
+              <Upload className="size-3" />
+              Import settings
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={resetOptions}
+            >
+              Reset to defaults
+            </Button>
+            <input
+              ref={importRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void importSettings(file);
+                e.target.value = "";
+              }}
+            />
+          </div>
         </div>
-      </div>
-
-      <hr
-        style={{
-          border: "none",
-          borderTop: "1px solid #333",
-          margin: 0,
-        }}
-      />
-
-      <div style={styles.footer}>
-        {dirty && (
-          <span style={{ fontSize: "11px", color: "#f59e0b" }}>
-            You have unsaved changes
-          </span>
-        )}
-        {saved && !dirty && <span style={styles.status}>Options saved.</span>}
-        <button
-          type="button"
-          style={styles.btnSecondary}
-          onClick={resetOptions}
-        >
-          Reset
-        </button>
-        <button type="button" style={styles.btnPrimary} onClick={saveOptions}>
-          Save
-        </button>
-      </div>
+      </Section>
     </div>
   );
 }

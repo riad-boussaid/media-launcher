@@ -67,6 +67,8 @@ export default function Popup({
     ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`
     : null;
   const isPlaylist = isPlaylistUrl(tabUrl);
+  // Firefox has no sidePanel API — hide the "open in sidebar" shortcut there.
+  const canOpenSidePanel = typeof chrome.sidePanel?.open === "function";
 
   useEffect(() => {
     try {
@@ -179,23 +181,25 @@ export default function Popup({
               {dot}
             </div>
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 text-muted-foreground hover:text-foreground"
-                onClick={async () => {
-                  const [tab] = await chrome.tabs.query({
-                    active: true,
-                    currentWindow: true,
-                  });
-                  if (tab?.windowId) {
-                    await chrome.sidePanel.open({ windowId: tab.windowId });
-                  }
-                }}
-                title="Open in sidebar"
-              >
-                <PanelRightOpen className="size-3.5" />
-              </Button>
+              {canOpenSidePanel && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 text-muted-foreground hover:text-foreground"
+                  onClick={async () => {
+                    const [tab] = await chrome.tabs.query({
+                      active: true,
+                      currentWindow: true,
+                    });
+                    if (tab?.windowId) {
+                      await chrome.sidePanel.open({ windowId: tab.windowId });
+                    }
+                  }}
+                  title="Open in sidebar"
+                >
+                  <PanelRightOpen className="size-3.5" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"

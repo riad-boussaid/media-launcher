@@ -7,7 +7,26 @@ import {
 } from "@shared/history";
 import { defaultSettings } from "@shared/settings";
 import { isPlaylistUrl } from "@shared/url";
+import {
+  CheckCircle2,
+  History,
+  Loader2,
+  PanelRightOpen,
+  Play,
+  Settings,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 
 function getYoutubeId(url: string): string | null {
   try {
@@ -29,225 +48,6 @@ function getYoutubeId(url: string): string | null {
 
 type ServerStatus = "checking" | "connected" | "disconnected";
 
-const s = {
-  wrap: {
-    width: "320px",
-    borderRadius: "12px",
-    border: "1px solid #2a2a3e",
-    background: "#18181b",
-    color: "#e4e4e7",
-  } as React.CSSProperties,
-  wrapSidebar: {
-    minHeight: "100%",
-    background: "#18181b",
-    color: "#e4e4e7",
-  } as React.CSSProperties,
-  inner: {
-    padding: "12px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-  } as React.CSSProperties,
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-  } as React.CSSProperties,
-  headerLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-  } as React.CSSProperties,
-  title: {
-    fontSize: "14px",
-    fontWeight: 600,
-    letterSpacing: "-0.02em",
-    margin: 0,
-  } as React.CSSProperties,
-  dot: (c: string) =>
-    ({
-      width: "8px",
-      height: "8px",
-      borderRadius: "50%",
-      background: c,
-      flexShrink: 0,
-      boxShadow: `0 0 0 2px ${c}33`,
-    }) as React.CSSProperties,
-  tabCard: {
-    display: "flex",
-    gap: "10px",
-    alignItems: "flex-start",
-    borderRadius: "8px",
-    border: "1px solid #27272a",
-    background: "#27272a66",
-    padding: "8px",
-  } as React.CSSProperties,
-  thumb: {
-    width: "44px",
-    height: "44px",
-    borderRadius: "6px",
-    objectFit: "cover",
-    flexShrink: 0,
-  } as React.CSSProperties,
-  tabInfo: {
-    minWidth: 0,
-    flex: 1,
-  } as React.CSSProperties,
-  tabTitle: {
-    fontSize: "12px",
-    fontWeight: 500,
-    margin: 0,
-    lineHeight: 1.3,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  } as React.CSSProperties,
-  badge: {
-    flexShrink: 0,
-    fontSize: "10px",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    color: "#a1a1aa",
-    background: "#27272a",
-    borderRadius: "4px",
-    padding: "2px 6px",
-  } as React.CSSProperties,
-  tabUrl: {
-    fontSize: "11px",
-    color: "#a1a1aa",
-    margin: "2px 0 0 0",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  } as React.CSSProperties,
-  select: {
-    width: "100%",
-    padding: "6px 10px",
-    borderRadius: "6px",
-    border: "1px solid #27272a",
-    background: "#18181b",
-    color: "#e4e4e7",
-    fontSize: "12px",
-    outline: "none",
-    boxSizing: "border-box",
-  } as React.CSSProperties,
-  selectLabel: {
-    fontSize: "10px",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    color: "#a1a1aa",
-  } as React.CSSProperties,
-  selectHint: {
-    fontSize: "11px",
-    lineHeight: 1.4,
-    color: "#71717a",
-    margin: 0,
-  } as React.CSSProperties,
-  btn: {
-    width: "100%",
-    padding: "8px 0",
-    border: "none",
-    borderRadius: "8px",
-    background: "#3b82f6",
-    color: "#fff",
-    fontSize: "13px",
-    fontWeight: 600,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "6px",
-  } as React.CSSProperties,
-  btnDisabled: {
-    width: "100%",
-    padding: "8px 0",
-    border: "none",
-    borderRadius: "8px",
-    background: "#27272a",
-    color: "#71717a",
-    fontSize: "13px",
-    fontWeight: 600,
-  } as React.CSSProperties,
-  errorBox: {
-    display: "flex",
-    gap: "6px",
-    alignItems: "flex-start",
-    borderRadius: "6px",
-    background: "#7f1d1d33",
-    padding: "6px 10px",
-    fontSize: "12px",
-    color: "#fca5a5",
-    lineHeight: 1.4,
-  } as React.CSSProperties,
-  successBox: {
-    display: "flex",
-    gap: "6px",
-    alignItems: "center",
-    borderRadius: "6px",
-    background: "#14532d33",
-    padding: "6px 10px",
-    fontSize: "12px",
-    color: "#86efac",
-  } as React.CSSProperties,
-  separator: {
-    height: "1px",
-    background: "#27272a",
-    margin: 0,
-    border: "none",
-  } as React.CSSProperties,
-  historyLabel: {
-    display: "flex",
-    alignItems: "center",
-    gap: "4px",
-    fontSize: "11px",
-    color: "#a1a1aa",
-    marginBottom: "4px",
-  } as React.CSSProperties,
-  historyClear: {
-    fontSize: "10px",
-    color: "#a1a1aa",
-    background: "none",
-    border: "none",
-    borderRadius: "4px",
-    padding: "1px 6px",
-    cursor: "pointer",
-  } as React.CSSProperties,
-  historyItem: {
-    display: "block",
-    width: "100%",
-    textAlign: "left",
-    fontSize: "12px",
-    color: "#a1a1aa",
-    background: "none",
-    border: "none",
-    borderRadius: "6px",
-    padding: "3px 6px",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    transition: "background 0.15s",
-  } as React.CSSProperties,
-  historyScroll: {
-    maxHeight: "112px",
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: "2px",
-  } as React.CSSProperties,
-  settingsBtn: {
-    background: "none",
-    border: "none",
-    color: "#a1a1aa",
-    cursor: "pointer",
-    padding: "2px",
-    fontSize: "16px",
-    lineHeight: 1,
-  } as React.CSSProperties,
-};
-
 export default function Popup({
   mode = "popup",
 }: {
@@ -267,6 +67,8 @@ export default function Popup({
     ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`
     : null;
   const isPlaylist = isPlaylistUrl(tabUrl);
+  // Firefox has no sidePanel API — hide the "open in sidebar" shortcut there.
+  const canOpenSidePanel = typeof chrome.sidePanel?.open === "function";
 
   useEffect(() => {
     try {
@@ -315,214 +117,280 @@ export default function Popup({
 
   const handlePlayCurrent = () => handlePlay(tabUrl, tabTitle);
 
-  const indicator =
+  const dot =
     serverStatus === "connected" ? (
-      <span style={s.dot("#22c55e")} title="Server connected" />
+      <span
+        className="size-2 shrink-0 rounded-full bg-green-500 ring-2 ring-green-500/20"
+        title="Server connected"
+      />
     ) : serverStatus === "disconnected" ? (
-      <span style={s.dot("#ef4444")} title="Server not found" />
+      <span
+        className="size-2 shrink-0 rounded-full bg-red-500 ring-2 ring-red-500/20"
+        title="Server not found"
+      />
     ) : (
-      <span style={{ fontSize: "11px", color: "#a1a1aa" }}>⋯</span>
+      <Loader2 className="size-3 animate-spin text-muted-foreground" />
     );
 
   return (
-    <div style={mode === "sidebar" ? s.wrapSidebar : s.wrap}>
-      <div
-        style={mode === "sidebar" ? { ...s.inner, padding: "16px" } : s.inner}
-      >
-        {mode === "sidebar" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              paddingBottom: "12px",
-              borderBottom: "1px solid #27272a",
-            }}
-          >
-            <p style={s.title}>media-launcher</p>
-            {indicator}
-            <div style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
-              <button
-                type="button"
-                style={s.settingsBtn}
-                onClick={() => chrome.runtime.openOptionsPage()}
-                title="Settings"
-              >
-                ⚙
-              </button>
-            </div>
+    <div
+      className={
+        mode === "popup"
+          ? "w-80 rounded-xl border bg-card text-card-foreground shadow-sm"
+          : "min-h-full bg-background text-card-foreground"
+      }
+    >
+      {mode === "sidebar" && (
+        <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-card/95 px-4 py-3 backdrop-blur">
+          <img
+            src={chrome.runtime.getURL("play-logo.png")}
+            alt=""
+            className="size-6 shrink-0"
+          />
+          <span className="text-sm font-semibold tracking-tight">
+            media-launcher
+          </span>
+          {dot}
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground hover:text-foreground"
+              onClick={() => chrome.runtime.openOptionsPage()}
+              title="Settings"
+            >
+              <Settings className="size-4" />
+            </Button>
           </div>
-        )}
+        </div>
+      )}
 
+      <div
+        className={
+          mode === "popup"
+            ? "space-y-3 p-3"
+            : "mx-auto w-full max-w-md space-y-4 p-4"
+        }
+      >
         {mode === "popup" && (
-          <div style={s.header}>
-            <div style={s.headerLeft}>
-              <p style={s.title}>media-launcher</p>
-              {indicator}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-semibold tracking-tight">
+                media-launcher
+              </span>
+              {dot}
             </div>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <button
-                type="button"
-                style={s.settingsBtn}
-                onClick={() => {
-                  void (
-                    chrome as typeof chrome & {
-                      sidebarAction: { open: () => Promise<void> };
+            <div className="flex items-center gap-1">
+              {canOpenSidePanel && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 text-muted-foreground hover:text-foreground"
+                  onClick={async () => {
+                    const [tab] = await chrome.tabs.query({
+                      active: true,
+                      currentWindow: true,
+                    });
+                    if (tab?.windowId) {
+                      await chrome.sidePanel.open({ windowId: tab.windowId });
                     }
-                  ).sidebarAction
-                    .open()
-                    .catch(() => {});
-                }}
-                title="Open in sidebar"
-              >
-                ☰
-              </button>
-              <button
-                type="button"
-                style={s.settingsBtn}
+                  }}
+                  title="Open in sidebar"
+                >
+                  <PanelRightOpen className="size-3.5" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6 text-muted-foreground hover:text-foreground"
                 onClick={() => chrome.runtime.openOptionsPage()}
                 title="Settings"
               >
-                ⚙
-              </button>
+                <Settings className="size-3.5" />
+              </Button>
             </div>
           </div>
         )}
 
         {tabUrl && (
-          <div style={s.tabCard}>
+          <div
+            className={
+              mode === "popup"
+                ? "flex items-start gap-2.5 rounded-lg border bg-muted/40 p-2"
+                : "flex items-start gap-3 rounded-xl border bg-card p-3"
+            }
+          >
             {thumbUrl && (
               <img
                 src={thumbUrl}
                 alt={tabTitle || "Video thumbnail"}
-                style={
-                  mode === "sidebar"
-                    ? { ...s.thumb, width: "64px", height: "64px" }
-                    : s.thumb
+                className={
+                  mode === "popup"
+                    ? "size-11 shrink-0 rounded-md object-cover shadow-xs"
+                    : "size-16 shrink-0 rounded-lg object-cover shadow-sm"
                 }
               />
             )}
-            <div style={s.tabInfo}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "6px" }}
-              >
-                {isPlaylist && <span style={s.badge}>Playlist</span>}
-                {tabTitle && <p style={s.tabTitle}>{tabTitle}</p>}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                {isPlaylist && (
+                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Playlist
+                  </span>
+                )}
+                {tabTitle && (
+                  <p
+                    className={
+                      mode === "popup"
+                        ? "truncate text-xs font-medium leading-tight"
+                        : "truncate text-sm font-medium leading-tight"
+                    }
+                  >
+                    {tabTitle}
+                  </p>
+                )}
               </div>
-              <p style={s.tabUrl}>{tabUrl}</p>
+              <p
+                className={
+                  mode === "popup"
+                    ? "mt-0.5 truncate text-[11px] text-muted-foreground"
+                    : "mt-1 truncate text-xs text-muted-foreground"
+                }
+              >
+                {tabUrl}
+              </p>
             </div>
           </div>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <div
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                gap: "4px",
-              }}
-            >
-              <span style={s.selectLabel}>Resolution</span>
-              <select
-                style={s.select}
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 space-y-1">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                Resolution
+              </span>
+              <Select
                 value={maxHeight}
-                onChange={(e) => {
-                  setMaxHeight(e.target.value);
-                  chrome.storage.sync.set({ maxHeight: e.target.value });
+                onValueChange={(v) => {
+                  if (v) setMaxHeight(v);
+                  chrome.storage.sync.set({ maxHeight: v });
                 }}
               >
-                <option value="2160">4K</option>
-                <option value="1440">1440p</option>
-                <option value="1080">1080p</option>
-                <option value="720">720p</option>
-                <option value="480">480p</option>
-                <option value="a">Audio only</option>
-              </select>
+                <SelectTrigger
+                  className={
+                    mode === "popup"
+                      ? "h-8 w-full text-xs"
+                      : "h-9 w-full text-sm"
+                  }
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2160">4K</SelectItem>
+                  <SelectItem value="1440">1440p</SelectItem>
+                  <SelectItem value="1080">1080p</SelectItem>
+                  <SelectItem value="720">720p</SelectItem>
+                  <SelectItem value="480">480p</SelectItem>
+                  <SelectItem value="a">Audio only</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            <div
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                gap: "4px",
-              }}
-            >
-              <span style={s.selectLabel}>Codec</span>
-              <select
-                style={s.select}
+            <div className="flex-1 space-y-1">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                Codec
+              </span>
+              <Select
                 value={codec}
-                onChange={(e) => {
-                  setCodec(e.target.value);
-                  chrome.storage.sync.set({ codec: e.target.value });
+                onValueChange={(v) => {
+                  if (v) setCodec(v);
+                  chrome.storage.sync.set({ codec: v });
                 }}
               >
-                <option value="any">Any</option>
-                <option value="h264">H.264</option>
-                <option value="vp9">VP9</option>
-                <option value="av1">AV1</option>
-                <option value="h265">H.265</option>
-              </select>
+                <SelectTrigger
+                  className={
+                    mode === "popup"
+                      ? "h-8 w-full text-xs"
+                      : "h-9 w-full text-sm"
+                  }
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any</SelectItem>
+                  <SelectItem value="h264">H.264</SelectItem>
+                  <SelectItem value="vp9">VP9</SelectItem>
+                  <SelectItem value="av1">AV1</SelectItem>
+                  <SelectItem value="h265">H.265</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          <p style={s.selectHint}>
+          <p className="text-[11px] leading-snug text-muted-foreground">
             Falls back to the best available option if the video doesn't offer
             the selected quality or codec.
           </p>
         </div>
 
-        <button
-          type="button"
+        <Button
+          size={mode === "popup" ? "sm" : "default"}
+          className="w-full gap-1.5"
           onClick={handlePlayCurrent}
           disabled={sending || !tabUrl}
-          style={sending || !tabUrl ? s.btnDisabled : s.btn}
         >
-          {sending
-            ? "Sending..."
-            : isPlaylist
-              ? "▶ Play playlist"
-              : "▶ Play with Media Launcher"}
-        </button>
+          {sending ? (
+            <span className="flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" /> Sending...
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5">
+              <Play className="size-3.5 fill-current" />
+              {isPlaylist ? "Play playlist" : "Play with Media Launcher"}
+            </span>
+          )}
+        </Button>
 
         {status && !status.success && (
-          <div style={s.errorBox}>✗ {status.error}</div>
+          <div className="flex items-start gap-1.5 rounded-md bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
+            <XCircle className="mt-0.5 size-3.5 shrink-0" />
+            <span>{status.error}</span>
+          </div>
         )}
-        {status?.success && <div style={s.successBox}>✓ Sent to player</div>}
+        {status?.success && (
+          <div className="flex items-center gap-1.5 rounded-md bg-green-500/10 px-2.5 py-2 text-xs text-green-600 dark:text-green-400">
+            <CheckCircle2 className="size-3.5" />
+            <span>Sent to player</span>
+          </div>
+        )}
 
         {history.length > 0 && (
           <>
-            <hr style={s.separator} />
+            <Separator />
             <div>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "6px" }}
-              >
-                <span style={s.historyLabel}>🕐 Recent</span>
+              <div className="mb-1.5 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <History className="size-3" />
+                <span>Recent</span>
                 <button
                   type="button"
-                  style={s.historyClear}
+                  className="ml-auto flex items-center gap-0.5 rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  title="Clear history"
                   onClick={async () => {
                     await clearHistory();
                     setHistory([]);
                   }}
                 >
-                  ✕ Clear
+                  <Trash2 className="size-3" />
+                  <span className="text-[10px]">Clear</span>
                 </button>
               </div>
-              <div style={s.historyScroll}>
+              <div className="max-h-40 space-y-1 overflow-y-auto">
                 {history.slice(0, 10).map((entry) => (
                   <button
                     type="button"
                     key={entry.url + entry.timestamp}
                     onClick={() => handlePlay(entry.url, entry.title)}
-                    style={s.historyItem}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = "#27272a")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = "none")
-                    }
+                    className="w-full truncate rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     title={entry.url}
                   >
                     {entry.title || entry.url}
