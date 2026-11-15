@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
+  createReadStream,
   createWriteStream,
   existsSync,
   mkdirSync,
@@ -23,7 +25,32 @@ export interface DownloadItem {
   installed: boolean;
   systemAvailable: boolean;
   status: "idle" | "downloading" | "done" | "error";
+  /** 0..1 when the content length is known, -1 for indeterminate, null otherwise. */
+  progress: number | null;
   error?: string;
+}
+
+interface ChecksumSpec {
+  /** Checksum list with "<sha256>  <fileName>" lines. */
+  url: string;
+  /** Asset name to look up inside the list (defaults to the download's basename). */
+  fileName?: string;
+}
+
+interface ResolvedSource {
+  url: string;
+  extract?: string;
+  checksum?: ChecksumSpec;
+}
+
+interface PlatformSource {
+  /** Static download URL; omitted when a resolver supplies it at download time. */
+  url?: string;
+  type: "single" | "zip" | "link";
+  extract?: string;
+  checksum?: ChecksumSpec;
+  /** Resolve URL/checksum/extract at download time for moving releases. */
+  resolver?: () => Promise<ResolvedSource>;
 }
 
 interface DownloadableDef {
@@ -31,21 +58,53 @@ interface DownloadableDef {
   name: string;
   description: string;
   size: string;
-  platformWin32: {
-    url: string;
-    type: "single" | "zip" | "link";
-    extract?: string;
-  } | null;
-  platformDarwin: {
-    url: string;
-    type: "single" | "zip" | "link";
-    extract?: string;
-  } | null;
-  platformLinux: {
-    url: string;
-    type: "single" | "zip" | "link";
-    extract?: string;
-  } | null;
+  platformWin32: PlatformSource | null;
+  platformDarwin: PlatformSource | null;
+  platformLinux: PlatformSource | null;
+}
+
+const YT_DLP_CHECKSUM =
+  "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
+const FFMPEG_CHECKSUM =
+  "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/checksums.sha256";
+
+// zhongfly rotates mpv-winbuild releases daily and deletes old tags, so the
+// asset URL, its archive layout and its checksum all resolve at download time
+// from the release API instead of a pinned URL that rots (the old pinned
+// release already 404s).
+async function resolveMpvWinbuild(): Promise<ResolvedSource> {
+  const res = await fetch(
+    "https://api.github.com/repos/zhongfly/mpv-winbuild/releases/latest",
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "media-launcher",
+      },
+      signal: AbortSignal.timeout(15000),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`mpv release lookup failed: HTTP ${res.status}`);
+  }
+  const release = (await res.json()) as {
+    assets?: { name: string; browser_download_url: string }[];
+  };
+  const asset = release.assets?.find((a) =>
+    /^mpv-x86_64-\d{8}-[0-9a-f]+\.7z$/.test(a.name),
+  );
+  if (!asset) {
+    throw new Error("No mpv-x86_64 asset in latest mpv-winbuild release");
+  }
+  // The archive unpacks into a folder named after the asset.
+  const stem = asset.name.replace(/\.7z$/, "");
+  const sha = release.assets?.find((a) => a.name === "sha256.txt");
+  return {
+    url: asset.browser_download_url,
+    extract: `${stem}/mpv.exe`,
+    checksum: sha
+      ? { url: sha.browser_download_url, fileName: asset.name }
+      : undefined,
+  };
 }
 
 const DEFINITIONS: DownloadableDef[] = [
@@ -54,18 +113,21 @@ const DEFINITIONS: DownloadableDef[] = [
     name: "yt-dlp",
     description:
       "Download URLs from YouTube and hundreds of other sites. Required for fetching video title and thumbnail metadata.",
-    size: "~3 MB",
+    size: "~20 MB",
     platformWin32: {
       url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
       type: "single",
+      checksum: { url: YT_DLP_CHECKSUM, fileName: "yt-dlp.exe" },
     },
     platformDarwin: {
       url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp",
       type: "single",
+      checksum: { url: YT_DLP_CHECKSUM, fileName: "yt-dlp" },
     },
     platformLinux: {
       url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp",
       type: "single",
+      checksum: { url: YT_DLP_CHECKSUM, fileName: "yt-dlp" },
     },
   },
   {
@@ -78,6 +140,10 @@ const DEFINITIONS: DownloadableDef[] = [
       url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
       type: "zip",
       extract: "ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe",
+      checksum: {
+        url: FFMPEG_CHECKSUM,
+        fileName: "ffmpeg-master-latest-win64-gpl.zip",
+      },
     },
     platformDarwin: null,
     platformLinux: null,
@@ -86,11 +152,11 @@ const DEFINITIONS: DownloadableDef[] = [
     id: "mpv",
     name: "mpv",
     description: "Lightweight media player. Portable Windows build.",
-    size: "~50 MB",
+    size: "~30 MB",
     platformWin32: {
-      url: "https://github.com/zhongfly/mpv-winbuild/releases/download/release%2F20250430/mpv-x86_64-20250430-7fdd781.7z",
+      url: "https://github.com/zhongfly/mpv-winbuild/releases/latest",
       type: "zip",
-      extract: "mpv-x86_64-20250430-7fdd781/mpv.exe",
+      resolver: resolveMpvWinbuild,
     },
     platformDarwin: null,
     platformLinux: null,
@@ -126,6 +192,7 @@ export function getBinDir(): string {
 
 const downloadState = new Map<string, DownloadItem["status"]>();
 const downloadErrors = new Map<string, string>();
+const downloadProgress = new Map<string, { received: number; total: number }>();
 
 async function fetchWithRedirect(
   url: string,
@@ -247,9 +314,44 @@ async function extractArchive(
   rmSync(tmpDir, { recursive: true, force: true });
 }
 
-function getDefForPlatform(
-  def: DownloadableDef,
-): { url: string; type: string; extract?: string } | null {
+function findChecksumInSums(sums: string, fileName: string): string | null {
+  for (const line of sums.split("\n")) {
+    const m = line.trim().match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/);
+    if (!m) continue;
+    if (m[2].trim() === fileName) return m[1].toLowerCase();
+  }
+  return null;
+}
+
+// Fail-closed: a download without a verifiable checksum is an error, not a
+// warning — these binaries get executed.
+async function verifyChecksum(
+  filePath: string,
+  spec: ChecksumSpec,
+): Promise<void> {
+  const res = await fetch(spec.url, { signal: AbortSignal.timeout(30000) });
+  if (!res.ok) {
+    throw new Error(`Checksum list unavailable: HTTP ${res.status}`);
+  }
+  const fileName =
+    spec.fileName ?? spec.url.split("?")[0].split("/").pop() ?? "";
+  const expected = findChecksumInSums(await res.text(), fileName);
+  if (!expected) {
+    throw new Error(`No checksum entry for ${fileName}`);
+  }
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) {
+    hash.update(chunk as Buffer);
+  }
+  const actual = hash.digest("hex");
+  if (actual !== expected) {
+    throw new Error(
+      `Checksum mismatch for ${fileName}: expected ${expected}, got ${actual}`,
+    );
+  }
+}
+
+function getDefForPlatform(def: DownloadableDef): PlatformSource | null {
   const p = process.platform as keyof Pick<
     DownloadableDef,
     "platformWin32" | "platformDarwin" | "platformLinux"
@@ -325,6 +427,13 @@ export async function listDownloads(): Promise<DownloadItem[]> {
     const installed = existsSync(join(BIN_DIR, exeName));
     const systemAvailable = SYSTEM_CACHE.get(exeName) ?? false;
     const status = downloadState.get(def.id) ?? (installed ? "done" : "idle");
+    const prog = downloadProgress.get(def.id);
+    const progress =
+      status === "downloading"
+        ? prog && prog.total > 0
+          ? prog.received / prog.total
+          : -1
+        : null;
     return {
       id: def.id,
       name: def.name,
@@ -338,6 +447,7 @@ export async function listDownloads(): Promise<DownloadItem[]> {
       installed,
       systemAvailable,
       status,
+      progress,
       error: downloadErrors.get(def.id),
     };
   });
@@ -357,12 +467,19 @@ export async function startDownload(id: string): Promise<void> {
   ensureBinDir();
   downloadState.set(id, "downloading");
   downloadErrors.delete(id);
+  downloadProgress.delete(id);
 
   let tempPath = "";
   try {
+    // Moving releases resolve their URL/checksum/extract at download time.
+    const source: ResolvedSource = platform.resolver
+      ? await platform.resolver()
+      : platform;
+    if (!source.url) throw new Error(`No download URL for ${id}`);
+
     // Derive the archive extension from the actual URL (the mpv artifact is a
     // .7z even though it's handled by the same zip extraction path).
-    const urlName = platform.url.split("?")[0].split("/").pop() ?? "";
+    const urlName = source.url.split("?")[0].split("/").pop() ?? "";
     const urlExt = urlName.match(/\.[a-z0-9]+$/i)?.[0] ?? "";
     const ext =
       platform.type === "zip"
@@ -372,11 +489,18 @@ export async function startDownload(id: string): Promise<void> {
           : "";
     tempPath = join(BIN_DIR, `.${id}${ext}`);
 
-    console.log(`[download] ${id} → ${tempPath} (${platform.url})`);
-    await downloadFile(platform.url, tempPath);
+    console.log(`[download] ${id} → ${tempPath} (${source.url})`);
+    await downloadFile(source.url, tempPath, (received, total) =>
+      downloadProgress.set(id, { received, total }),
+    );
+    downloadProgress.delete(id);
+    if (source.checksum) {
+      await verifyChecksum(tempPath, source.checksum);
+      console.log(`[download] ${id} checksum verified`);
+    }
 
     if (platform.type === "zip") {
-      const extractPath = platform.extract;
+      const extractPath = source.extract ?? platform.extract;
       if (!extractPath) throw new Error(`No extract path for ${id}`);
       const targetName = extractPath.split("/").pop();
       if (!targetName) throw new Error(`No target name for ${id}`);
@@ -407,6 +531,7 @@ export async function startDownload(id: string): Promise<void> {
 
     downloadState.set(id, "done");
   } catch (err: unknown) {
+    downloadProgress.delete(id);
     if (tempPath && existsSync(tempPath)) {
       try {
         unlinkSync(tempPath);
