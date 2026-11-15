@@ -1,10 +1,9 @@
-import {
-  getPageThumbnail,
-  isVideoLink,
-  resolveVideoUrl,
-  siteForHost,
-} from "@/lib/sites";
+import { getPageThumbnail, resolveVideoUrl, siteForHost } from "@/lib/sites";
 import { isPlaylistUrl } from "@/lib/url";
+
+// The hostname is fixed for the lifetime of a content script, so resolve the
+// site definition once instead of per mutation / per anchor.
+const PAGE_SITE = siteForHost(location.hostname);
 
 interface SendResult {
   success: boolean;
@@ -72,7 +71,7 @@ function createButton(onClick: () => void): HTMLButtonElement {
 }
 
 function injectButton(): void {
-  const site = siteForHost(location.hostname);
+  const site = PAGE_SITE;
   const container = site?.buttonContainerSelector
     ? document.querySelector<HTMLElement>(site.buttonContainerSelector)
     : null;
@@ -143,9 +142,7 @@ function injectButton(): void {
 }
 
 function getVideoIdFromHref(href: string): string | null {
-  const site = siteForHost(location.hostname);
-  if (site?.videoIdFromUrl) return site.videoIdFromUrl(href);
-  return null;
+  return PAGE_SITE?.videoIdFromUrl?.(href) ?? null;
 }
 
 function injectBadge(a: HTMLAnchorElement): void {
@@ -206,11 +203,15 @@ function injectBadge(a: HTMLAnchorElement): void {
 const badgeDone = new Set<string>();
 
 function injectThumbnailBadges(): void {
+  // Badges only ever appear on supported sites — skip the full-page anchor
+  // scan otherwise.
+  if (!PAGE_SITE) return;
   const anchors = document.querySelectorAll<HTMLAnchorElement>("a[href]");
   for (const a of anchors) {
-    if (!isVideoLink(a)) continue;
+    if (!PAGE_SITE.isVideoLink(a)) continue;
     const key = a.href;
     if (badgeDone.has(key)) continue;
+    if (badgeDone.size > 5000) badgeDone.clear();
     badgeDone.add(key);
     injectBadge(a);
   }
@@ -280,15 +281,34 @@ function injectPlaylistBadge(): void {
   container.appendChild(badge);
 }
 
-const observer = new MutationObserver(() => {
+// Busy pages (YouTube live chat, infinite scroll) mutate far faster than we
+// can rescan, and our own badge/button injections re-trigger this observer —
+// without throttling, the renderer starves and the page becomes unresponsive.
+// Run at most once per interval, leading edge so the first mutation responds
+// immediately and trailing so continuous mutation streams still get served.
+const RUN_INTERVAL_MS = 200;
+let runQueued = false;
+let lastRun = 0;
+
+function runInjectors(): void {
   injectButton();
   injectThumbnailBadges();
   injectPlaylistBadge();
   refreshButtonLabel();
-});
+}
+
+function scheduleRun(): void {
+  if (runQueued) return;
+  runQueued = true;
+  const wait = Math.max(0, RUN_INTERVAL_MS - (Date.now() - lastRun));
+  setTimeout(() => {
+    runQueued = false;
+    lastRun = Date.now();
+    runInjectors();
+  }, wait);
+}
+
+const observer = new MutationObserver(scheduleRun);
 observer.observe(document.body, { childList: true, subtree: true });
 
-injectButton();
-injectThumbnailBadges();
-injectPlaylistBadge();
-refreshButtonLabel();
+runInjectors();
