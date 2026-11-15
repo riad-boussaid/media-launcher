@@ -63,9 +63,7 @@ const COMMON_PATHS: Record<string, string[]> = {
 function lookupCommonPath(name: string): string | null {
   const keys = [
     name,
-    process.platform === "win32" && !name.endsWith(".exe")
-      ? `${name}.exe`
-      : "",
+    process.platform === "win32" && !name.endsWith(".exe") ? `${name}.exe` : "",
   ].filter(Boolean);
   for (const key of keys) {
     for (const p of COMMON_PATHS[key] ?? []) {
