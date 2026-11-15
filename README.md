@@ -1,5 +1,7 @@
 # media-launcher
 
+[![CI](https://github.com/riad-boussaid/media-launcher/actions/workflows/ci.yml/badge.svg)](https://github.com/riad-boussaid/media-launcher/actions/workflows/ci.yml)
+
 Send videos from your browser to an external media player (mpv) with one click.
 
 ## Architecture
@@ -10,6 +12,7 @@ Send videos from your browser to an external media player (mpv) with one click.
 | Desktop app | desktop/ | Electron, React, Tailwind CSS |
 | Chrome extension | extensions/chrome/ | Chrome, Edge, Brave |
 | Firefox extension | extensions/firefox/ | Firefox |
+| Shared extension code | extensions/shared/ | Imported by both extensions via `@shared` |
 
 ## Quick Start
 

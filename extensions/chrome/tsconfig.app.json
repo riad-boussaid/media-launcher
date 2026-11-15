@@ -7,6 +7,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@shared/*": [
+        "../shared/src/*"
       ]
     },
     "composite": true,
@@ -36,6 +39,7 @@
   },
   "include": [
     "src",
-    "src/background/background.ts"
+    "src/background/background.ts",
+    "../shared/src"
   ]
 }

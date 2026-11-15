@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
-import { checkServerHealth, type SendResult, sendUrl } from "@/lib/api";
+import { checkServerHealth, type SendResult, sendUrl } from "@shared/api";
 import {
   addHistory,
   clearHistory,
   getHistory,
   type HistoryEntry,
-} from "@/lib/history";
-import { defaultSettings } from "@/lib/settings";
-import { isPlaylistUrl } from "@/lib/url";
+} from "@shared/history";
+import { defaultSettings } from "@shared/settings";
+import { isPlaylistUrl } from "@shared/url";
+import { useEffect, useState } from "react";
 
 function getYoutubeId(url: string): string | null {
   try {

@@ -1,6 +1,6 @@
-import { discoverServer } from "@/lib/discovery";
-import { defaultSettings } from "@/lib/settings";
-import { getStartSeconds } from "@/lib/url";
+import { discoverServer } from "@shared/discovery";
+import { defaultSettings } from "@shared/settings";
+import { getStartSeconds } from "@shared/url";
 
 let cachedServerUrl: string | null = null;
 

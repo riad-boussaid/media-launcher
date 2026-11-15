@@ -1,3 +1,12 @@
+import { checkServerHealth, type SendResult, sendUrl } from "@shared/api";
+import {
+  addHistory,
+  clearHistory,
+  getHistory,
+  type HistoryEntry,
+} from "@shared/history";
+import { defaultSettings } from "@shared/settings";
+import { isPlaylistUrl } from "@shared/url";
 import {
   CheckCircle2,
   History,
@@ -18,15 +27,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { checkServerHealth, type SendResult, sendUrl } from "@/lib/api";
-import {
-  addHistory,
-  clearHistory,
-  getHistory,
-  type HistoryEntry,
-} from "@/lib/history";
-import { defaultSettings } from "@/lib/settings";
-import { isPlaylistUrl } from "@/lib/url";
 
 function getYoutubeId(url: string): string | null {
   try {

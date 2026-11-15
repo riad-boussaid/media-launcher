@@ -1,6 +1,6 @@
+import { discoverServer } from "@shared/discovery";
+import { defaultSettings, type Settings } from "@shared/settings";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { discoverServer } from "@/lib/discovery";
-import { defaultSettings, type Settings } from "@/lib/settings";
 
 const styles = {
   page: {

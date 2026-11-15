@@ -6,6 +6,11 @@ import manifest from "./manifest.json";
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@shared": resolve(__dirname, "../shared/src"),
+    },
+  },
   plugins: [
     react(),
     crx({

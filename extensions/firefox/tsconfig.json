@@ -13,8 +13,9 @@
     "baseUrl": ".",
     "types": ["chrome-types"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/*": ["../shared/src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../shared/src"]
 }

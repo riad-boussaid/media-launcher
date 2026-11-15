@@ -1,3 +1,5 @@
+import { discoverServer } from "@shared/discovery";
+import { defaultSettings, type Settings } from "@shared/settings";
 import {
   Download,
   ExternalLink,
@@ -9,7 +11,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -23,8 +24,6 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { discoverServer } from "@/lib/discovery";
-import { defaultSettings, type Settings } from "@/lib/settings";
 
 const MAX_HEIGHTS = ["2160", "1440", "1080", "720", "480", "a"];
 const CODECS = ["any", "h264", "vp9", "av1", "h265"];
