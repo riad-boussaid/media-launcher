@@ -19,6 +19,7 @@ import {
 } from "./downloads";
 import { checkPlayerExists } from "./player";
 import {
+  getRemoteUrls,
   getServerStatus,
   probeServerUrl,
   readServerToken,
@@ -30,9 +31,12 @@ import {
   deleteHistory,
   getHistory,
   getPlayerStatus,
+  getRemoteSessions,
   getSettings,
   initDatabase,
   replayUrl,
+  revokeAllRemoteSessions,
+  revokeRemoteSession,
   setSettings,
   skipTrack,
   togglePause,
@@ -129,13 +133,26 @@ if (!gotTheLock) {
     );
     ipcMain.handle("settings:get", () => getSettings());
     ipcMain.handle("settings:set", async (_event, partial) => {
+      const remoteChanged = partial.remoteEnabled !== undefined;
       const updated = await setSettings(partial);
       if (partial.autoStart !== undefined) {
         app.setLoginItemSettings({ openAtLogin: partial.autoStart });
       }
+      if (remoteChanged) {
+        // The bind address changed — restart the embedded server so the
+        // new HOST applies.
+        stopServer();
+        await startServer();
+      }
       if (win) refreshTrayMenu(win);
       return updated;
     });
+    ipcMain.handle("server:remoteUrls", () => getRemoteUrls());
+    ipcMain.handle("remote:sessions", () => getRemoteSessions());
+    ipcMain.handle("remote:revokeSession", (_event, id: string) =>
+      revokeRemoteSession(id),
+    );
+    ipcMain.handle("remote:revokeAll", () => revokeAllRemoteSessions());
     ipcMain.handle("history:get", () => getHistory());
     ipcMain.handle("history:delete", (_event, id) => deleteHistory(id));
     ipcMain.handle("history:clear", () => clearHistory());

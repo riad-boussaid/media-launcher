@@ -1,3 +1,4 @@
+import QRCode from "qrcode";
 import {
   type JSX,
   type ReactNode,
@@ -17,10 +18,16 @@ import {
   checkUpdate,
   deleteDownload,
   getDownloads,
+  getRemoteSessions,
+  getRemoteUrls,
   getSettings,
   openExternal,
   pickExecutable,
   probeServerUrl,
+  type RemoteSessionInfo,
+  type RemoteUrls,
+  revokeAllRemoteSessions,
+  revokeRemoteSession,
   setSettings,
   startDownload,
 } from "../lib/api";
@@ -119,6 +126,13 @@ export default function SettingsPage() {
   const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
   const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
+  const [remoteUrls, setRemoteUrls] = useState<RemoteUrls | null>(null);
+  const [qrLan, setQrLan] = useState<string | null>(null);
+  const [qrTailscale, setQrTailscale] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<RemoteSessionInfo[]>([]);
+  const [copiedTransport, setCopiedTransport] = useState<
+    "lan" | "tailscale" | null
+  >(null);
   const { theme, setTheme } = useTheme();
 
   const loadedRef = useRef(false);
@@ -205,6 +219,118 @@ export default function SettingsPage() {
     const t = setInterval(() => void refreshDownloads(), 1000);
     return () => clearInterval(t);
   }, [downloads, refreshDownloads]);
+
+  // The remote pairing links (LAN + Tailscale) come from main; the embedded
+  // server restarts briefly after the toggle, so poll a few times while on.
+  useEffect(() => {
+    if (!settings?.remoteEnabled) {
+      setRemoteUrls(null);
+      setQrLan(null);
+      setQrTailscale(null);
+      return;
+    }
+    let cancelled = false;
+    let tries = 0;
+    const load = () => {
+      void getRemoteUrls().then(async (urls) => {
+        if (cancelled) return;
+        setRemoteUrls(urls);
+        setQrLan(
+          urls.lan ? await QRCode.toDataURL(urls.lan, { margin: 1 }) : null,
+        );
+        setQrTailscale(
+          urls.tailscale
+            ? await QRCode.toDataURL(urls.tailscale, { margin: 1 })
+            : null,
+        );
+      });
+    };
+    load();
+    const t = setInterval(() => {
+      tries += 1;
+      if (tries > 6) {
+        clearInterval(t);
+        return;
+      }
+      load();
+    }, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [settings?.remoteEnabled]);
+
+  // Paired devices: keep the list live while the page is open (phones pair
+  // and unpair independently of this page).
+  useEffect(() => {
+    if (!settings?.remoteEnabled) {
+      setSessions([]);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      void getRemoteSessions().then((list) => {
+        if (!cancelled) setSessions(list);
+      });
+    };
+    load();
+    const t = setInterval(load, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [settings?.remoteEnabled]);
+
+  const handleRevokeSession = async (id: string) => {
+    setSessions(await revokeRemoteSession(id));
+  };
+
+  const handleRevokeAllSessions = async () => {
+    await revokeAllRemoteSessions();
+    setSessions([]);
+  };
+
+  const pairBlock = (
+    label: string,
+    hint: string,
+    url: string,
+    qr: string,
+    transport: "lan" | "tailscale",
+  ) => (
+    <div className="flex items-center gap-3 mt-3 first:mt-2">
+      {qr && (
+        <img
+          src={qr}
+          alt={`${label} pairing QR code`}
+          className="w-28 h-28 flex-shrink-0 rounded-lg border border-border bg-white p-1"
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] text-text font-medium leading-snug m-0">
+          {label}
+        </p>
+        <p className="text-[10px] text-muted leading-snug m-0">{hint}</p>
+        <code className="block text-[10px] text-accent break-all mt-1">
+          {url}
+        </code>
+        <button
+          type="button"
+          className="btn-ghost btn-sm mt-1.5"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(url);
+              setCopiedTransport(transport);
+              setTimeout(() => setCopiedTransport(null), 2000);
+            } catch {
+              showToast("Copy failed — select the URL manually");
+            }
+          }}
+        >
+          {copiedTransport === transport ? "Copied" : "Copy link"}
+        </button>
+      </div>
+    </div>
+  );
 
   const handleDownload = async (id: string) => {
     try {
@@ -452,6 +578,86 @@ export default function SettingsPage() {
             </div>
           </div>
         </Field>
+      </Section>
+
+      <Section title="Remote control">
+        <ToggleRow
+          label="Allow devices on this network"
+          description="Serve a mobile remote page on your LAN so phones can send URLs and control playback."
+          checked={settings.remoteEnabled}
+          onChange={(checked) => update({ remoteEnabled: checked })}
+        />
+        {settings.remoteEnabled &&
+          (remoteUrls && (remoteUrls.lan || remoteUrls.tailscale) ? (
+            <>
+              {remoteUrls.lan &&
+                qrLan &&
+                pairBlock(
+                  "On this network",
+                  "Scan while your phone is on the same Wi-Fi.",
+                  remoteUrls.lan,
+                  qrLan,
+                  "lan",
+                )}
+              {remoteUrls.tailscale &&
+                qrTailscale &&
+                pairBlock(
+                  "Via Tailscale — works anywhere",
+                  "Scan while signed in to Tailscale on the phone.",
+                  remoteUrls.tailscale,
+                  qrTailscale,
+                  "tailscale",
+                )}
+              {sessions.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-[10px] text-muted uppercase tracking-[0.06em] font-semibold">
+                      Paired devices
+                    </div>
+                    <button
+                      type="button"
+                      className="text-[10px] text-danger hover:underline"
+                      onClick={() => void handleRevokeAllSessions()}
+                    >
+                      Unpair all
+                    </button>
+                  </div>
+                  {sessions.map((s) => (
+                    <div key={s.id} className="flex items-center gap-2 py-1">
+                      <span className="text-xs text-text flex-1 truncate">
+                        {s.device}
+                      </span>
+                      <span className="text-[10px] text-muted flex-shrink-0">
+                        seen{" "}
+                        {new Date(s.lastSeen).toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-[10px] text-danger hover:underline flex-shrink-0"
+                        onClick={() => void handleRevokeSession(s.id)}
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-muted leading-snug mt-2 mb-0">
+                Can't scan? Use Copy link and send it to your phone, or paste
+                the token on the remote page.
+              </p>
+            </>
+          ) : (
+            <p className="text-[11px] text-warning leading-snug m-0">
+              No network interface found — connect to Wi-Fi/Ethernet, or start
+              Tailscale first.
+            </p>
+          ))}
       </Section>
 
       <Section title="Playback">

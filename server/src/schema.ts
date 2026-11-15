@@ -17,6 +17,9 @@ export const settings = sqliteTable("settings", {
   resumeEnabled: integer("resume_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
+  remoteEnabled: integer("remote_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
 });
 
 export const history = sqliteTable("history", {
@@ -26,4 +29,13 @@ export const history = sqliteTable("history", {
   thumbnail: text("thumbnail").notNull().default(""),
   timestamp: integer("timestamp").notNull(),
   position: integer("position").notNull().default(0),
+});
+
+export const remoteSessions = sqliteTable("remote_sessions", {
+  // The ID is the SHA-256 hash of the session token, so a leaked database
+  // never leaks usable tokens.
+  id: text("id").primaryKey(),
+  device: text("device").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  lastSeen: integer("last_seen").notNull(),
 });

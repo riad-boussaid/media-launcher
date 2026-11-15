@@ -5,6 +5,13 @@ const api = {
     getToken: () => ipcRenderer.invoke("server:token"),
     status: () => ipcRenderer.invoke("server:status"),
     probe: (url: string) => ipcRenderer.invoke("server:probe", url),
+    remoteUrls: () => ipcRenderer.invoke("server:remoteUrls"),
+  },
+  remote: {
+    sessions: () => ipcRenderer.invoke("remote:sessions"),
+    revokeSession: (id: string) =>
+      ipcRenderer.invoke("remote:revokeSession", id),
+    revokeAll: () => ipcRenderer.invoke("remote:revokeAll"),
   },
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),

@@ -17,6 +17,7 @@ export interface Settings {
   autoStart: boolean;
   startMinimized: boolean;
   resumePlayback: boolean;
+  remoteEnabled: boolean;
 }
 
 export interface PlayerQueueEntry {
@@ -72,6 +73,38 @@ const api = window.electronAPI;
 
 export async function getServerStatus(): Promise<ServerStatus> {
   return api.server.status();
+}
+
+export interface RemoteUrls {
+  /** Pairing link over the LAN (Wi-Fi/Ethernet). */
+  lan: string | null;
+  /** Pairing link over Tailscale (works from outside the LAN too). */
+  tailscale: string | null;
+}
+
+export interface RemoteSessionInfo {
+  id: string;
+  device: string;
+  createdAt: number;
+  lastSeen: number;
+}
+
+export async function getRemoteUrls(): Promise<RemoteUrls> {
+  return api.server.remoteUrls();
+}
+
+export async function getRemoteSessions(): Promise<RemoteSessionInfo[]> {
+  return api.remote.sessions();
+}
+
+export async function revokeRemoteSession(
+  id: string,
+): Promise<RemoteSessionInfo[]> {
+  return api.remote.revokeSession(id);
+}
+
+export async function revokeAllRemoteSessions(): Promise<void> {
+  return api.remote.revokeAll();
 }
 
 export async function probeServerUrl(url: string): Promise<ProbeResult> {

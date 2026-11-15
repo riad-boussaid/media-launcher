@@ -7,6 +7,7 @@ export interface Settings {
   autoStart: boolean;
   startMinimized: boolean;
   resumePlayback: boolean;
+  remoteEnabled: boolean;
 }
 
 export type SettingsUpdate = Partial<Settings>;
@@ -18,4 +19,11 @@ export interface HistoryEntry {
   thumbnail: string;
   timestamp: number;
   position: number;
+}
+
+export interface RemoteSession {
+  id: string;
+  device: string;
+  createdAt: number;
+  lastSeen: number;
 }

@@ -1,7 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
+import { findRemoteSession, touchRemoteSession } from "./db.js";
 
 let token: string | null = null;
 
@@ -56,21 +57,52 @@ function tokensMatch(provided: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+/** SHA-256 hex of a token — the stored key for remote-control sessions. */
+export function hashToken(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+/** Pulls the raw token out of the Authorization / X-Auth-Token headers. */
+export function extractToken(c: Context): string {
+  const auth = c.req.header("Authorization");
+  return (
+    auth?.startsWith("Bearer ")
+      ? auth.slice(7)
+      : (c.req.header("X-Auth-Token") ?? "")
+  ).trim();
+}
+
+/** True when `provided` matches the master token (desktop/extensions). */
+export function matchesMasterToken(provided: string): boolean {
+  return !!provided && !!token && tokensMatch(provided, token);
+}
+
+// Throttles last_seen writes so busy remotes don't hammer SQLite.
+const lastSeenFlush = new Map<string, number>();
+
 export function requireToken(): MiddlewareHandler {
   return async (c, next) => {
     if (!token) {
       console.error("Auth token not initialized; rejecting request");
       return c.json({ err: "server auth not initialized" }, 503);
     }
-    const auth = c.req.header("Authorization");
-    const provided = (
-      auth?.startsWith("Bearer ")
-        ? auth.slice(7)
-        : (c.req.header("X-Auth-Token") ?? "")
-    ).trim();
+    const provided = extractToken(c);
     if (provided && tokensMatch(provided, token)) {
       await next();
       return;
+    }
+    if (provided) {
+      // Remote-control session tokens — hashed into the sessions table.
+      const hash = hashToken(provided);
+      if (findRemoteSession(hash)) {
+        const now = Date.now();
+        if (now - (lastSeenFlush.get(hash) ?? 0) > 60000) {
+          lastSeenFlush.set(hash, now);
+          touchRemoteSession(hash);
+        }
+        await next();
+        return;
+      }
     }
     return c.json({ err: "unauthorized: missing or invalid auth token" }, 401);
   };

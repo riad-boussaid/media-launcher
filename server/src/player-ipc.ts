@@ -41,13 +41,7 @@ interface NowPlaying {
   paused: boolean;
 }
 
-const OBSERVED = [
-  "time-pos",
-  "duration",
-  "pause",
-  "media-title",
-  "playlist",
-];
+const OBSERVED = ["time-pos", "duration", "pause", "media-title", "playlist"];
 
 let proc: ChildProcess | null = null;
 let socket: Socket | null = null;
@@ -181,11 +175,12 @@ function connectPipe(pipePath: string): void {
     });
     s.on("data", (chunk: string) => {
       buffer += chunk;
-      let index: number;
-      while ((index = buffer.indexOf("\n")) >= 0) {
+      let index = buffer.indexOf("\n");
+      while (index >= 0) {
         const line = buffer.slice(0, index);
         buffer = buffer.slice(index + 1);
         handleLine(line);
+        index = buffer.indexOf("\n");
       }
     });
     s.once("error", () => {

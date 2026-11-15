@@ -6,7 +6,12 @@ import Database from "better-sqlite3";
 import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema.js";
-import type { HistoryEntry, Settings, SettingsUpdate } from "./types.js";
+import type {
+  HistoryEntry,
+  RemoteSession,
+  Settings,
+  SettingsUpdate,
+} from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -50,7 +55,8 @@ export function initDatabase(): void {
       bin_dir TEXT NOT NULL DEFAULT '',
       auto_start INTEGER NOT NULL DEFAULT 0,
       start_minimized INTEGER NOT NULL DEFAULT 0,
-      resume_enabled INTEGER NOT NULL DEFAULT 1
+      resume_enabled INTEGER NOT NULL DEFAULT 1,
+      remote_enabled INTEGER NOT NULL DEFAULT 0
     )
   `);
   sqlite.exec(`
@@ -61,6 +67,14 @@ export function initDatabase(): void {
       thumbnail TEXT NOT NULL DEFAULT '',
       timestamp INTEGER NOT NULL,
       position INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS remote_sessions (
+      id TEXT PRIMARY KEY,
+      device TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      last_seen INTEGER NOT NULL
     )
   `);
   sqlite.exec(
@@ -108,6 +122,11 @@ function migrateAddColumns(sqlite: Database.Database): void {
   if (!settingsCols.some((c) => c.name === "resume_enabled")) {
     sqlite.exec(
       "ALTER TABLE settings ADD COLUMN resume_enabled INTEGER NOT NULL DEFAULT 1",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "remote_enabled")) {
+    sqlite.exec(
+      "ALTER TABLE settings ADD COLUMN remote_enabled INTEGER NOT NULL DEFAULT 0",
     );
   }
 }
@@ -162,6 +181,7 @@ export function getSettings(): Settings {
       autoStart: false,
       startMinimized: false,
       resumePlayback: true,
+      remoteEnabled: false,
     };
   }
   return {
@@ -173,6 +193,7 @@ export function getSettings(): Settings {
     autoStart: r.autoStart,
     startMinimized: r.startMinimized,
     resumePlayback: r.resumeEnabled,
+    remoteEnabled: r.remoteEnabled,
   };
 }
 
@@ -204,6 +225,8 @@ export function setSettings(partial: SettingsUpdate): Settings {
     update.startMinimized = Boolean(partial.startMinimized);
   if (partial.resumePlayback !== undefined)
     update.resumeEnabled = Boolean(partial.resumePlayback);
+  if (partial.remoteEnabled !== undefined)
+    update.remoteEnabled = Boolean(partial.remoteEnabled);
 
   if (Object.keys(update).length > 0) {
     db.update(schema.settings)
@@ -270,6 +293,48 @@ export function updateHistoryPositionByUrl(
     .set({ position: Math.max(0, Math.floor(position)) })
     .where(eq(schema.history.url, url))
     .run();
+}
+
+export function createRemoteSession(id: string, device: string): void {
+  const now = Date.now();
+  db.insert(schema.remoteSessions)
+    .values({ id, device, createdAt: now, lastSeen: now })
+    .run();
+}
+
+export function getRemoteSessions(): RemoteSession[] {
+  return db
+    .select()
+    .from(schema.remoteSessions)
+    .orderBy(desc(schema.remoteSessions.lastSeen))
+    .all();
+}
+
+export function findRemoteSession(id: string): RemoteSession | null {
+  return (
+    db
+      .select()
+      .from(schema.remoteSessions)
+      .where(eq(schema.remoteSessions.id, id))
+      .get() ?? null
+  );
+}
+
+export function touchRemoteSession(id: string): void {
+  db.update(schema.remoteSessions)
+    .set({ lastSeen: Date.now() })
+    .where(eq(schema.remoteSessions.id, id))
+    .run();
+}
+
+export function deleteRemoteSession(id: string): void {
+  db.delete(schema.remoteSessions)
+    .where(eq(schema.remoteSessions.id, id))
+    .run();
+}
+
+export function deleteAllRemoteSessions(): void {
+  db.delete(schema.remoteSessions).run();
 }
 
 export function deleteHistory(id: string): HistoryEntry[] {

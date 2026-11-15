@@ -21,6 +21,29 @@ interface ElectronAPI {
     getToken: () => Promise<string | null>;
     status: () => Promise<{ online: boolean }>;
     probe: (url: string) => Promise<{ ok: boolean; detail?: string }>;
+    remoteUrls: () => Promise<{
+      lan: string | null;
+      tailscale: string | null;
+    }>;
+  };
+  remote: {
+    sessions: () => Promise<
+      {
+        id: string;
+        device: string;
+        createdAt: number;
+        lastSeen: number;
+      }[]
+    >;
+    revokeSession: (id: string) => Promise<
+      {
+        id: string;
+        device: string;
+        createdAt: number;
+        lastSeen: number;
+      }[]
+    >;
+    revokeAll: () => Promise<void>;
   };
   settings: {
     get: () => Promise<{
@@ -33,6 +56,7 @@ interface ElectronAPI {
       autoStart: boolean;
       startMinimized: boolean;
       resumePlayback: boolean;
+      remoteEnabled: boolean;
     }>;
     set: (partial: Record<string, unknown>) => Promise<{
       serverUrl: string;
@@ -44,6 +68,7 @@ interface ElectronAPI {
       autoStart: boolean;
       startMinimized: boolean;
       resumePlayback: boolean;
+      remoteEnabled: boolean;
     }>;
   };
   history: {

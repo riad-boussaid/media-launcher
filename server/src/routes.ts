@@ -1,15 +1,24 @@
+import { randomBytes } from "node:crypto";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono } from "hono";
+import { extractToken, hashToken, matchesMasterToken } from "./auth.js";
 import {
   addHistory,
   clearHistory,
+  createRemoteSession,
+  deleteAllRemoteSessions,
   deleteHistory,
+  deleteRemoteSession,
+  findRemoteSession,
   getHistory,
   getHistoryPosition,
+  getRemoteSessions,
   getSettings,
   setSettings,
   updateHistoryEntry,
 } from "./db.js";
 import { fetchMetadata } from "./metadata.js";
+import { launchPlayer } from "./player.js";
 import {
   getPlayerStatus,
   playNow,
@@ -18,7 +27,6 @@ import {
   skipTrack,
   togglePause,
 } from "./player-ipc.js";
-import { launchPlayer } from "./player.js";
 
 const app = new Hono();
 
@@ -141,6 +149,91 @@ app.post("/player/skip", async (c) => {
   return c.json({ data: "ok" });
 });
 
+// --- Remote-control pairing + session management ---
+
+// Pairing presents the master token, so brute-force attempts are throttled
+// per source IP (10 per minute — generous for humans, hostile for scripts).
+const pairAttempts = new Map<string, { count: number; window: number }>();
+
+function pairRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const entry = pairAttempts.get(ip);
+  if (!entry || now - entry.window > 60000) {
+    pairAttempts.set(ip, { count: 1, window: now });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > 10;
+}
+
+app.post("/remote/pair", async (c) => {
+  try {
+    const ip = getConnInfo(c).remote.address ?? "unknown";
+    if (pairRateLimited(ip)) {
+      return c.json(
+        { err: "Too many pairing attempts — try again in a minute." },
+        429,
+      );
+    }
+    const { token, device } = await c.req.json<{
+      token?: string;
+      device?: string;
+    }>();
+    if (typeof token !== "string" || !matchesMasterToken(token)) {
+      return c.json({ err: "invalid pairing token" }, 401);
+    }
+    const session = randomBytes(24).toString("base64url");
+    const label =
+      typeof device === "string" && device.trim()
+        ? device.trim().slice(0, 60)
+        : "Remote device";
+    createRemoteSession(hashToken(session), label);
+    return c.json({ session });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ err: message }, 400);
+  }
+});
+
+// Phone-side unpair: the caller authenticates with its own session token and
+// deletes exactly that session. Master tokens never match a session row.
+app.delete("/remote/session", (c) => {
+  const provided = extractToken(c);
+  if (!provided) {
+    return c.json({ err: "unauthorized" }, 401);
+  }
+  const id = hashToken(provided);
+  if (!findRemoteSession(id)) {
+    return c.json({ err: "no such session" }, 404);
+  }
+  deleteRemoteSession(id);
+  return c.json({ data: "unpaired" });
+});
+
+// Desktop-only session management — these require the master token.
+app.get("/remote/sessions", (c) => {
+  if (!matchesMasterToken(extractToken(c))) {
+    return c.json({ err: "master token required" }, 403);
+  }
+  return c.json(getRemoteSessions());
+});
+
+app.delete("/remote/sessions/:id", (c) => {
+  if (!matchesMasterToken(extractToken(c))) {
+    return c.json({ err: "master token required" }, 403);
+  }
+  deleteRemoteSession(c.req.param("id"));
+  return c.json(getRemoteSessions());
+});
+
+app.delete("/remote/sessions", (c) => {
+  if (!matchesMasterToken(extractToken(c))) {
+    return c.json({ err: "master token required" }, 403);
+  }
+  deleteAllRemoteSessions();
+  return c.json({ data: "cleared" });
+});
+
 app.get("/history", (c) => {
   return c.json(getHistory());
 });
@@ -160,7 +253,9 @@ app.post("/history", async (c) => {
       url,
       typeof title === "string" ? title : "",
       typeof thumbnail === "string" ? thumbnail : "",
-      typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0
+      typeof timestamp === "number" &&
+        Number.isFinite(timestamp) &&
+        timestamp > 0
         ? timestamp
         : undefined,
     );
@@ -176,7 +271,9 @@ app.put("/history/:id", async (c) => {
   try {
     const id = c.req.param("id");
     const body =
-      await c.req.json<Partial<{ title: string; thumbnail: string; position: number }>>();
+      await c.req.json<
+        Partial<{ title: string; thumbnail: string; position: number }>
+      >();
     if (body.title !== undefined && typeof body.title !== "string") {
       return c.json({ err: "title must be a string" }, 400);
     }

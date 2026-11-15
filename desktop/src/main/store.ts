@@ -51,12 +51,13 @@ function localConfigPath(): string {
   return join(app.getPath("userData"), "config.json");
 }
 
-function readLocalConfig(): { serverUrl: string } {
+function readLocalConfig(): { serverUrl: string; remoteEnabled: boolean } {
   const path = localConfigPath();
   if (existsSync(path)) {
     try {
       const parsed = JSON.parse(readFileSync(path, "utf-8")) as {
         serverUrl?: string;
+        remoteEnabled?: boolean;
       };
       return {
         serverUrl: normalizeServerUrl(
@@ -64,19 +65,33 @@ function readLocalConfig(): { serverUrl: string } {
             ? parsed.serverUrl
             : DEFAULT_SERVER_URL,
         ),
+        remoteEnabled: parsed.remoteEnabled === true,
       };
     } catch {
-      return { serverUrl: DEFAULT_SERVER_URL };
+      return { serverUrl: DEFAULT_SERVER_URL, remoteEnabled: false };
     }
   }
-  return { serverUrl: DEFAULT_SERVER_URL };
+  return { serverUrl: DEFAULT_SERVER_URL, remoteEnabled: false };
 }
 
-function writeLocalConfig(config: { serverUrl: string }): void {
+function writeLocalConfig(patch: {
+  serverUrl?: string;
+  remoteEnabled?: boolean;
+}): void {
+  const current = readLocalConfig();
   writeFileSync(
     localConfigPath(),
     JSON.stringify(
-      { serverUrl: normalizeServerUrl(config.serverUrl) },
+      {
+        serverUrl:
+          patch.serverUrl !== undefined
+            ? normalizeServerUrl(patch.serverUrl)
+            : current.serverUrl,
+        remoteEnabled:
+          patch.remoteEnabled !== undefined
+            ? patch.remoteEnabled
+            : current.remoteEnabled,
+      },
       null,
       2,
     ),
@@ -120,6 +135,7 @@ export async function getSettings(): Promise<Settings> {
       autoStart: serverSettings.autoStart ?? false,
       startMinimized: serverSettings.startMinimized ?? false,
       resumePlayback: serverSettings.resumePlayback ?? true,
+      remoteEnabled: local.remoteEnabled,
     };
   } catch {
     return {
@@ -132,6 +148,7 @@ export async function getSettings(): Promise<Settings> {
       autoStart: false,
       startMinimized: false,
       resumePlayback: true,
+      remoteEnabled: local.remoteEnabled,
     };
   }
 }
@@ -140,6 +157,11 @@ export async function setSettings(
   partial: Partial<Settings>,
 ): Promise<Settings> {
   const prevUrl = getServerUrl();
+
+  if (partial.remoteEnabled !== undefined) {
+    // Local config is the source of truth for the server's bind address.
+    writeLocalConfig({ remoteEnabled: partial.remoteEnabled });
+  }
 
   if (partial.serverUrl !== undefined) {
     const nextUrl = normalizeServerUrl(partial.serverUrl);
@@ -168,6 +190,8 @@ export async function setSettings(
     serverPayload.startMinimized = partial.startMinimized;
   if (partial.resumePlayback !== undefined)
     serverPayload.resumePlayback = partial.resumePlayback;
+  if (partial.remoteEnabled !== undefined)
+    serverPayload.remoteEnabled = partial.remoteEnabled;
 
   if (Object.keys(serverPayload).length > 0) {
     await api<Record<string, unknown>>("/settings", {
@@ -223,6 +247,33 @@ export async function skipTrack(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export interface RemoteSessionInfo {
+  id: string;
+  device: string;
+  createdAt: number;
+  lastSeen: number;
+}
+
+export async function getRemoteSessions(): Promise<RemoteSessionInfo[]> {
+  try {
+    return await api<RemoteSessionInfo[]>("/remote/sessions");
+  } catch {
+    return [];
+  }
+}
+
+export async function revokeRemoteSession(
+  id: string,
+): Promise<RemoteSessionInfo[]> {
+  return api<RemoteSessionInfo[]>(`/remote/sessions/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function revokeAllRemoteSessions(): Promise<void> {
+  await api("/remote/sessions", { method: "DELETE" });
 }
 
 export async function replayUrl(

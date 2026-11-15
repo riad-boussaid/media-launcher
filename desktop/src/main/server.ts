@@ -5,6 +5,7 @@ import {
   spawn,
 } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { app } from "electron";
 
@@ -30,6 +31,74 @@ function getDataDir(): string {
 
 function getTokenPath(): string {
   return join(getDataDir(), "auth-token");
+}
+
+/**
+ * Whether the "Remote control" toggle is on — persisted in the local config
+ * next to serverUrl so the spawn environment knows the bind address before
+ * the server (and its settings API) exists.
+ */
+function isRemoteEnabled(): boolean {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(join(app.getPath("userData"), "config.json"), "utf-8"),
+    ) as { remoteEnabled?: boolean };
+    return parsed.remoteEnabled === true;
+  } catch {
+    return false;
+  }
+}
+
+export interface RemoteUrls {
+  /** Pairing link over the LAN (Wi-Fi/Ethernet). */
+  lan: string | null;
+  /** Pairing link over Tailscale (works from outside the LAN too). */
+  tailscale: string | null;
+}
+
+const REMOTE_TOKEN_RANGE = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+$/;
+
+function pairingLink(ip: string, token: string): string {
+  return `http://${ip}:5000/remote?t=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Pairing links per transport: the LAN IP (Wi-Fi/Ethernet) and the machine's
+ * Tailscale IP when its adapter is up. Null entries mean that transport
+ * isn't currently available; remoteEnabled off means both are null.
+ */
+export function getRemoteUrls(): RemoteUrls {
+  if (!isRemoteEnabled()) return { lan: null, tailscale: null };
+  // Pick the most likely LAN address. Skips loopback, link-local (169.254 —
+  // adapters with no network) and virtual adapters (Hyper-V/WSL/Docker)
+  // whose addresses the phone usually can't reach. Tailscale's own adapter
+  // is handled separately below.
+  const candidates: string[] = [];
+  let tailscaleIp: string | null = null;
+  for (const [name, list] of Object.entries(networkInterfaces())) {
+    const isTailscale = /tailscale/i.test(name);
+    if (/vethernet|wsl|docker|virtual/i.test(name)) continue;
+    for (const ni of list ?? []) {
+      if (ni.family !== "IPv4" || ni.internal) continue;
+      if (ni.address.startsWith("169.254.")) continue;
+      if (isTailscale && REMOTE_TOKEN_RANGE.test(ni.address)) {
+        tailscaleIp = ni.address;
+        continue;
+      }
+      candidates.push(ni.address);
+    }
+  }
+  const token = readServerToken() ?? "";
+  const lanIp =
+    candidates.find((ip) => ip.startsWith("192.168.")) ??
+    candidates.find((ip) => ip.startsWith("10.")) ??
+    candidates.find((ip) => /^172\.(1[6-9]|2\d|3[01])\./.test(ip)) ??
+    candidates[0] ??
+    null;
+  return {
+    lan: lanIp ? pairingLink(lanIp, token) : null,
+    tailscale: tailscaleIp ? pairingLink(tailscaleIp, token) : null,
+  };
 }
 
 /**
@@ -120,7 +189,13 @@ export async function startServer(): Promise<void> {
   }
 
   const proc = spawn(process.execPath, [entry], {
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", DATA_DIR: getDataDir() },
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      DATA_DIR: getDataDir(),
+      // Remote control binds all interfaces; otherwise loopback only.
+      ...(isRemoteEnabled() ? { HOST: "0.0.0.0" } : {}),
+    },
     stdio: ["ignore", logFd ?? "ignore", logFd ?? "ignore"],
     detached: false,
   });
