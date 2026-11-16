@@ -3,6 +3,8 @@
 Marketing site for Media Launcher, built with [Astro](https://astro.build) and
 deployed as a static site on Cloudflare Pages.
 
+Live: <https://media-launcher.pages.dev/>
+
 ## Local development
 
 ```bash
