@@ -293,6 +293,7 @@ pnpm -C server dev
 pnpm dev:site
 pnpm build:site
 pnpm check:site
+pnpm deploy:site            # build + Wrangler Pages deploy
 
 # Release checks and browser bundles
 pnpm version:check

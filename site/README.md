@@ -54,15 +54,57 @@ unrelated commits.
 To attach a custom domain, add it in the Pages project under **Custom domains**
 and set `SITE_URL` to the same origin so canonical and Open Graph URLs match.
 
-### Manual deploy
+Use **either** the Cloudflare Git integration above **or** the Wrangler/GitHub
+Actions path below — not both, or every push deploys twice.
+
+### Wrangler direct upload
+
+Wrangler is installed in `site/devDependencies` and configured in
+`site/wrangler.jsonc` (project `media-launcher`, output `dist`).
 
 ```bash
-pnpm -C site build
-pnpm dlx wrangler pages deploy site/dist --project-name media-launcher
+# One-time local login (or export a CLOUDFLARE_API_TOKEN)
+pnpm -C site exec wrangler login
+
+# Create the Pages project once
+pnpm -C site run cf:project
+
+# Build and upload
+pnpm -C site run deploy
 ```
 
-`wrangler` needs a Cloudflare API token or an interactive `wrangler login`.
-Normal deployments do not need this; the Git integration builds on push.
+`pnpm -C site run deploy` runs `astro build` and then:
+
+```bash
+wrangler pages deploy dist --project-name media-launcher
+```
+
+If the `media-launcher` Pages project name is already taken, change `name` in
+`site/wrangler.jsonc` and the `--project-name` in `site/package.json` and
+`.github/workflows/site-deploy.yml`.
+
+For non-interactive use, set:
+
+| Variable | Purpose |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | API token with **Account → Cloudflare Pages → Edit** |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+
+### GitHub Actions deploy
+
+`.github/workflows/site-deploy.yml` checks, builds, and deploys the site when a
+push to `main` touches `site/**`. It skips the upload step when the secrets are
+missing, so CI stays green before Cloudflare is configured.
+
+Add these repository secrets:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+The workflow deploys with `--branch "$GITHUB_REF_NAME"`, so `main` updates
+production and a manual run on another branch creates a preview deployment.
+If you use this workflow, disconnect the Cloudflare Git integration so the same
+commit is not deployed twice.
 
 ## Assets and content
 
@@ -100,6 +142,8 @@ stay consistent with the privacy policy.
 ```text
 site/
   astro.config.mjs
+  wrangler.jsonc
+  pnpm-workspace.yaml
   public/
     favicon.svg
     og.png

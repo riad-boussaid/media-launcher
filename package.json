@@ -15,6 +15,7 @@
     "dev:firefox": "pnpm -C extensions/firefox run dev",
     "dev:site": "pnpm -C site run dev",
     "check:site": "pnpm -C site run check",
+    "deploy:site": "pnpm -C site run deploy",
     "lint": "biome check server/src/ desktop/src/ extensions/shared/src/ extensions/chrome/src/ extensions/firefox/src/",
     "lint:fix": "biome check --write server/src/ desktop/src/ extensions/shared/src/ extensions/chrome/src/ extensions/firefox/src/",
     "format": "biome format --write server/src/ desktop/src/ extensions/shared/src/ extensions/chrome/src/ extensions/firefox/src/",

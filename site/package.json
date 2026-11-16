@@ -9,13 +9,17 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
-    "type-check": "astro check"
+    "type-check": "astro check",
+    "deploy": "pnpm build && wrangler pages deploy dist --project-name media-launcher",
+    "cf:dev": "wrangler pages dev dist",
+    "cf:project": "wrangler pages project create media-launcher --production-branch main"
   },
   "dependencies": {
     "astro": "^7.4.12"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "wrangler": "4.163.0"
   }
 }
