@@ -16,6 +16,6 @@
     "type-check": "pnpm -C server run type-check && pnpm -C desktop run type-check && pnpm -C extensions/chrome run type-check && pnpm -C extensions/firefox run type-check"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.5"
+    "@biomejs/biome": "2.6.7"
   }
 }

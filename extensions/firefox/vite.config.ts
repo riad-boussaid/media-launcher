@@ -2,13 +2,13 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import webExtension from "vite-plugin-web-extension";
 import { resolve } from "path";
-import manifest from "./manifest.json";
+import manifest from "./manifest.json" with { type: "json" };
 
 export default defineConfig({
   resolve: {
     alias: {
-      "@": resolve(__dirname, "src"),
-      "@shared": resolve(__dirname, "../shared/src"),
+      "@": resolve(import.meta.dirname, "src"),
+      "@shared": resolve(import.meta.dirname, "../shared/src"),
     },
   },
   plugins: [
