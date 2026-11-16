@@ -96,6 +96,8 @@ export interface IssuedPairingCode {
  * Creates one-time codes for the desktop QR/manual pairing UI.
  *
  * Outstanding codes are process-local: restarting the server forgets them.
+ * Because issued codes are forgotten too, a previously consumed code cannot be
+ * replayed after a restart.
  * `clearPrevious` invalidates unused codes so "New code" can replace them.
  */
 export function issuePairingCodes(

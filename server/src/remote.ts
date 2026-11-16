@@ -43,6 +43,7 @@ export function remotePageHtml(nonce: string): string {
   button:disabled { opacity: 0.4; }
   .np-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .np-sub { font-size: 11px; color: #8b929e; margin-top: 2px; }
+  .np-sub.warn { color: #f87171; }
   .track { height: 4px; border-radius: 99px; background: rgb(255 255 255 / 0.07); margin-top: 10px; overflow: hidden; }
   .fill { height: 100%; border-radius: 99px; background: #64ffda; width: 0%; transition: width 0.3s; }
   .times { display: flex; justify-content: space-between; font-size: 10px; color: #8b929e; margin-top: 4px; }
@@ -154,7 +155,8 @@ export function remotePageHtml(nonce: string): string {
   <div class="row">
     <button id="pair-btn">Pair</button>
   </div>
-  <div class="np-sub">The code is shown in the desktop app under Settings &rarr; Remote control. It refreshes every minute.</div>
+  <div class="np-sub">The code is shown in the desktop app under Settings &rarr; Remote control. Codes expire after five minutes.</div>
+  <div class="np-sub" id="pair-expiry" hidden></div>
 </div>
 
 <div class="card">
@@ -168,6 +170,7 @@ export function remotePageHtml(nonce: string): string {
 
 <script nonce="${nonce}">
   var token = "";
+  var pairingExpiresAt = 0;
   function deviceLabel() {
     var ua = navigator.userAgent;
     var os = /Android/i.test(ua)
@@ -189,6 +192,8 @@ export function remotePageHtml(nonce: string): string {
     var params = new URLSearchParams(location.search);
     var code = params.get("c");
     var savedToken = localStorage.getItem("ml-remote-token") || "";
+    var expiresAt = Number(params.get("e")) || 0;
+    if (expiresAt > 0) pairingExpiresAt = expiresAt;
     if (!code && params.has("t")) {
       // Old links embedded the master token; never leave it in the address bar.
       history.replaceState(null, "", location.pathname);
@@ -469,6 +474,33 @@ export function remotePageHtml(nonce: string): string {
   if (!token) pairCard.hidden = false;
   var pairInput = document.getElementById("pair-code");
   var pairBtn = document.getElementById("pair-btn");
+  var pairExpiry = document.getElementById("pair-expiry");
+
+  function updatePairExpiry() {
+    if (!pairingExpiresAt) {
+      pairExpiry.hidden = true;
+      return;
+    }
+    var remaining = pairingExpiresAt - Date.now();
+    if (remaining <= 0) {
+      pairExpiry.textContent =
+        "This pairing code has expired — generate a new one in the desktop app.";
+      pairExpiry.className = "np-sub warn";
+    } else {
+      var minutes = Math.floor(remaining / 60000);
+      var seconds = Math.floor((remaining % 60000) / 1000);
+      pairExpiry.textContent =
+        "This pairing code expires in " +
+        minutes +
+        ":" +
+        String(seconds).padStart(2, "0") +
+        ".";
+      pairExpiry.className = "np-sub";
+    }
+    pairExpiry.hidden = false;
+  }
+  setInterval(updatePairExpiry, 1000);
+  updatePairExpiry();
 
   // Exchanges a short-lived pairing code for a revocable session token.
   function pair() {

@@ -61,8 +61,13 @@ export interface RemoteUrls {
 
 const REMOTE_TOKEN_RANGE = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+$/;
 
-function pairingLink(ip: string, code: string): string {
-  return `http://${ip}:5000/remote?c=${encodeURIComponent(code)}`;
+function pairingLink(
+  ip: string,
+  code: string,
+  expiresAt?: number | null,
+): string {
+  const base = `http://${ip}:5000/remote?c=${encodeURIComponent(code)}`;
+  return expiresAt ? `${base}&e=${expiresAt}` : base;
 }
 
 interface IssuedPairingCode {
@@ -150,10 +155,10 @@ export async function getRemoteUrls(fresh = false): Promise<RemoteUrls> {
   const lanCode = lanIp ? (codes[codeIndex++]?.code ?? null) : null;
   const tailscaleCode = tailscaleIp ? (codes[codeIndex++]?.code ?? null) : null;
   return {
-    lan: lanIp && lanCode ? pairingLink(lanIp, lanCode) : null,
+    lan: lanIp && lanCode ? pairingLink(lanIp, lanCode, expiresAt) : null,
     tailscale:
       tailscaleIp && tailscaleCode
-        ? pairingLink(tailscaleIp, tailscaleCode)
+        ? pairingLink(tailscaleIp, tailscaleCode, expiresAt)
         : null,
     expiresAt,
   };

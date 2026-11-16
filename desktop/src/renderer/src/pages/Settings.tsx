@@ -292,17 +292,21 @@ export default function SettingsPage() {
       }
       void load();
     }, 1500);
-    // Codes are one-time; mint a fresh set every minute while this page is
-    // open so the visible QR stays usable.
-    const refresh = setInterval(() => {
-      if (document.visibilityState === "visible") void load();
-    }, 60000);
     return () => {
       cancelled = true;
       stopQuick();
-      clearInterval(refresh);
     };
   }, [settings?.remoteEnabled, loadRemoteUrls]);
+
+  // Refresh the QR only when its codes are about to expire, so the displayed
+  // code stays stable instead of changing every minute.
+  useEffect(() => {
+    const expiresAt = remoteUrls?.expiresAt;
+    if (!expiresAt) return;
+    const delay = Math.max(0, expiresAt - Date.now() + 500);
+    const timer = setTimeout(() => void loadRemoteUrls(false), delay);
+    return () => clearTimeout(timer);
+  }, [remoteUrls?.expiresAt, loadRemoteUrls]);
 
   // Tick the one-time-code countdown while codes are displayed.
   useEffect(() => {
@@ -783,15 +787,24 @@ export default function SettingsPage() {
               )}
               <p className="text-[10px] text-muted leading-snug mt-2 mb-0">
                 Can't scan? Copy the link to your phone, or open the remote page
-                and enter the pairing code. The QR refreshes every minute with a
-                new one-time code that expires after five minutes.
+                and enter the pairing code. The QR refreshes automatically when
+                its one-time code is about to expire; codes last five minutes.
               </p>
             </>
           ) : (
-            <p className="text-[11px] text-warning leading-snug m-0">
-              No pairing link yet — check that the server is running and that
-              Wi-Fi/Ethernet or Tailscale is connected.
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <p className="min-w-0 flex-1 text-[11px] text-warning leading-snug m-0">
+                No pairing link yet — check that the server is running and that
+                Wi-Fi/Ethernet or Tailscale is connected.
+              </p>
+              <button
+                type="button"
+                className="btn-ghost btn-sm flex-shrink-0"
+                onClick={() => void loadRemoteUrls(false)}
+              >
+                Retry
+              </button>
+            </div>
           ))}
       </Section>
 

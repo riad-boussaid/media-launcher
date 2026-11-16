@@ -163,16 +163,17 @@ Options are grouped into:
    play recent history.
 
 QR codes contain a one-time pairing code, not the API token. The desktop mints
-a fresh code from the local server for each QR refresh (every minute while
-Settings is open); each code expires after five minutes and can be used once.
-The manual pairing card uses the same code. Paired devices can be revoked from
-the desktop app.
+a fresh code from the local server when the displayed codes are about to
+expire; each code expires after five minutes and can be used once. The manual
+pairing card uses the same code. Paired devices can be revoked from the desktop
+app.
 
 Remote control is intended for a trusted LAN or Tailscale. The remote page is
 served over plain HTTP on the LAN; use Tailscale (which encrypts traffic) when
 you need to control the player from outside the local network. Outstanding
 pairing codes are kept in server memory, so restarting the server invalidates
-them.
+them. Consumed codes cannot be replayed after a restart either — they are
+discarded with the rest of the in-memory state.
 
 ## Firefox sidebar
 
