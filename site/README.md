@@ -29,17 +29,22 @@ The build output is `site/dist`.
 
 ## Cloudflare Pages
 
-Create a Cloudflare Pages project connected to this repository:
+Production deployment uses the **Cloudflare Pages GitHub integration**. The
+project is named `media-launcher` and builds from this repository.
 
 | Setting | Value |
 |---|---|
+| Git provider | GitHub `riad-boussaid/media-launcher` |
 | Production branch | `main` |
 | Root directory | `site` |
 | Framework preset | Astro |
-| Build command | `pnpm build` |
+| Build command | `npm run build` |
 | Build output directory | `dist` |
 | Node version | `24` (`NODE_VERSION=24`) |
-| Install command | `pnpm install --frozen-lockfile` |
+
+Cloudflare installs dependencies with pnpm from `site/pnpm-lock.yaml`, then runs
+the package's `build` script. `npm run build` is only the command runner; Astro
+itself is installed by pnpm.
 
 Optional environment variables:
 
@@ -49,29 +54,27 @@ Optional environment variables:
 | `NODE_VERSION` | Set to `24`; Astro 7 requires Node 22.23.4+. |
 | `PNPM_VERSION` | Optional pin; the project declares pnpm 11.15.1 in `packageManager`. |
 
-Cloudflare builds preview deployments for pull requests automatically. Keep the
-build watch path limited to `site/**` if you do not want marketing builds on
-unrelated commits.
+The integration creates preview deployments for pull requests and deploys
+`main` to production. Cloudflare currently watches all paths; consider limiting
+the build watch path to `site/**` so unrelated commits do not trigger builds.
 
 To attach a custom domain, add it in the Pages project under **Custom domains**
 and set `SITE_URL` to the same origin so canonical and Open Graph URLs match.
 
-Use **either** the Cloudflare Git integration above **or** the Wrangler/GitHub
-Actions path below — not both, or every push deploys twice.
-
-### Wrangler direct upload
+### Wrangler direct upload (manual fallback)
 
 Wrangler is installed in `site/devDependencies` and configured in
-`site/wrangler.jsonc` (project `media-launcher`, output `dist`).
+`site/wrangler.jsonc` (project `media-launcher`, output `dist`). Use this for
+local testing or as a manual fallback if the Pages Git integration is down.
 
 ```bash
 # One-time local login (or export a CLOUDFLARE_API_TOKEN)
 pnpm -C site exec wrangler login
 
-# Create the Pages project once
+# Create the Pages project once if it does not exist
 pnpm -C site run cf:project
 
-# Build and upload
+# Build and upload manually
 pnpm -C site run deploy
 ```
 
@@ -81,9 +84,8 @@ pnpm -C site run deploy
 wrangler pages deploy dist --project-name media-launcher
 ```
 
-If the `media-launcher` Pages project name is already taken, change `name` in
-`site/wrangler.jsonc` and the `--project-name` in `site/package.json` and
-`.github/workflows/site-deploy.yml`.
+If the `media-launcher` Pages project name changes, update `name` in
+`site/wrangler.jsonc` and `--project-name` in `site/package.json`.
 
 For non-interactive use, set:
 
@@ -92,21 +94,9 @@ For non-interactive use, set:
 | `CLOUDFLARE_API_TOKEN` | API token with **Account → Cloudflare Pages → Edit** |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
 
-### GitHub Actions deploy
-
-`.github/workflows/site-deploy.yml` checks, builds, and deploys the site when a
-push to `main` touches `site/**`. It skips the upload step when the secrets are
-missing, so CI stays green before Cloudflare is configured.
-
-Add these repository secrets:
-
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-
-The workflow deploys with `--branch "$GITHUB_REF_NAME"`, so `main` updates
-production and a manual run on another branch creates a preview deployment.
-If you use this workflow, disconnect the Cloudflare Git integration so the same
-commit is not deployed twice.
+There is no GitHub Actions deploy workflow: the `site` CI job only checks and
+builds. Cloudflare's Git integration is the single production deployment path;
+manual Wrangler uploads override the current production deployment.
 
 ## Assets and content
 
