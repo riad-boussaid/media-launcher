@@ -5,6 +5,8 @@ export interface Site {
   isVideoLink: (anchor: HTMLAnchorElement) => boolean;
   resolveUrl: (anchor: HTMLAnchorElement) => string | null;
   buttonContainerSelector?: string;
+  /** Cheap CSS prefilter used before scanning all anchors for badges. */
+  linkSelector?: string;
   videoIdFromUrl?: (url: string) => string | null;
 }
 
@@ -27,13 +29,32 @@ export const SITES: Site[] = [
       host("youtube.com")(hostname) || hostname === "youtu.be",
     isVideoLink: (a) => {
       const u = abs(a);
-      return /(youtube\.com\/(watch|shorts|embed|v)\/|youtube\.com\/watch\?v=|youtu\.be\/)/.test(
-        u,
-      );
+      if (
+        !/(youtube\.com\/(watch|shorts|embed|v)\/|youtube\.com\/watch\?v=|youtu\.be\/)/.test(
+          u,
+        )
+      ) {
+        return false;
+      }
+      try {
+        // Comment timestamps link back to the same watch page with an `lc`
+        // parameter; they are not video thumbnails.
+        return !new URL(u).searchParams.has("lc");
+      } catch {
+        return true;
+      }
     },
     resolveUrl: (a) => abs(a),
+    // #actions-inner is a vertical stack (menu + menu-during-ads); appending
+    // there drops the button onto a full-width second line. The horizontal
+    // action row is #top-level-buttons-computed (older builds used the
+    // misspelled "complemented", kept as a fallback).
+    // Keep this scoped to watch/playlist surfaces: other pages (home shelves)
+    // also ship a #top-level-buttons-computed inside their own menus.
     buttonContainerSelector:
-      "#actions-inner, #top-level-buttons-complemented, #secondary ytd-video-primary-info-renderer .ytd-video-primary-info-renderer",
+      "ytd-watch-metadata #top-level-buttons-computed, ytd-watch-metadata #top-level-buttons-complemented, ytd-playlist-header-renderer #top-level-buttons-computed, ytd-playlist-header-renderer #top-level-buttons-complemented, #secondary ytd-video-primary-info-renderer .ytd-video-primary-info-renderer",
+    linkSelector:
+      "a[href*='/watch'], a[href*='/shorts/'], a[href*='youtu.be/']",
     videoIdFromUrl: (u) => {
       const m = u.match(
         /(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
@@ -57,6 +78,7 @@ export const SITES: Site[] = [
     resolveUrl: (a) => abs(a),
     buttonContainerSelector:
       ".PlayerHeader__titleActions__playerHeaderTitleActions",
+    linkSelector: "a[href*='/video/']",
   },
   {
     id: "twitch",
@@ -65,6 +87,7 @@ export const SITES: Site[] = [
     isVideoLink: (a) => /twitch\.tv\/\w+\/(videos|clips)\//.test(abs(a)),
     resolveUrl: (a) => abs(a),
     buttonContainerSelector: ".video-player__container",
+    linkSelector: "a[href*='/videos/'], a[href*='/clip']",
   },
   {
     id: "bilibili",
@@ -73,6 +96,7 @@ export const SITES: Site[] = [
     isVideoLink: (a) => /bilibili\.com\/video\//.test(abs(a)),
     resolveUrl: (a) => abs(a),
     buttonContainerSelector: "#video-title",
+    linkSelector: "a[href*='/video/']",
   },
   {
     id: "soundcloud",
@@ -99,6 +123,8 @@ export const SITES: Site[] = [
     isVideoLink: (a) => /facebook\.com\/(watch|reel|videos)/.test(abs(a)),
     resolveUrl: (a) => abs(a),
     buttonContainerSelector: "[data-testid='video-player']",
+    linkSelector:
+      "a[href*='/watch'], a[href*='/reel'], a[href*='/videos/']",
   },
   {
     id: "twitter",
@@ -111,6 +137,7 @@ export const SITES: Site[] = [
     isVideoLink: (a) =>
       /\/(twitter\.com|x\.com)\/\w+\/status\/\d+/.test(abs(a)),
     resolveUrl: (a) => abs(a),
+    linkSelector: "a[href*='/status/']",
   },
   {
     id: "reddit",
@@ -118,6 +145,7 @@ export const SITES: Site[] = [
     matches: host("reddit.com"),
     isVideoLink: (a) => /reddit\.com\/r\/[^/]+\/comments\//.test(abs(a)),
     resolveUrl: (a) => abs(a),
+    linkSelector: "a[href*='/comments/']",
   },
   {
     id: "tiktok",
@@ -125,6 +153,7 @@ export const SITES: Site[] = [
     matches: host("tiktok.com"),
     isVideoLink: (a) => /tiktok\.com\/@[\w.]+\/(video|live)/.test(abs(a)),
     resolveUrl: (a) => abs(a),
+    linkSelector: "a[href*='/video/']",
   },
   {
     id: "instagram",
@@ -132,6 +161,7 @@ export const SITES: Site[] = [
     matches: host("instagram.com"),
     isVideoLink: (a) => /instagram\.com\/(reel|p|tv)\//.test(abs(a)),
     resolveUrl: (a) => abs(a),
+    linkSelector: "a[href*='/reel/'], a[href*='/p/'], a[href*='/tv/']",
   },
   {
     id: "kick",
@@ -139,6 +169,7 @@ export const SITES: Site[] = [
     matches: host("kick.com"),
     isVideoLink: (a) => /kick\.com\/(video|clip)\//.test(abs(a)),
     resolveUrl: (a) => abs(a),
+    linkSelector: "a[href*='/video/'], a[href*='/clip/']",
   },
   {
     id: "rumble",

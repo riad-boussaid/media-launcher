@@ -5,6 +5,17 @@
   "icons": { "128": "play-logo.png" },
   "version": "0.1.0",
 
+  "commands": {
+    "play-current-page": {
+      "suggested_key": { "default": "Alt+Shift+P" },
+      "description": "Play the current page with Media Launcher"
+    },
+    "queue-current-page": {
+      "suggested_key": { "default": "Alt+Shift+Q" },
+      "description": "Queue the current page with Media Launcher"
+    }
+  },
+
   "permissions": ["storage", "activeTab", "contextMenus", "scripting", "notifications", "alarms", "sidePanel"],
   "host_permissions": [
     "http://localhost:*/*",

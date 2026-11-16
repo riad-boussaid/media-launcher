@@ -59,8 +59,26 @@ export interface RemoteUrls {
 
 const REMOTE_TOKEN_RANGE = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+$/;
 
-function pairingLink(ip: string, token: string): string {
-  return `http://${ip}:5000/remote?t=${encodeURIComponent(token)}`;
+function pairingLink(ip: string, code: string): string {
+  return `http://${ip}:5000/remote?c=${encodeURIComponent(code)}`;
+}
+
+/** Mint a one-time code from the local server (master-token protected). */
+async function fetchPairingCode(): Promise<string | null> {
+  const token = readServerToken();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${getServerUrl()}/remote/pairing-code`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { code?: unknown };
+    return typeof data.code === "string" && data.code ? data.code : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -68,7 +86,7 @@ function pairingLink(ip: string, token: string): string {
  * Tailscale IP when its adapter is up. Null entries mean that transport
  * isn't currently available; remoteEnabled off means both are null.
  */
-export function getRemoteUrls(): RemoteUrls {
+export async function getRemoteUrls(): Promise<RemoteUrls> {
   if (!isRemoteEnabled()) return { lan: null, tailscale: null };
   // Pick the most likely LAN address. Skips loopback, link-local (169.254 —
   // adapters with no network) and virtual adapters (Hyper-V/WSL/Docker)
@@ -89,16 +107,24 @@ export function getRemoteUrls(): RemoteUrls {
       candidates.push(ni.address);
     }
   }
-  const token = readServerToken() ?? "";
   const lanIp =
     candidates.find((ip) => ip.startsWith("192.168.")) ??
     candidates.find((ip) => ip.startsWith("10.")) ??
     candidates.find((ip) => /^172\.(1[6-9]|2\d|3[01])\./.test(ip)) ??
     candidates[0] ??
     null;
+  // Use an independent one-time code for each transport: scanning the LAN QR
+  // must not consume the Tailscale QR (or vice versa).
+  const [lanCode, tailscaleCode] = await Promise.all([
+    lanIp ? fetchPairingCode() : Promise.resolve(null),
+    tailscaleIp ? fetchPairingCode() : Promise.resolve(null),
+  ]);
   return {
-    lan: lanIp ? pairingLink(lanIp, token) : null,
-    tailscale: tailscaleIp ? pairingLink(tailscaleIp, token) : null,
+    lan: lanIp && lanCode ? pairingLink(lanIp, lanCode) : null,
+    tailscale:
+      tailscaleIp && tailscaleCode
+        ? pairingLink(tailscaleIp, tailscaleCode)
+        : null,
   };
 }
 

@@ -1,6 +1,14 @@
 import { getServerUrl, sendUrl } from "@shared/api";
+import { ext } from "@shared/ext";
+import { getSettings, migrateAuthToken } from "@shared/settings";
 
 const LOGO = chrome.runtime.getURL("play-logo.png");
+
+// Move a legacy sync-stored API token into local storage as soon as the
+// background context starts, so it stops syncing across devices.
+void migrateAuthToken().catch((err) => {
+  console.error("auth token migration failed:", err);
+});
 
 function getYouTubeId(u: string): string | null {
   try {
@@ -49,6 +57,8 @@ async function fetchThumbnail(videoId: string): Promise<string> {
 
 async function notify(message: string, thumbnailUrl?: string) {
   try {
+    const settings = await getSettings();
+    if (!settings.notifications) return;
     await chrome.notifications.create({
       type: "basic",
       iconUrl: thumbnailUrl ?? LOGO,
@@ -125,7 +135,11 @@ if (hasSidePanel) {
   });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === "install") {
+    // First-run onboarding: show the token setup checklist immediately.
+    void ext.runtime.openOptionsPage();
+  }
   chrome.contextMenus.create({
     id: "play-page",
     title: "Play Page with Media Launcher",
@@ -140,6 +154,16 @@ chrome.runtime.onInstalled.addListener(() => {
     id: "play-media",
     title: "Play Media with Media Launcher",
     contexts: ["video", "audio"],
+  });
+  chrome.contextMenus.create({
+    id: "queue-page",
+    title: "Queue Page with Media Launcher",
+    contexts: ["page"],
+  });
+  chrome.contextMenus.create({
+    id: "queue-link",
+    title: "Queue Link with Media Launcher",
+    contexts: ["link"],
   });
 
   chrome.alarms.create("check-server", { periodInMinutes: 0.5 });
@@ -168,7 +192,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     // requests are subject to the page's CORS and would fail preflight.
     // Relay through the background worker, which has host permissions.
     void (async () => {
-      const result = await sendUrl(msg.url as string);
+      const result = await sendUrl(
+        msg.url as string,
+        undefined,
+        msg.queue === true,
+      );
       sendResponse(result);
     })();
     return true;
@@ -188,7 +216,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         if (msg.success) {
           setTemporaryBadge("✓", "#22c55e");
-          notify("Sent to player", thumb);
+          notify(msg.queued ? "Queued in player" : "Sent to player", thumb);
         } else {
           setTemporaryBadge("✗", "#ef4444");
           notify(msg.error ?? "Failed", thumb);
@@ -205,18 +233,54 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 chrome.contextMenus.onClicked.addListener(async (info) => {
   let url: string | undefined;
-  if (info.menuItemId === "play-page") url = info.pageUrl;
-  else if (info.menuItemId === "play-link") url = info.linkUrl;
-  else if (info.menuItemId === "play-media") url = info.srcUrl;
+  let queue = false;
+  if (info.menuItemId === "play-page") {
+    url = info.pageUrl;
+  } else if (info.menuItemId === "queue-page") {
+    url = info.pageUrl;
+    queue = true;
+  } else if (info.menuItemId === "play-link") {
+    url = info.linkUrl;
+  } else if (info.menuItemId === "queue-link") {
+    url = info.linkUrl;
+    queue = true;
+  } else if (info.menuItemId === "play-media") {
+    url = info.srcUrl;
+  }
   if (!url) return;
   const videoId = getYouTubeId(url);
   const thumb = videoId ? await fetchThumbnail(videoId) : undefined;
-  const result = await sendUrl(url);
+  const result = await sendUrl(url, undefined, queue);
   if (result.success) {
     setTemporaryBadge("✓", "#22c55e");
-    notify("Sent to player", thumb);
+    notify(queue ? "Queued in player" : "Sent to player", thumb);
   } else {
     setTemporaryBadge("✗", "#ef4444");
     notify(result.error ?? "Failed", thumb);
   }
+});
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== "play-current-page" && command !== "queue-current-page") {
+    return;
+  }
+  const queue = command === "queue-current-page";
+  void (async () => {
+    const [tab] = await ext.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+    const url = tab?.url;
+    if (!url || !/^https?:/i.test(url)) return;
+    const videoId = getYouTubeId(url);
+    const thumb = videoId ? await fetchThumbnail(videoId) : undefined;
+    const result = await sendUrl(url, undefined, queue);
+    if (result.success) {
+      setTemporaryBadge("✓", "#22c55e");
+      notify(queue ? "Queued in player" : "Sent to player", thumb);
+    } else {
+      setTemporaryBadge("✗", "#ef4444");
+      notify(result.error ?? "Failed", thumb);
+    }
+  })();
 });

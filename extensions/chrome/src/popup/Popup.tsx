@@ -1,4 +1,6 @@
-import { checkServerHealth, sendUrl } from "@shared/api";
+import { getServerHealthInfo, sendUrl } from "@shared/api";
+import { EXPECTED_SERVER_API_VERSION } from "@shared/discovery";
+import { ext } from "@shared/ext";
 import {
   clearAll,
   getRecent,
@@ -6,7 +8,7 @@ import {
   migrateLegacy,
   removeEntry,
 } from "@shared/history";
-import { defaultSettings } from "@shared/settings";
+import { defaultSettings, getSettings } from "@shared/settings";
 import { isPlaylistUrl } from "@shared/url";
 import {
   CheckCircle2,
@@ -136,6 +138,10 @@ export default function Popup({
   const [queueing, setQueueing] = useState(false);
   const [sending, setSending] = useState(false);
   const [serverStatus, setServerStatus] = useState<ServerStatus>("checking");
+  const [serverInfo, setServerInfo] = useState<{
+    version?: string;
+    apiVersion?: number;
+  } | null>(null);
   const [maxHeight, setMaxHeight] = useState(defaultSettings.maxHeight);
   const [codec, setCodec] = useState(defaultSettings.codec);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -171,30 +177,45 @@ export default function Popup({
   // Only http(s) tabs can be handed to the player.
   const isWebUrl = /^https?:/i.test(tabUrl);
   // Firefox has no sidePanel API — hide the "open in sidebar" shortcut there.
-  const canOpenSidePanel = typeof chrome.sidePanel?.open === "function";
+  const canOpenSidePanel = typeof ext.sidePanel?.open === "function";
+  // Firefox uses sidebar_action instead.
+  const firefoxSidebar = (
+    ext as unknown as { sidebarAction?: { open?: () => Promise<void> } }
+  ).sidebarAction;
+  const canOpenFirefoxSidebar = typeof firefoxSidebar?.open === "function";
 
   useEffect(() => {
     try {
-      chrome.runtime.sendMessage("check-server");
+      Promise.resolve(ext.runtime.sendMessage("check-server")).catch(() => {});
     } catch {
       /* ignore */
     }
 
-    chrome.storage.sync.get(defaultSettings).then((opts) => {
+    getSettings().then((opts) => {
       if (opts.maxHeight) setMaxHeight(opts.maxHeight);
       if (opts.codec) setCodec(opts.codec);
     });
 
     void migrateLegacy().then(getRecent).then(setHistory);
 
-    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+    ext.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       if (tab?.url) setTabUrl(tab.url);
       if (tab?.title) setTabTitle(tab.title);
     });
 
-    checkServerHealth()
-      .then((ok) => setServerStatus(ok ? "connected" : "disconnected"))
-      .catch(() => setServerStatus("disconnected"));
+    getServerHealthInfo()
+      .then((info) => {
+        setServerStatus(info.ok ? "connected" : "disconnected");
+        setServerInfo(
+          info.ok
+            ? { version: info.version, apiVersion: info.apiVersion }
+            : null,
+        );
+      })
+      .catch(() => {
+        setServerStatus("disconnected");
+        setServerInfo(null);
+      });
   }, []);
 
   // yt-dlp metadata enrichment can take a while — keep polling while a visible
@@ -251,7 +272,11 @@ export default function Popup({
     serverStatus === "connected" ? (
       <span
         className="size-2 shrink-0 rounded-full bg-green-500 ring-2 ring-green-500/20"
-        title="Server connected"
+        title={
+          serverInfo?.version
+            ? `Server connected · v${serverInfo.version}`
+            : "Server connected"
+        }
       />
     ) : serverStatus === "disconnected" ? (
       <span
@@ -261,6 +286,20 @@ export default function Popup({
     ) : (
       <Loader2 className="size-3 animate-spin text-muted-foreground" />
     );
+
+  const serverVersionLabel =
+    serverStatus === "connected" && serverInfo?.version ? (
+      <span
+        className="text-[10px] text-muted-foreground"
+        title={
+          typeof serverInfo.apiVersion === "number"
+            ? `Server API ${serverInfo.apiVersion}`
+            : "Server API version unknown"
+        }
+      >
+        v{serverInfo.version}
+      </span>
+    ) : null;
 
   const isSidebar = mode === "sidebar";
 
@@ -325,7 +364,7 @@ export default function Popup({
       {isSidebar && (
         <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-card/95 px-4 py-3 backdrop-blur">
           <img
-            src={chrome.runtime.getURL("play-logo.png")}
+            src={ext.runtime.getURL("play-logo.png")}
             alt=""
             className="size-6 shrink-0"
           />
@@ -333,12 +372,13 @@ export default function Popup({
             media-launcher
           </span>
           {dot}
+          {serverVersionLabel}
           <div className="ml-auto flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon"
               className="size-7 text-muted-foreground hover:text-foreground"
-              onClick={() => chrome.runtime.openOptionsPage()}
+              onClick={() => ext.runtime.openOptionsPage()}
               title="Settings"
             >
               <Settings className="size-4" />
@@ -361,20 +401,26 @@ export default function Popup({
                 media-launcher
               </span>
               {dot}
+              {serverVersionLabel}
             </div>
             <div className="flex items-center gap-1">
-              {canOpenSidePanel && (
+              {(canOpenSidePanel || canOpenFirefoxSidebar) && (
                 <Button
                   variant="ghost"
                   size="icon-xs"
                   className="text-muted-foreground hover:text-foreground"
                   onClick={async () => {
-                    const [tab] = await chrome.tabs.query({
-                      active: true,
-                      currentWindow: true,
-                    });
-                    if (tab?.windowId) {
-                      await chrome.sidePanel.open({ windowId: tab.windowId });
+                    if (canOpenSidePanel) {
+                      const [tab] = await chrome.tabs.query({
+                        active: true,
+                        currentWindow: true,
+                      });
+                      if (tab?.windowId) {
+                        await chrome.sidePanel.open({ windowId: tab.windowId });
+                      }
+                    } else {
+                      await firefoxSidebar?.open?.();
+                      window.close();
                     }
                   }}
                   title="Open in sidebar"
@@ -386,7 +432,7 @@ export default function Popup({
                 variant="ghost"
                 size="icon-xs"
                 className="text-muted-foreground hover:text-foreground"
-                onClick={() => chrome.runtime.openOptionsPage()}
+                onClick={() => ext.runtime.openOptionsPage()}
                 title="Settings"
               >
                 <Settings className="size-3.5" />
@@ -394,6 +440,15 @@ export default function Popup({
             </div>
           </div>
         )}
+
+        {serverStatus === "connected" &&
+          serverInfo &&
+          serverInfo.apiVersion !== EXPECTED_SERVER_API_VERSION && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-[11px] leading-snug text-destructive">
+              Unsupported server API version. Update the extension and the
+              desktop app.
+            </div>
+          )}
 
         {isWebUrl ? (
           <>
@@ -443,7 +498,7 @@ export default function Popup({
                     value={maxHeight}
                     onValueChange={(v) => {
                       if (v) setMaxHeight(v);
-                      chrome.storage.sync.set({ maxHeight: v });
+                      ext.storage.sync.set({ maxHeight: v });
                     }}
                   >
                     <SelectTrigger
@@ -465,7 +520,7 @@ export default function Popup({
                     value={codec}
                     onValueChange={(v) => {
                       if (v) setCodec(v);
-                      chrome.storage.sync.set({ codec: v });
+                      ext.storage.sync.set({ codec: v });
                     }}
                   >
                     <SelectTrigger
@@ -688,6 +743,13 @@ export default function Popup({
           </>
         )}
       </div>
+
+      {!isSidebar && (
+        <div className="border-t px-3 py-2 text-center text-[10px] leading-relaxed text-muted-foreground">
+          <p className="m-0">Shift-click in-page buttons to queue.</p>
+          <p className="m-0">Shortcuts: Alt+Shift+P play · Alt+Shift+Q queue</p>
+        </div>
+      )}
     </div>
   );
 }

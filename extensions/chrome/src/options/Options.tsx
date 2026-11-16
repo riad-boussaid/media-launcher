@@ -1,5 +1,15 @@
-import { discoverServer } from "@shared/discovery";
-import { defaultSettings, type Settings } from "@shared/settings";
+import {
+  type DiscoveryResult,
+  discoverServer,
+  EXPECTED_SERVER_API_VERSION,
+} from "@shared/discovery";
+import { ext } from "@shared/ext";
+import {
+  defaultSettings,
+  getSettings,
+  type Settings,
+  saveSettings,
+} from "@shared/settings";
 import {
   CheckCircle2,
   Download,
@@ -51,6 +61,10 @@ function isSettingsShape(value: unknown): value is Settings {
     s.speed <= 3 &&
     typeof s.subLang === "string" &&
     typeof s.loop === "boolean" &&
+    (s.showPageButton === undefined || typeof s.showPageButton === "boolean") &&
+    (s.showThumbButtons === undefined ||
+      typeof s.showThumbButtons === "boolean") &&
+    (s.notifications === undefined || typeof s.notifications === "boolean") &&
     (s.authToken === undefined || typeof s.authToken === "string")
   );
 }
@@ -83,8 +97,19 @@ export default function Options() {
   const [speed, setSpeed] = useState(defaultSettings.speed);
   const [subLang, setSubLang] = useState(defaultSettings.subLang);
   const [loop, setLoop] = useState(defaultSettings.loop);
+  const [showPageButton, setShowPageButton] = useState(
+    defaultSettings.showPageButton,
+  );
+  const [showThumbButtons, setShowThumbButtons] = useState(
+    defaultSettings.showThumbButtons,
+  );
+  const [notifications, setNotifications] = useState(
+    defaultSettings.notifications,
+  );
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<boolean | null>(null);
+  const [serverInfo, setServerInfo] = useState<DiscoveryResult | null>(null);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">(
     "idle",
@@ -107,6 +132,9 @@ export default function Options() {
     setSpeed(s.speed);
     setSubLang(s.subLang);
     setLoop(s.loop);
+    setShowPageButton(s.showPageButton ?? defaultSettings.showPageButton);
+    setShowThumbButtons(s.showThumbButtons ?? defaultSettings.showThumbButtons);
+    setNotifications(s.notifications ?? defaultSettings.notifications);
   }, []);
 
   const currentSettings = (): Settings => ({
@@ -120,6 +148,9 @@ export default function Options() {
     speed,
     subLang,
     loop,
+    showPageButton,
+    showThumbButtons,
+    notifications,
   });
   const currentRef = useRef(currentSettings);
   currentRef.current = currentSettings;
@@ -132,11 +163,11 @@ export default function Options() {
       Number.isFinite(s.speed) && s.speed >= 0.25 && s.speed <= 3
         ? s.speed
         : defaultSettings.speed;
-    await chrome.storage.sync.set({ ...s, speed: safeSpeed });
+    await saveSettings({ ...s, speed: safeSpeed });
   }, []);
 
-  // Auto-save: any change to the form is debounced straight into
-  // chrome.storage.sync, matching the desktop app's behavior.
+  // Auto-save: any change to the form is debounced straight into extension
+  // storage. Non-secret settings go to sync; the API token stays local.
   useEffect(() => {
     if (!loadedRef.current) return;
     if (signature === lastSavedRef.current) return;
@@ -203,7 +234,9 @@ export default function Options() {
   const runDiscovery = useCallback(async () => {
     setDiscovering(true);
     setDiscovered(null);
+    setServerInfo(null);
     const result = await discoverServer(serverUrl);
+    setServerInfo(result);
     if (result) {
       setServerUrl(result.serverUrl);
       setDiscovered(true);
@@ -222,10 +255,11 @@ export default function Options() {
   };
 
   const restoreOptions = useCallback(async () => {
-    const opts = (await chrome.storage.sync.get(defaultSettings)) as Settings;
+    const opts = await getSettings();
     applySettings(opts);
     lastSavedRef.current = JSON.stringify(currentRef.current());
     loadedRef.current = true;
+    setSettingsLoaded(true);
   }, [applySettings]);
 
   useEffect(() => {
@@ -235,12 +269,10 @@ export default function Options() {
   const hasAutoDiscovered = useRef(false);
 
   useEffect(() => {
-    if (hasAutoDiscovered.current) return;
-    if (serverUrl && serverUrl === defaultSettings.serverUrl) {
-      hasAutoDiscovered.current = true;
-      void runDiscovery();
-    }
-  }, [serverUrl, runDiscovery]);
+    if (!settingsLoaded || hasAutoDiscovered.current) return;
+    hasAutoDiscovered.current = true;
+    void runDiscovery();
+  }, [settingsLoaded, runDiscovery]);
 
   return (
     <div className="mx-auto w-4/5 max-w-2xl space-y-6 p-4">
@@ -260,6 +292,29 @@ export default function Options() {
           </span>
         )}
       </div>
+
+      {settingsLoaded && !authToken.trim() && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+          <h3 className="text-sm font-semibold">First-time setup</h3>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-muted-foreground">
+            <li>
+              Start the Media Launcher desktop app (or run the API server).
+            </li>
+            <li>
+              Open the app's <strong>Settings → Connection</strong> and copy the
+              API token.
+            </li>
+            <li>Paste the token into the Server section below.</li>
+            <li>
+              Click <strong>Detect server</strong>. The status should show
+              “Server found”.
+            </li>
+          </ol>
+          <p className="mt-2 text-xs text-muted-foreground">
+            The token is stored only on this device — it is never synced.
+          </p>
+        </div>
+      )}
 
       <Section title="Appearance">
         <Label>Theme</Label>
@@ -289,6 +344,7 @@ export default function Options() {
             onChange={(e) => {
               setServerUrl(e.target.value);
               setDiscovered(null);
+              setServerInfo(null);
             }}
             placeholder="http://localhost:5000"
           />
@@ -321,6 +377,24 @@ export default function Options() {
             The desktop app runs a local server. The extension auto-discovers it
             on ports 5000–5010.
           </p>
+          {serverInfo && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-muted-foreground">
+                {serverInfo.version
+                  ? `Server v${serverInfo.version}`
+                  : "Server version unknown"}
+                {typeof serverInfo.apiVersion === "number"
+                  ? ` · API ${serverInfo.apiVersion}`
+                  : ""}
+              </span>
+              {serverInfo.apiVersion !== EXPECTED_SERVER_API_VERSION && (
+                <span className="text-destructive">
+                  Unsupported API version — update the extension and desktop
+                  app.
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <Label htmlFor="auth-token">API token</Label>
         <div className="relative">
@@ -349,7 +423,8 @@ export default function Options() {
         </div>
         <p className="text-xs text-muted-foreground">
           Copy the API token from the desktop app's Settings page. The server
-          rejects unauthenticated requests.
+          rejects unauthenticated requests. The token is stored locally and is
+          never synced between devices.
         </p>
       </Section>
 
@@ -462,6 +537,68 @@ export default function Options() {
             </Label>
           </div>
         )}
+      </Section>
+
+      <Section title="On-page controls">
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="show-page-button"
+            checked={showPageButton}
+            onCheckedChange={(checked) => setShowPageButton(checked === true)}
+          />
+          <Label htmlFor="show-page-button" className="text-sm font-normal">
+            Show the play button on video pages
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="show-thumb-buttons"
+            checked={showThumbButtons}
+            onCheckedChange={(checked) => setShowThumbButtons(checked === true)}
+          />
+          <Label htmlFor="show-thumb-buttons" className="text-sm font-normal">
+            Show play buttons on thumbnails and playlist headers
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="notifications"
+            checked={notifications}
+            onCheckedChange={(checked) => setNotifications(checked === true)}
+          />
+          <Label htmlFor="notifications" className="text-sm font-normal">
+            Show desktop notifications after sending
+          </Label>
+          <Button
+            variant="outline"
+            size="xs"
+            className="ml-auto"
+            onClick={() => {
+              void ext.notifications
+                .create({
+                  type: "basic",
+                  iconUrl: ext.runtime.getURL("play-logo.png"),
+                  title: "media-launcher",
+                  message: "Notifications are working.",
+                })
+                .catch(() =>
+                  toast.error(
+                    "Could not show a notification — check the browser's notification permission for this extension.",
+                  ),
+                );
+            }}
+          >
+            Test
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Shift-click an in-page play button to queue the video instead of
+          playing it immediately.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Notifications are controlled by the browser. If the test stays silent,
+          allow notifications for this extension in your browser's settings.
+        </p>
       </Section>
 
       <Section title="Advanced">

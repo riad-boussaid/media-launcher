@@ -133,6 +133,9 @@ export default function SettingsPage() {
   const [copiedTransport, setCopiedTransport] = useState<
     "lan" | "tailscale" | null
   >(null);
+  const [copiedCodeTransport, setCopiedCodeTransport] = useState<
+    "lan" | "tailscale" | null
+  >(null);
   const { theme, setTheme } = useTheme();
 
   const loadedRef = useRef(false);
@@ -143,6 +146,34 @@ export default function SettingsPage() {
     setToast({ msg, variant });
     setTimeout(() => setToast(null), 2200);
   }, []);
+
+  const loadRemoteUrls = useCallback(
+    async (isCancelled?: () => boolean): Promise<RemoteUrls> => {
+      try {
+        const urls = await getRemoteUrls();
+        if (isCancelled?.()) return urls;
+        const lanQr = urls.lan
+          ? await QRCode.toDataURL(urls.lan, { margin: 1 })
+          : null;
+        const tailscaleQr = urls.tailscale
+          ? await QRCode.toDataURL(urls.tailscale, { margin: 1 })
+          : null;
+        if (isCancelled?.()) return urls;
+        setRemoteUrls(urls);
+        setQrLan(lanQr);
+        setQrTailscale(tailscaleQr);
+        return urls;
+      } catch {
+        if (isCancelled?.()) return { lan: null, tailscale: null };
+        const empty: RemoteUrls = { lan: null, tailscale: null };
+        setRemoteUrls(empty);
+        setQrLan(null);
+        setQrTailscale(null);
+        return empty;
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     window.electronAPI.server.getToken().then((t) => setToken(t ?? ""));
@@ -231,34 +262,40 @@ export default function SettingsPage() {
     }
     let cancelled = false;
     let tries = 0;
-    const load = () => {
-      void getRemoteUrls().then(async (urls) => {
-        if (cancelled) return;
-        setRemoteUrls(urls);
-        setQrLan(
-          urls.lan ? await QRCode.toDataURL(urls.lan, { margin: 1 }) : null,
-        );
-        setQrTailscale(
-          urls.tailscale
-            ? await QRCode.toDataURL(urls.tailscale, { margin: 1 })
-            : null,
-        );
-      });
+    let quick: ReturnType<typeof setInterval> | null = null;
+    const stopQuick = () => {
+      if (quick) {
+        clearInterval(quick);
+        quick = null;
+      }
     };
-    load();
-    const t = setInterval(() => {
+    const load = async () => {
+      const urls = await loadRemoteUrls(() => cancelled);
+      if (cancelled) return;
+      // Stop the startup retry loop once the server has answered; each call
+      // mints new one-time codes, so don't churn them unnecessarily.
+      if (urls.lan || urls.tailscale) stopQuick();
+    };
+    void load();
+    quick = setInterval(() => {
       tries += 1;
       if (tries > 6) {
-        clearInterval(t);
+        stopQuick();
         return;
       }
-      load();
+      void load();
     }, 1500);
+    // Codes are one-time; mint a fresh set every minute while this page is
+    // open so the visible QR stays usable.
+    const refresh = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 60000);
     return () => {
       cancelled = true;
-      clearInterval(t);
+      stopQuick();
+      clearInterval(refresh);
     };
-  }, [settings?.remoteEnabled]);
+  }, [settings?.remoteEnabled, loadRemoteUrls]);
 
   // Paired devices: keep the list live while the page is open (phones pair
   // and unpair independently of this page).
@@ -296,41 +333,79 @@ export default function SettingsPage() {
     url: string,
     qr: string,
     transport: "lan" | "tailscale",
-  ) => (
-    <div className="flex items-center gap-3 mt-3 first:mt-2">
-      {qr && (
-        <img
-          src={qr}
-          alt={`${label} pairing QR code`}
-          className="w-28 h-28 flex-shrink-0 rounded-lg border border-border bg-white p-1"
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] text-text font-medium leading-snug m-0">
-          {label}
-        </p>
-        <p className="text-[10px] text-muted leading-snug m-0">{hint}</p>
-        <code className="block text-[10px] text-accent break-all mt-1">
-          {url}
-        </code>
-        <button
-          type="button"
-          className="btn-ghost btn-sm mt-1.5"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(url);
-              setCopiedTransport(transport);
-              setTimeout(() => setCopiedTransport(null), 2000);
-            } catch {
-              showToast("Copy failed — select the URL manually");
-            }
-          }}
-        >
-          {copiedTransport === transport ? "Copied" : "Copy link"}
-        </button>
+  ) => {
+    let pairingCode = "";
+    try {
+      pairingCode = new URL(url).searchParams.get("c") ?? "";
+    } catch {
+      pairingCode = "";
+    }
+    const remotePage = url.split("?")[0];
+    return (
+      <div className="flex items-start gap-3 mt-3 first:mt-2">
+        {qr && (
+          <img
+            src={qr}
+            alt={`${label} pairing QR code`}
+            className="w-28 h-28 flex-shrink-0 rounded-lg border border-border bg-white p-1"
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] text-text font-medium leading-snug m-0">
+            {label}
+          </p>
+          <p className="text-[10px] text-muted leading-snug m-0">{hint}</p>
+          {pairingCode && (
+            <div className="mt-2">
+              <div className="text-[9px] text-muted uppercase tracking-[0.06em] font-semibold mb-1">
+                One-time code
+              </div>
+              <div className="flex items-center gap-2 rounded-md border border-border bg-background/40 px-2 py-1">
+                <code className="min-w-0 flex-1 select-all font-mono text-[12px] tracking-[0.08em] text-accent break-all">
+                  {pairingCode}
+                </code>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm flex-shrink-0"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(pairingCode);
+                      setCopiedCodeTransport(transport);
+                      setTimeout(() => setCopiedCodeTransport(null), 2000);
+                    } catch {
+                      showToast("Copy failed — select the code manually");
+                    }
+                  }}
+                >
+                  {copiedCodeTransport === transport ? "Copied" : "Copy code"}
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(url);
+                  setCopiedTransport(transport);
+                  setTimeout(() => setCopiedTransport(null), 2000);
+                } catch {
+                  showToast("Copy failed — select the URL manually");
+                }
+              }}
+            >
+              {copiedTransport === transport ? "Copied" : "Copy link"}
+            </button>
+            <span className="min-w-0 truncate text-[10px] text-muted">
+              {remotePage}
+            </span>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const handleDownload = async (id: string) => {
     try {
@@ -587,6 +662,26 @@ export default function SettingsPage() {
           checked={settings.remoteEnabled}
           onChange={(checked) => update({ remoteEnabled: checked })}
         />
+        {settings.remoteEnabled && (
+          <p className="text-[10px] text-muted leading-snug mt-2 mb-0">
+            Use this on a trusted LAN or over Tailscale. The LAN page is plain
+            HTTP; Tailscale encrypts the connection.
+          </p>
+        )}
+        {settings.remoteEnabled && (
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-[9px] uppercase tracking-[0.06em] font-semibold text-muted">
+              One-time pairing
+            </span>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => void loadRemoteUrls()}
+            >
+              New code
+            </button>
+          </div>
+        )}
         {settings.remoteEnabled &&
           (remoteUrls && (remoteUrls.lan || remoteUrls.tailscale) ? (
             <>
@@ -594,7 +689,7 @@ export default function SettingsPage() {
                 qrLan &&
                 pairBlock(
                   "On this network",
-                  "Scan while your phone is on the same Wi-Fi.",
+                  "Scan while your phone is on the same Wi-Fi, or enter the code.",
                   remoteUrls.lan,
                   qrLan,
                   "lan",
@@ -603,7 +698,7 @@ export default function SettingsPage() {
                 qrTailscale &&
                 pairBlock(
                   "Via Tailscale — works anywhere",
-                  "Scan while signed in to Tailscale on the phone.",
+                  "Scan while signed in to Tailscale on the phone, or enter the code.",
                   remoteUrls.tailscale,
                   qrTailscale,
                   "tailscale",
@@ -648,14 +743,15 @@ export default function SettingsPage() {
                 </div>
               )}
               <p className="text-[10px] text-muted leading-snug mt-2 mb-0">
-                Can't scan? Use Copy link and send it to your phone, or paste
-                the token on the remote page.
+                Can't scan? Copy the link to your phone, or open the remote page
+                and enter the pairing code. The QR refreshes every minute with a
+                new one-time code that expires after five minutes.
               </p>
             </>
           ) : (
             <p className="text-[11px] text-warning leading-snug m-0">
-              No network interface found — connect to Wi-Fi/Ethernet, or start
-              Tailscale first.
+              No pairing link yet — check that the server is running and that
+              Wi-Fi/Ethernet or Tailscale is connected.
             </p>
           ))}
       </Section>

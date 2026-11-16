@@ -1,7 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono } from "hono";
-import { extractToken, hashToken, matchesMasterToken } from "./auth.js";
+import {
+  consumePairingCode,
+  extractToken,
+  hashToken,
+  issuePairingCode,
+  matchesMasterToken,
+} from "./auth.js";
 import {
   addHistory,
   clearHistory,
@@ -34,6 +40,7 @@ import {
   toggleMute,
   togglePause,
 } from "./player-ipc.js";
+import { API_VERSION, SERVER_VERSION } from "./version.js";
 
 const app = new Hono();
 
@@ -65,7 +72,12 @@ function isOptions(value: unknown): value is string[] {
 }
 
 app.get("/api/health", (c) => {
-  return c.json({ app: "media-launcher", pid: process.pid });
+  return c.json({
+    app: "media-launcher",
+    pid: process.pid,
+    version: SERVER_VERSION,
+    apiVersion: API_VERSION,
+  });
 });
 
 app.post("/", async (c) => {
@@ -247,24 +259,47 @@ function pairRateLimited(ip: string): boolean {
   return entry.count > 10;
 }
 
+// Desktop-only: mint a one-time pairing code for the QR/manual flow. Session
+// tokens from paired phones must not be able to mint more codes.
+app.post("/remote/pairing-code", (c) => {
+  if (!matchesMasterToken(extractToken(c))) {
+    return c.json({ err: "master token required" }, 403);
+  }
+  return c.json(issuePairingCode());
+});
+
 app.post("/remote/pair", async (c) => {
   try {
     const ip = getConnInfo(c).remote.address ?? "unknown";
-    const { token, device } = await c.req.json<{
-      token?: string;
+    const { code, device } = await c.req.json<{
+      code?: string;
       device?: string;
     }>();
-    const invalid = typeof token !== "string" || !matchesMasterToken(token);
-    if (invalid) {
+    const result = consumePairingCode(typeof code === "string" ? code : "");
+    if (result !== "ok") {
       // Only failed attempts count toward the limiter, so legitimate retries
-      // are never locked out — but a burst of wrong tokens still hits 429.
+      // are never locked out — but a burst of wrong codes still hits 429.
       if (pairRateLimited(ip)) {
         return c.json(
           { err: "Too many pairing attempts — try again in a minute." },
           429,
         );
       }
-      return c.json({ err: "invalid pairing token" }, 401);
+      if (result === "used") {
+        return c.json(
+          {
+            err: "This pairing code was already used — refresh the code in the desktop app.",
+          },
+          409,
+        );
+      }
+      if (result === "expired") {
+        return c.json(
+          { err: "This pairing code expired — refresh it in the desktop app." },
+          410,
+        );
+      }
+      return c.json({ err: "invalid pairing code" }, 401);
     }
     const session = randomBytes(24).toString("base64url");
     const label =

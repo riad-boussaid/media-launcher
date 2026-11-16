@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { serve } from "@hono/node-server";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
@@ -128,9 +129,23 @@ app.use("*", async (c, next) => {
 });
 
 app.route("/", routes);
-app.get("/remote", (c) =>
-  c.html(remotePageHtml(), 200, { "Cache-Control": "no-store" }),
-);
+app.get("/remote", (c) => {
+  const nonce = randomBytes(16).toString("base64");
+  return c.html(remotePageHtml(nonce), 200, {
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": [
+      "default-src 'none'",
+      `script-src 'nonce-${nonce}'`,
+      `style-src 'nonce-${nonce}'`,
+      "connect-src 'self'",
+      "img-src 'self' data:",
+      "base-uri 'none'",
+      "form-action 'none'",
+    ].join("; "),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+  });
+});
 
 try {
   initDatabase();

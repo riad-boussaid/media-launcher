@@ -1,9 +1,10 @@
 // Mobile-friendly remote control served at GET /remote (token-free; the page
 // itself carries no data). Pairing: the desktop Settings QR encodes
-// http://<lan-ip>:<port>/remote?t=<token> — the page stores the token in the
-// phone's localStorage and sends it as X-Auth-Token on every API call.
+// http://<lan-ip>:<port>/remote?c=<short-lived code> — the page exchanges the
+// code for a revocable session token and stores that in the phone's
+// localStorage, sending it as X-Auth-Token on every API call.
 
-export function remotePageHtml(): string {
+export function remotePageHtml(nonce: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -11,7 +12,7 @@ export function remotePageHtml(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="color-scheme" content="dark" />
 <title>media-launcher remote</title>
-<style>
+<style nonce="${nonce}">
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   body {
@@ -68,6 +69,10 @@ export function remotePageHtml(): string {
     margin-bottom: 14px;
   }
   .banner.ok { background: rgb(52 211 153 / 0.1); border-color: rgb(52 211 153 / 0.4); color: #34d399; }
+  #np-volume { flex: 1; accent-color: #64ffda; }
+  #np-speed { min-width: 52px; text-align: center; }
+  #np-stop { margin-left: 8px; }
+  #np-toggle svg, #np-mute svg { display: block; margin: 0 auto; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -133,24 +138,23 @@ export function remotePageHtml(): string {
       </svg>
     </button>
     <input id="np-volume" type="range" min="0" max="100" value="0"
-      style="flex:1;accent-color:#64ffda" aria-label="Volume" disabled />
+      aria-label="Volume" disabled />
   </div>
   <div class="row">
     <button id="np-slower" class="secondary" title="Slower" aria-label="Slower">&minus;</button>
-    <span id="np-speed" class="np-sub" style="min-width:52px;text-align:center">1.00&times;</span>
+    <span id="np-speed" class="np-sub">1.00&times;</span>
     <button id="np-faster" class="secondary" title="Faster" aria-label="Faster">+</button>
-    <button id="np-stop" class="secondary" title="Stop playback" aria-label="Stop playback"
-      style="margin-left:8px">Stop</button>
+    <button id="np-stop" class="secondary" title="Stop playback" aria-label="Stop playback">Stop</button>
   </div>
 </div>
 
 <div class="card" id="pair" hidden>
   <div class="label">Pair this device</div>
-  <input id="pair-token" placeholder="Paste the access token&hellip;" autocapitalize="off" autocorrect="off" spellcheck="false" />
+  <input id="pair-code" placeholder="Paste the pairing code&hellip;" autocapitalize="off" autocorrect="off" spellcheck="false" />
   <div class="row">
     <button id="pair-btn">Pair</button>
   </div>
-  <div class="np-sub">The token is shown in the desktop app under Settings &rarr; Connection.</div>
+  <div class="np-sub">The code is shown in the desktop app under Settings &rarr; Remote control. It refreshes every minute.</div>
 </div>
 
 <div class="card">
@@ -162,7 +166,7 @@ export function remotePageHtml(): string {
   <button id="unpair" class="secondary">Unpair this device</button>
 </div>
 
-<script>
+<script nonce="${nonce}">
   var token = "";
   function deviceLabel() {
     var ua = navigator.userAgent;
@@ -173,7 +177,7 @@ export function remotePageHtml(): string {
         : "Desktop";
     var browser = /Firefox/i.test(ua)
       ? "Firefox"
-      : /Edg//i.test(ua)
+      : /Edg/i.test(ua)
         ? "Edge"
         : /Chrome/i.test(ua)
           ? "Chrome"
@@ -182,15 +186,21 @@ export function remotePageHtml(): string {
   }
 
   try {
-    var t = new URLSearchParams(location.search).get("t");
-    if (t) {
-      // QR pairing: exchange the master token for a revocable session token
-      // so the device shows up in the desktop's Paired devices list.
+    var params = new URLSearchParams(location.search);
+    var code = params.get("c");
+    var savedToken = localStorage.getItem("ml-remote-token") || "";
+    if (!code && params.has("t")) {
+      // Old links embedded the master token; never leave it in the address bar.
+      history.replaceState(null, "", location.pathname);
+    }
+    if (code) {
+      // Pairing: exchange a one-time short-lived code for a revocable session
+      // token; the master token never reaches the phone.
       history.replaceState(null, "", location.pathname);
       fetch("/remote/pair", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: t, device: deviceLabel() }),
+        body: JSON.stringify({ code: code, device: deviceLabel() }),
       })
         .then(function (res) {
           return res
@@ -199,25 +209,57 @@ export function remotePageHtml(): string {
             .then(function (data) { return { ok: res.ok, data: data }; });
         })
         .then(function (r) {
-          // Fall back to the master token if pairing couldn't complete.
-          token = r.ok && r.data.session ? r.data.session : t;
-          try {
-            localStorage.setItem("ml-remote-token", token);
-          } catch (e) {}
+          if (r.ok && r.data.session) {
+            token = r.data.session;
+            try {
+              localStorage.setItem("ml-remote-token", token);
+            } catch (e) {}
+            banner.hidden = true;
+            unauthorizedShown = false;
+            refreshUnpairRow();
+            loadRecent();
+            loadPlayer();
+            return;
+          }
+          if (savedToken) {
+            // A used/expired link must not unpair a phone that already has a
+            // valid session.
+            token = savedToken;
+            showBanner(
+              "That pairing link is no longer valid — continuing with the saved session.",
+              false,
+            );
+          } else {
+            token = "";
+            try {
+              localStorage.removeItem("ml-remote-token");
+            } catch (e) {}
+            showBanner(
+              r.data.err || "Pairing link expired — scan a new QR code.",
+              false,
+            );
+          }
           refreshUnpairRow();
           loadRecent();
           loadPlayer();
         })
         .catch(function () {
-          token = t;
-          try {
-            localStorage.setItem("ml-remote-token", t);
-          } catch (e) {}
+          if (savedToken) {
+            token = savedToken;
+            showBanner(
+              "Could not refresh pairing — continuing with the saved session.",
+              false,
+            );
+          } else {
+            token = "";
+            showBanner("Could not reach the server — try again.", false);
+          }
+          refreshUnpairRow();
           loadRecent();
           loadPlayer();
         });
     } else {
-      token = localStorage.getItem("ml-remote-token") || "";
+      token = savedToken;
     }
   } catch (e) {}
 
@@ -326,8 +368,8 @@ export function remotePageHtml(): string {
           ? Math.min(100, Math.round((p.position / p.duration) * 100)) + "%"
           : "0%";
       npToggle.innerHTML = p.paused
-        ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="display:block;margin:0 auto"><polygon points="6 3 20 12 6 21 6 3"/></svg>'
-        : '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="display:block;margin:0 auto"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+        ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
       npToggle.title = p.paused ? "Resume" : "Pause";
       npToggle.setAttribute("aria-label", npToggle.title);
       npToggle.disabled = !p.ipcReady;
@@ -425,23 +467,22 @@ export function remotePageHtml(): string {
 
   var pairCard = document.getElementById("pair");
   if (!token) pairCard.hidden = false;
-  var pairInput = document.getElementById("pair-token");
+  var pairInput = document.getElementById("pair-code");
   var pairBtn = document.getElementById("pair-btn");
 
-  // Exchanges the master token for a revocable session token — the master
-  // never gets stored on the phone.
+  // Exchanges a short-lived pairing code for a revocable session token.
   function pair() {
     var value = pairInput.value.trim();
     if (!value) {
       unauthorizedShown = true;
-      showBanner("Paste the access token first", false);
+      showBanner("Paste the pairing code first", false);
       return;
     }
     pairBtn.disabled = true;
     fetch("/remote/pair", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: value, device: deviceLabel() }),
+      body: JSON.stringify({ code: value, device: deviceLabel() }),
     })
       .then(function (res) {
         return res

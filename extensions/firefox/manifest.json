@@ -5,6 +5,17 @@
   "description": "Sends videos in pages like YouTube to an external media player",
   "icons": { "128": "play-logo.png" },
 
+  "commands": {
+    "play-current-page": {
+      "suggested_key": { "default": "Alt+Shift+P" },
+      "description": "Play the current page with Media Launcher"
+    },
+    "queue-current-page": {
+      "suggested_key": { "default": "Alt+Shift+Q" },
+      "description": "Queue the current page with Media Launcher"
+    }
+  },
+
   "sidebar_action": {
     "default_panel": "sidebar.html",
     "default_title": "media-launcher"

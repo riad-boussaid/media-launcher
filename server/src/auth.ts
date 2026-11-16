@@ -77,6 +77,51 @@ export function matchesMasterToken(provided: string): boolean {
   return !!provided && !!token && tokensMatch(provided, token);
 }
 
+const PAIRING_CODE_TTL_MS = 5 * 60 * 1000;
+const pairingCodes = new Map<string, number>();
+const consumedPairingCodes = new Map<string, number>();
+
+function prunePairingCodes(map: Map<string, number>, now: number): void {
+  for (const [hash, expiry] of map) {
+    if (expiry <= now) map.delete(hash);
+  }
+}
+
+export interface IssuedPairingCode {
+  code: string;
+  expiresAt: number;
+}
+
+/** Creates a random one-time code for the desktop QR/manual pairing UI. */
+export function issuePairingCode(now = Date.now()): IssuedPairingCode {
+  prunePairingCodes(pairingCodes, now);
+  prunePairingCodes(consumedPairingCodes, now);
+  const code = randomBytes(18).toString("base64url");
+  const expiresAt = now + PAIRING_CODE_TTL_MS;
+  pairingCodes.set(hashToken(code), expiresAt);
+  return { code, expiresAt };
+}
+
+export type PairingCodeResult = "ok" | "used" | "expired" | "invalid";
+
+/** Validates and atomically consumes a one-time pairing code. */
+export function consumePairingCode(
+  code: string,
+  now = Date.now(),
+): PairingCodeResult {
+  if (!code) return "invalid";
+  const hash = hashToken(code);
+  const expiresAt = pairingCodes.get(hash);
+  if (expiresAt === undefined) {
+    const usedUntil = consumedPairingCodes.get(hash);
+    return usedUntil !== undefined && usedUntil > now ? "used" : "invalid";
+  }
+
+  pairingCodes.delete(hash);
+  consumedPairingCodes.set(hash, now + PAIRING_CODE_TTL_MS);
+  return expiresAt <= now ? "expired" : "ok";
+}
+
 // Throttles last_seen writes so busy remotes don't hammer SQLite.
 const lastSeenFlush = new Map<string, number>();
 

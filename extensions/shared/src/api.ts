@@ -1,10 +1,15 @@
 import { discoverServer } from "@shared/discovery";
-import { defaultSettings } from "@shared/settings";
+import { ext } from "@shared/ext";
+import {
+  defaultSettings,
+  getAuthToken,
+  getSettings,
+} from "@shared/settings";
 import { getStartSeconds } from "@shared/url";
 
 let cachedServerUrl: string | null = null;
 
-chrome.storage.onChanged.addListener((changes, area) => {
+ext.storage.onChanged.addListener((changes, area) => {
   if (area === "sync" && changes.serverUrl) {
     cachedServerUrl = null;
   }
@@ -13,7 +18,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
 export async function getServerUrl(): Promise<string | null> {
   if (cachedServerUrl) return cachedServerUrl;
 
-  const opts = await chrome.storage.sync.get(defaultSettings);
+  const opts = await ext.storage.sync.get({
+    serverUrl: defaultSettings.serverUrl,
+  });
   const preferredUrl =
     opts.serverUrl !== defaultSettings.serverUrl ? opts.serverUrl : undefined;
 
@@ -21,7 +28,7 @@ export async function getServerUrl(): Promise<string | null> {
   if (result) {
     cachedServerUrl = result.serverUrl;
     if (opts.serverUrl === defaultSettings.serverUrl) {
-      await chrome.storage.sync.set({ serverUrl: result.serverUrl });
+      await ext.storage.sync.set({ serverUrl: result.serverUrl });
     }
     return result.serverUrl;
   }
@@ -34,23 +41,40 @@ export interface SendResult {
   error?: string;
 }
 
-export async function checkServerHealth(): Promise<boolean> {
+export interface ServerHealthInfo {
+  ok: boolean;
+  version?: string;
+  apiVersion?: number;
+}
+
+export async function getServerHealthInfo(): Promise<ServerHealthInfo> {
   const url = await getServerUrl();
-  if (!url) return false;
+  if (!url) return { ok: false };
   try {
     const res = await fetch(`${url}/api/health`, {
       signal: AbortSignal.timeout(3000),
       cache: "no-store",
     });
-    return res.ok;
+    if (!res.ok) return { ok: false };
+    const data = (await res.json()) as {
+      app?: unknown;
+      version?: unknown;
+      apiVersion?: unknown;
+    };
+    if (data.app !== "media-launcher") return { ok: false };
+    return {
+      ok: true,
+      version: typeof data.version === "string" ? data.version : undefined,
+      apiVersion:
+        typeof data.apiVersion === "number" ? data.apiVersion : undefined,
+    };
   } catch {
-    return false;
+    return { ok: false };
   }
 }
 
-export async function getAuthToken(): Promise<string> {
-  const opts = await chrome.storage.sync.get(defaultSettings);
-  return typeof opts.authToken === "string" ? opts.authToken : "";
+export async function checkServerHealth(): Promise<boolean> {
+  return (await getServerHealthInfo()).ok;
 }
 
 const CODEC_PREFIXES: Record<string, string[]> = {
@@ -65,7 +89,7 @@ export async function sendUrl(
   title?: string,
   queue?: boolean,
 ): Promise<SendResult> {
-  const opts = await chrome.storage.sync.get(defaultSettings);
+  const opts = await getSettings();
   const mpvArgs: string[] = [];
 
   if (opts.maxHeight === "a") {
@@ -107,7 +131,7 @@ export async function sendUrl(
   }
 
   try {
-    const token = await getAuthToken();
+    const token = opts.authToken;
     const res = await fetch(serverUrl, {
       method: "POST",
       headers: {
