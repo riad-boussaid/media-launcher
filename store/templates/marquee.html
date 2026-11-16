@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Media Launcher marquee</title>
+    <link rel="stylesheet" href="base.css" />
+    <style>
+      .marquee {
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        align-items: center;
+        padding: 64px 72px;
+        gap: 40px;
+      }
+      .glow-blue {
+        width: 620px;
+        height: 620px;
+        top: -280px;
+        left: -260px;
+      }
+      .glow-green {
+        width: 560px;
+        height: 560px;
+        right: -180px;
+        bottom: -300px;
+      }
+      .copy {
+        position: relative;
+        z-index: 2;
+      }
+      .copy h1 {
+        font-size: 72px;
+        line-height: 1.02;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        margin: 24px 0 16px;
+      }
+      .copy p {
+        max-width: 640px;
+        font-size: 21px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+      .copy .feature-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 30px;
+        flex-wrap: wrap;
+      }
+      .copy .chip {
+        padding: 9px 14px;
+        font-size: 12px;
+      }
+      .art {
+        position: relative;
+        height: 430px;
+      }
+      .orbit {
+        position: absolute;
+        inset: 20px 10px;
+        border: 1px dashed rgba(152, 162, 179, 0.18);
+        border-radius: 50%;
+      }
+      .orbit.two {
+        inset: 72px 66px;
+        border-color: rgba(58, 227, 138, 0.16);
+      }
+      .hero-icon {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 190px;
+        height: 190px;
+        transform: translate(-50%, -50%);
+        filter: drop-shadow(0 24px 60px rgba(58, 227, 138, 0.32));
+      }
+      .float {
+        position: absolute;
+        padding: 14px 16px;
+        border-radius: 14px;
+        z-index: 3;
+      }
+      .float .label {
+        font-size: 9px;
+      }
+      .float .title {
+        font-size: 13px;
+        font-weight: 600;
+        margin-top: 4px;
+        max-width: 220px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .float-playing {
+        top: 20px;
+        left: -30px;
+        width: 280px;
+      }
+      .float-playing .progress {
+        margin-top: 12px;
+      }
+      .float-queue {
+        right: -12px;
+        top: 160px;
+        width: 220px;
+      }
+      .float-remote {
+        left: 16px;
+        bottom: 12px;
+        width: 280px;
+      }
+      .float-remote .phone-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .float-remote .phone-glyph {
+        width: 40px;
+        height: 58px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--panel-3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--accent);
+        font-size: 15px;
+      }
+      .queue-row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 10px;
+      }
+      .queue-row .thumb {
+        width: 38px;
+        height: 25px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage marquee">
+      <div class="glow glow-blue"></div>
+      <div class="glow glow-green"></div>
+
+      <div class="copy">
+        <div class="brand">
+          <img src="../assets/icon-512.png" alt="" />
+          <span class="brand-name">Media Launcher</span>
+        </div>
+        <h1>Send the video.<br /><span class="gradient">Skip the tab.</span></h1>
+        <p>
+          One click sends YouTube, Vimeo, Twitch, and more to mpv on your
+          computer — with queueing, resume, and phone control.
+        </p>
+        <div class="feature-row">
+          <span class="chip"><span class="dot"></span>Play &amp; queue</span>
+          <span class="chip"><span class="dot"></span>Resume history</span>
+          <span class="chip"><span class="dot"></span>Private by design</span>
+        </div>
+      </div>
+
+      <div class="art">
+        <div class="orbit"></div>
+        <div class="orbit two"></div>
+        <img class="hero-icon" src="../assets/icon-512.png" alt="" />
+
+        <div class="float card float-playing">
+          <div class="row">
+            <span class="label">Now playing in mpv</span>
+            <span class="tiny check">●</span>
+          </div>
+          <div class="title">How renewable energy actually works</div>
+          <div class="progress" style="margin-top: 12px">
+            <span style="width: 62%"></span><i style="left: 62%"></i>
+          </div>
+          <div class="row tiny muted" style="margin-top: 8px">
+            <span>12:48</span><span>20:31</span>
+          </div>
+        </div>
+
+        <div class="float card float-queue">
+          <span class="label">Queued</span>
+          <div class="queue-row">
+            <div class="thumb v2"></div>
+            <div>
+              <div class="title" style="font-size: 12px">Lo-fi beats to focus</div>
+              <div class="tiny muted">+1 in queue</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="float card float-remote">
+          <div class="row">
+            <span class="label">Remote</span>
+            <span class="tiny muted">Paired</span>
+          </div>
+          <div class="phone-row">
+            <div class="phone-glyph">⏸</div>
+            <div style="flex: 1">
+              <div class="title" style="margin: 0">Phone controls</div>
+              <div class="progress" style="margin-top: 9px">
+                <span style="width: 68%"></span><i style="left: 68%"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

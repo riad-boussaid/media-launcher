@@ -1,6 +1,8 @@
 {
   "name": "media-launcher",
+  "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "packageManager": "pnpm@11.15.1",
   "scripts": {
     "build": "pnpm run build:desktop && pnpm run build:chrome && pnpm run build:firefox",
@@ -13,9 +15,18 @@
     "lint": "biome check server/src/ desktop/src/ extensions/shared/src/ extensions/chrome/src/ extensions/firefox/src/",
     "lint:fix": "biome check --write server/src/ desktop/src/ extensions/shared/src/ extensions/chrome/src/ extensions/firefox/src/",
     "format": "biome format --write server/src/ desktop/src/ extensions/shared/src/ extensions/chrome/src/ extensions/firefox/src/",
-    "type-check": "pnpm -C server run type-check && pnpm -C desktop run type-check && pnpm -C extensions/chrome run type-check && pnpm -C extensions/firefox run type-check"
+    "type-check": "pnpm -C server run type-check && pnpm -C desktop run type-check && pnpm -C extensions/chrome run type-check && pnpm -C extensions/firefox run type-check",
+    "icons": "node scripts/generate-icons.mjs",
+    "icons:check": "node scripts/generate-icons.mjs --check",
+    "version:sync": "node scripts/sync-version.mjs",
+    "version:check": "node scripts/sync-version.mjs --check",
+    "check:release": "node scripts/check-release.mjs",
+    "package:chrome": "node scripts/package-extension.mjs chrome",
+    "package:firefox": "node scripts/package-extension.mjs firefox",
+    "release:extensions": "pnpm version:check && pnpm icons:check && pnpm build:chrome && pnpm build:firefox && pnpm package:chrome && pnpm package:firefox"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.7"
+    "@biomejs/biome": "2.6.7",
+    "fflate": "^0.8.2"
   }
 }

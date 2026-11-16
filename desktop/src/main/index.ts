@@ -241,9 +241,20 @@ if (!gotTheLock) {
   }
 
   app.whenReady().then(async () => {
-    // Drop the default Electron menu (File/Edit/View/Window) — the renderer
-    // owns all navigation, and the stock menu makes the app feel unfinished.
-    Menu.setApplicationMenu(null);
+    // Drop the default Electron menu on Windows/Linux — the renderer owns all
+    // navigation. macOS keeps the standard app/edit/window menus so Cmd+Q,
+    // Cmd+W, copy/paste, and the Dock menu keep working.
+    if (process.platform === "darwin") {
+      Menu.setApplicationMenu(
+        Menu.buildFromTemplate([
+          { role: "appMenu" },
+          { role: "editMenu" },
+          { role: "windowMenu" },
+        ]),
+      );
+    } else {
+      Menu.setApplicationMenu(null);
+    }
 
     await startServer();
     await initDatabase();
@@ -275,4 +286,10 @@ if (!gotTheLock) {
   });
 
   app.on("window-all-closed", () => {});
+
+  // macOS: clicking the Dock icon after hiding the window should bring it back.
+  app.on("activate", () => {
+    win?.show();
+    win?.focus();
+  });
 }

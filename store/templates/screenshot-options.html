@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Media Launcher options screenshot</title>
+    <link rel="stylesheet" href="base.css" />
+    <style>
+      .shot {
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        gap: 32px;
+        padding: 54px 50px 40px;
+        align-items: center;
+      }
+      .glow-blue {
+        width: 560px;
+        height: 560px;
+        top: -260px;
+        left: -180px;
+      }
+      .glow-green {
+        width: 520px;
+        height: 520px;
+        right: -180px;
+        bottom: -260px;
+      }
+      .copy {
+        position: relative;
+        z-index: 2;
+      }
+      .copy h2 {
+        margin: 18px 0 14px;
+        font-size: 46px;
+        line-height: 1.04;
+        letter-spacing: -0.035em;
+        font-weight: 800;
+      }
+      .copy p {
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.55;
+      }
+      .callouts {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-top: 28px;
+      }
+      .callout {
+        display: flex;
+        gap: 11px;
+        align-items: flex-start;
+      }
+      .callout .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 12px var(--accent);
+        margin-top: 6px;
+        flex: none;
+      }
+      .callout b {
+        display: block;
+        font-size: 14px;
+      }
+      .callout span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .settings {
+        height: 700px;
+        border-radius: 18px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .settings-top {
+        height: 44px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        background: #14181f;
+        border-bottom: 1px solid var(--border);
+      }
+      .settings-top .title {
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .settings-top .crumb {
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .settings-top .save {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .settings-top .save b {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+      .settings-body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      .settings-nav {
+        width: 154px;
+        flex: none;
+        background: #12161c;
+        border-right: 1px solid var(--border);
+        padding: 12px 9px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .nav-item {
+        padding: 9px 10px;
+        border-radius: 8px;
+        color: #8e99a9;
+        font-size: 11px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .nav-item.active {
+        background: #1d232c;
+        color: var(--text);
+        box-shadow: inset 2px 0 0 var(--accent);
+      }
+      .nav-icon {
+        width: 14px;
+        text-align: center;
+        font-size: 11px;
+      }
+      .settings-main {
+        flex: 1;
+        padding: 12px 16px;
+        overflow: hidden;
+      }
+      .settings-main h3 {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .settings-main .desc {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.45;
+      }
+      .group {
+        margin-top: 10px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        background: #161b22;
+        border: 1px solid var(--border);
+      }
+      .group-title {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .group-title .icon {
+        color: var(--accent-2);
+        font-size: 12px;
+      }
+      .group .desc {
+        margin-top: 3px;
+        font-size: 9.5px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 8px;
+      }
+      .form-row.single {
+        grid-template-columns: 1fr;
+      }
+      .form-row .field {
+        margin-top: 5px;
+        height: 33px;
+        font-size: 11px;
+      }
+      .field.token {
+        letter-spacing: 0.15em;
+        color: #8e99a9;
+      }
+      .field .eye {
+        margin-left: auto;
+        color: #6f7a8a;
+        font-size: 10px;
+      }
+      .token-actions {
+        display: flex;
+        gap: 7px;
+        margin-top: 8px;
+      }
+      .token-actions .btn {
+        padding: 7px 11px;
+        font-size: 10px;
+      }
+      .status-line {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 7px;
+        color: var(--accent);
+        font-size: 9.5px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .status-line .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 9px var(--accent);
+        flex: none;
+      }
+      .status-meta {
+        color: var(--muted);
+        font-weight: 400;
+      }
+      .toggles {
+        margin-top: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+      }
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .toggle-row .text {
+        flex: 1;
+      }
+      .toggle-row .name {
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+      .toggle-row .hint {
+        margin-top: 2px;
+        font-size: 9px;
+        color: var(--muted);
+        line-height: 1.35;
+      }
+      .toggle {
+        width: 34px;
+        height: 19px;
+      }
+      .toggle::after {
+        width: 13px;
+        height: 13px;
+      }
+      .mini-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 9px;
+        margin-top: 8px;
+      }
+      .mini-grid .field {
+        margin-top: 5px;
+        height: 31px;
+        font-size: 10px;
+      }
+      .accent-note {
+        display: flex;
+        gap: 7px;
+        margin-top: 10px;
+        padding: 8px 9px;
+        border-radius: 8px;
+        border: 1px solid rgba(44, 180, 226, 0.2);
+        background: rgba(44, 180, 226, 0.06);
+        color: #9fc8da;
+        font-size: 9px;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage shot">
+      <div class="glow glow-blue"></div>
+      <div class="glow glow-green"></div>
+
+      <div class="copy">
+        <span class="badge"><span class="badge-dot"></span>Extension options</span>
+        <h2>Tune it once.<br /><span class="gradient">Forget it.</span></h2>
+        <p>
+          Set the server URL and token, then choose defaults for every video:
+          resolution, codec, subtitles, volume, speed, and on-page controls.
+        </p>
+        <div class="callouts">
+          <div class="callout">
+            <span class="dot"></span>
+            <div>
+              <b>Auto-detect the server</b>
+              <span>Probes ports 5000–5010 on localhost and reports the version.</span>
+            </div>
+          </div>
+          <div class="callout">
+            <span class="dot"></span>
+            <div>
+              <b>Token stays local</b>
+              <span>Stored in local extension storage, never synced or exported.</span>
+            </div>
+          </div>
+          <div class="callout">
+            <span class="dot"></span>
+            <div>
+              <b>Show only what you want</b>
+              <span>Toggle the page button, thumbnail chips, and notifications.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings card">
+        <div class="settings-top">
+          <div class="window-dots"><span></span><span></span><span></span></div>
+          <span class="title">Settings</span>
+          <span class="crumb">/ Extensions / Media Launcher</span>
+          <span class="save"><b></b>Saved</span>
+        </div>
+
+        <div class="settings-body">
+          <div class="settings-nav">
+            <div class="nav-item active"><span class="nav-icon">◈</span>Server</div>
+            <div class="nav-item"><span class="nav-icon">▶</span>Playback</div>
+            <div class="nav-item"><span class="nav-icon">◉</span>On-page controls</div>
+            <div class="nav-item"><span class="nav-icon">◐</span>Appearance</div>
+            <div class="nav-item"><span class="nav-icon">↓</span>Downloads</div>
+          </div>
+
+          <div class="settings-main">
+            <h3>Server</h3>
+            <p class="desc">
+              The extension talks to the Media Launcher app on your computer.
+            </p>
+
+            <div class="group">
+              <div class="group-title"><span class="icon">◈</span>Connection</div>
+
+              <div class="form-row single">
+                <div>
+                  <div class="label">Server URL</div>
+                  <div class="field">http://localhost:5000</div>
+                </div>
+              </div>
+              <div class="form-row single">
+                <div>
+                  <div class="label">API token</div>
+                  <div class="field token">••••••••••••••••••••••••<span class="eye">👁</span></div>
+                </div>
+              </div>
+              <div class="token-actions">
+                <span class="btn btn-primary">Detect server</span>
+                <span class="btn btn-ghost">Copy token</span>
+                <span class="btn btn-ghost">Reset</span>
+              </div>
+              <div class="status-line">
+                <span class="status-dot"></span>Server found
+                <span class="status-meta">· v1.0.0 · ports 5000–5010</span>
+              </div>
+            </div>
+
+            <div class="group">
+              <div class="group-title"><span class="icon">▶</span>Playback defaults</div>
+              <p class="desc">Applied to every video unless overridden in the page controls.</p>
+              <div class="mini-grid">
+                <div>
+                  <div class="label">Max resolution</div>
+                  <div class="field select">1080p</div>
+                </div>
+                <div>
+                  <div class="label">Codec</div>
+                  <div class="field select">Auto</div>
+                </div>
+                <div>
+                  <div class="label">Subtitles</div>
+                  <div class="field select">English</div>
+                </div>
+              </div>
+              <div class="toggles">
+                <div class="toggle-row">
+                  <div class="text">
+                    <div class="name">Audio only</div>
+                    <div class="hint">Send audio streams without video.</div>
+                  </div>
+                  <span class="toggle"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <div class="group-title"><span class="icon">◉</span>On-page controls</div>
+              <div class="toggles">
+                <div class="toggle-row">
+                  <div class="text">
+                    <div class="name">Show the play button on video pages</div>
+                    <div class="hint">Adds a Play/Queue button to supported sites.</div>
+                  </div>
+                  <span class="toggle on"></span>
+                </div>
+                <div class="toggle-row">
+                  <div class="text">
+                    <div class="name">Show thumbnail buttons</div>
+                    <div class="hint">Adds a compact Play chip to video cards.</div>
+                  </div>
+                  <span class="toggle on"></span>
+                </div>
+                <div class="toggle-row">
+                  <div class="text">
+                    <div class="name">Desktop notifications</div>
+                    <div class="hint">Confirm sends and show errors.</div>
+                  </div>
+                  <span class="toggle on"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

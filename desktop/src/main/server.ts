@@ -6,12 +6,20 @@ import {
   openSync,
   readFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { app } from "electron";
 
 let serverProcess: ChildProcess | null = null;
 let ownsServer = false;
+
+// The extension discovers 5000-5010. Keep the desktop's embedded server inside
+// that range so auto-discovery works, and fall forward when a port is taken
+// (macOS AirPlay Receiver commonly holds 5000).
+const DEFAULT_PORT = 5000;
+const MAX_PORT = 5010;
+let activePort = DEFAULT_PORT;
 
 function getServerEntry(): string {
   if (app.isPackaged) {
@@ -20,8 +28,12 @@ function getServerEntry(): string {
   return join(__dirname, "../../../server/dist/index.js");
 }
 
-function getServerUrl(): string {
-  return "http://localhost:5000";
+export function getServerUrl(): string {
+  return `http://localhost:${activePort}`;
+}
+
+export function getActivePort(): number {
+  return activePort;
 }
 
 // The embedded server stores its database and auth token here. Overriding
@@ -66,7 +78,7 @@ function pairingLink(
   code: string,
   expiresAt?: number | null,
 ): string {
-  const base = `http://${ip}:5000/remote?c=${encodeURIComponent(code)}`;
+  const base = `http://${ip}:${activePort}/remote?c=${encodeURIComponent(code)}`;
   return expiresAt ? `${base}&e=${expiresAt}` : base;
 }
 
@@ -183,9 +195,12 @@ interface HealthResponse {
   pid?: number;
 }
 
-async function probeHealth(timeoutMs = 1500): Promise<HealthResponse | null> {
+async function probeHealthAt(
+  port: number,
+  timeoutMs = 1500,
+): Promise<HealthResponse | null> {
   try {
-    const res = await fetch(`${getServerUrl()}/api/health`, {
+    const res = await fetch(`http://localhost:${port}/api/health`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return null;
@@ -194,6 +209,22 @@ async function probeHealth(timeoutMs = 1500): Promise<HealthResponse | null> {
   } catch {
     return null;
   }
+}
+
+async function probeHealth(timeoutMs = 1500): Promise<HealthResponse | null> {
+  return probeHealthAt(activePort, timeoutMs);
+}
+
+/** Whether the loopback port can be bound without an EADDRINUSE race. */
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = createServer();
+    probe.once("error", () => resolve(false));
+    probe.once("listening", () => {
+      probe.close(() => resolve(true));
+    });
+    probe.listen(port, "127.0.0.1");
+  });
 }
 
 /** Lightweight liveness probe for the renderer's status indicator. */
@@ -230,15 +261,43 @@ export async function startServer(): Promise<void> {
   }
 
   // A server may already be running (standalone, or leaked from a previous
-  // session). If it responds, adopt it without spawning a duplicate.
-  const existing = await probeHealth();
-  if (existing && existing.pid !== undefined) {
+  // session). Probe the whole discovery range in parallel and adopt the first
+  // media-launcher that answers.
+  const ports = Array.from(
+    { length: MAX_PORT - DEFAULT_PORT + 1 },
+    (_, index) => DEFAULT_PORT + index,
+  );
+  const healthByPort = await Promise.all(
+    ports.map((port) => probeHealthAt(port, 800)),
+  );
+  const existingIndex = healthByPort.findIndex(
+    (health) => health?.pid !== undefined,
+  );
+  if (existingIndex !== -1) {
+    activePort = ports[existingIndex];
     console.log(
-      `Server already running (pid ${existing.pid}); adopting without spawning.`,
+      `Server already running on port ${activePort} (pid ${healthByPort[existingIndex]?.pid}); adopting without spawning.`,
     );
     ownsServer = false;
     return;
   }
+
+  // Pick a bindable port. Port 5000 is commonly occupied by macOS AirPlay
+  // Receiver, so falling forward keeps the mac build usable.
+  let freePort: number | null = null;
+  for (const port of ports) {
+    if (await isPortFree(port)) {
+      freePort = port;
+      break;
+    }
+  }
+  if (freePort === null) {
+    console.warn(
+      `No free server port in ${DEFAULT_PORT}-${MAX_PORT}; embedded server not started.`,
+    );
+    return;
+  }
+  activePort = freePort;
 
   // Run the server on Electron's bundled Node instead of a system `node`,
   // which end users won't have. Server output goes to a log file.
@@ -256,8 +315,9 @@ export async function startServer(): Promise<void> {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
       DATA_DIR: getDataDir(),
+      PORT: String(activePort),
       // Remote control binds all interfaces; otherwise loopback only.
-      ...(isRemoteEnabled() ? { HOST: "0.0.0.0" } : {}),
+      HOST: isRemoteEnabled() ? "0.0.0.0" : "127.0.0.1",
     },
     stdio: ["ignore", logFd ?? "ignore", logFd ?? "ignore"],
     detached: false,
@@ -286,13 +346,13 @@ export async function startServer(): Promise<void> {
     const health = await probeHealth();
     if (health && health.pid === proc.pid) {
       ownsServer = true;
-      console.log(`Server ready (pid ${proc.pid}).`);
+      console.log(`Server ready on port ${activePort} (pid ${proc.pid}).`);
       return;
     }
     // If something else answered, our spawn is about to die from EADDRINUSE.
     if (health) {
       console.warn(
-        `Port 5000 is owned by another process (pid ${health.pid}); not adopting.`,
+        `Port ${activePort} is owned by another process (pid ${health.pid}); not adopting.`,
       );
       serverProcess = null;
       return;

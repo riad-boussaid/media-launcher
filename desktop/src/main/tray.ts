@@ -101,8 +101,16 @@ async function buildMenu(
 }
 
 export function createTray(win: BrowserWindow): void {
-  const iconPath = join(__dirname, "../../resources/play.ico");
-  const icon = nativeImage.createFromPath(iconPath);
+  // Windows trays accept ICO; macOS/Linux want PNG. macOS menu-bar icons are
+  // sized in points, so render the 32px asset down to 16pt.
+  const iconFile = process.platform === "win32" ? "play.ico" : "play-32.png";
+  let icon = nativeImage.createFromPath(
+    join(__dirname, "../../resources", iconFile),
+  );
+  if (process.platform === "darwin") {
+    icon = icon.resize({ width: 16, height: 16 });
+    icon.setTemplateImage(false);
+  }
 
   tray = new Tray(icon);
   tray.setToolTip("media-launcher");

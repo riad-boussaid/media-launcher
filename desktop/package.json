@@ -2,6 +2,11 @@
   "name": "media-launcher-desktop",
   "version": "1.0.0",
   "description": "Modern desktop tray app for media-launcher",
+  "license": "MIT",
+  "author": {
+    "name": "Riad Boussaid",
+    "email": "riadsoso@gmail.com"
+  },
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -9,8 +14,11 @@
     "build:server": "pnpm -C ../server run build && node scripts/prepare-server.js",
     "type-check": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "preview": "electron-vite preview",
-    "dist": "pnpm run build:server && pnpm run build && electron-builder",
-    "dist:win": "pnpm run build:server && pnpm run build && electron-builder --win",
+    "dist": "pnpm run build:server && pnpm run build && electron-builder --publish never",
+    "dist:win": "pnpm run build:server && pnpm run build && electron-builder --win --x64 --publish never",
+    "dist:mac": "pnpm run build:server && pnpm run build && electron-builder --mac --x64 --arm64 --publish never",
+    "dist:linux": "pnpm run build:server && pnpm run build && electron-builder --linux --x64 --publish never",
+    "dist:dir": "pnpm run build:server && pnpm run build && electron-builder --dir --publish never",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
     "format": "biome format --write src/"
@@ -18,8 +26,11 @@
   "build": {
     "appId": "com.media-launcher.desktop",
     "productName": "Media Launcher",
+    "copyright": "Copyright © 2026 Riad Boussaid",
+    "artifactName": "Media-Launcher-${version}-${os}-${arch}.${ext}",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "out/**/*",
@@ -28,13 +39,84 @@
     "afterPack": "scripts/copy-server.js",
     "win": {
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
-      "icon": "resources/play.ico"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Media Launcher"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.video",
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "notarize": true
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "iconSize": 96
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icons",
+      "category": "AudioVideo",
+      "synopsis": "Send videos from your browser to mpv",
+      "description": "Media Launcher sends videos from your browser to mpv, with queueing, playback history, resume, and remote control from a phone.",
+      "maintainer": "Riad Boussaid <riadsoso@gmail.com>",
+      "vendor": "Riad Boussaid",
+      "syncDesktopName": true,
+      "desktop": {
+        "entry": {
+          "Name": "Media Launcher",
+          "Comment": "Send videos from your browser to mpv",
+          "Categories": "AudioVideo;Player;",
+          "Keywords": "video;player;mpv;youtube;streaming;"
+        }
+      }
+    },
+    "deb": {
+      "recommends": [
+        "mpv",
+        "yt-dlp"
+      ]
     }
   },
   "dependencies": {

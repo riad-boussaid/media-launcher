@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media Launcher Privacy Policy</title>
+    <meta
+      name="description"
+      content="Privacy policy for the Media Launcher browser extension and desktop app."
+    />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0f1115;
+        --card: #171a20;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --border: #2a2f38;
+        --accent: #3ae38a;
+        --accent-2: #2cb4e2;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f4f6f9;
+          --card: #ffffff;
+          --text: #1b1f27;
+          --muted: #5d6572;
+          --border: #dde2ea;
+          --accent: #0f9f62;
+          --accent-2: #0b83b0;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(900px 400px at 10% -10%, rgba(44, 180, 226, 0.18), transparent 60%),
+          radial-gradient(700px 360px at 100% 0%, rgba(58, 227, 138, 0.14), transparent 55%),
+          var(--bg);
+        color: var(--text);
+        font:
+          16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+      }
+      main {
+        max-width: 820px;
+        margin: 0 auto;
+        padding: 48px 22px 80px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--card) 80%, transparent);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .badge svg {
+        width: 18px;
+        height: 18px;
+      }
+      h1 {
+        margin: 26px 0 8px;
+        font-size: clamp(30px, 5vw, 44px);
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+      }
+      h1 span {
+        background: linear-gradient(90deg, var(--accent-2), var(--accent));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0 0 28px;
+      }
+      .summary {
+        border: 1px solid var(--border);
+        background: var(--card);
+        border-radius: 16px;
+        padding: 20px 22px;
+        margin: 0 0 36px;
+      }
+      .summary h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      .summary ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      .summary li + li {
+        margin-top: 8px;
+      }
+      h2 {
+        margin: 40px 0 12px;
+        font-size: 23px;
+        letter-spacing: -0.01em;
+      }
+      h3 {
+        margin: 26px 0 8px;
+        font-size: 17px;
+      }
+      p,
+      ul,
+      ol {
+        margin: 0 0 14px;
+      }
+      ul,
+      ol {
+        padding-left: 24px;
+      }
+      li + li {
+        margin-top: 6px;
+      }
+      a {
+        color: var(--accent-2);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 3px;
+      }
+      code {
+        font:
+          0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 1px 5px;
+        background: color-mix(in srgb, var(--card) 70%, transparent);
+      }
+      .card {
+        border: 1px solid var(--border);
+        background: var(--card);
+        border-radius: 14px;
+        padding: 16px 18px;
+        margin: 18px 0;
+      }
+      .card strong {
+        color: var(--accent);
+      }
+      footer {
+        margin-top: 56px;
+        padding-top: 22px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 14px;
+      }
+      @media (max-width: 520px) {
+        main {
+          padding-top: 30px;
+        }
+        .summary {
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="badge">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" stroke="#2cb4e2" stroke-width="2" />
+          <path d="M10 8l6 4-6 4V8z" fill="#3ae38a" />
+        </svg>
+        Media Launcher
+      </span>
+
+      <h1>Privacy <span>Policy</span></h1>
+      <p class="meta">Effective date: 16 November 2026</p>
+
+      <div class="summary">
+        <h2>In short</h2>
+        <ul>
+          <li>
+            <strong>No analytics, telemetry, advertising, or tracking.</strong>
+            The developer does not operate a server that receives your data.
+          </li>
+          <li>
+            <strong>No account required.</strong> No name, email, or personal
+            profile is requested.
+          </li>
+          <li>
+            <strong>Your data stays on your device or your own network.</strong>
+            The extension talks to the Media Launcher server on your computer,
+            not to a developer-operated service.
+          </li>
+          <li>
+            <strong>You control history and remote access.</strong> Clear history
+            in the app and revoke paired devices at any time.
+          </li>
+        </ul>
+      </div>
+
+      <p>
+        Media Launcher is an open-source browser extension and desktop app that
+        sends videos from your browser to a media player (mpv) running on your
+        own computer. This policy explains what data the extension and desktop
+        app handle, where it goes, and how to delete it.
+      </p>
+
+      <h2>Who this policy covers</h2>
+      <p>This policy covers:</p>
+      <ul>
+        <li>
+          the Media Launcher browser extension for Chrome, Edge, Brave, and
+          Firefox;
+        </li>
+        <li>the Media Launcher desktop app for Windows, macOS, and Linux;</li>
+        <li>
+          the local API server embedded in the desktop app (or run separately
+          from the <code>server/</code> directory).
+        </li>
+      </ul>
+      <p>
+        The source code is published at
+        <a href="https://github.com/riad-boussaid/media-launcher"
+          >github.com/riad-boussaid/media-launcher</a
+        >. The developer can be reached through the repository's issue tracker.
+      </p>
+
+      <h2>Data handled by the browser extension</h2>
+
+      <h3>Stored locally on your device</h3>
+      <ul>
+        <li>
+          <strong>API token</strong> — authenticates the extension to your own
+          Media Launcher server. It is stored in local extension storage, not
+          browser sync storage, and is sent only to the server URL you configure.
+        </li>
+        <li>
+          <strong>History cache</strong> — the most recent entries returned by
+          your server: page URL, title, thumbnail URL, timestamp, and resume
+          position.
+        </li>
+        <li>
+          <strong>Interface state</strong> — theme choice and whether history
+          sections are expanded.
+        </li>
+      </ul>
+
+      <h3>Stored in browser sync storage</h3>
+      <p>
+        Non-secret preferences may be synchronized by your browser vendor to the
+        account signed into the browser: server URL; maximum resolution, codec,
+        subtitle language, volume, speed, loop, and audio-only/thumbnail
+        settings; extra mpv arguments (free text); and on-page control and
+        notification toggles. The API token is deliberately excluded from sync
+        storage.
+      </p>
+      <p>
+        If you use a browser profile with sync enabled, these preferences may be
+        stored on the browser vendor's servers under that vendor's privacy
+        policy. You can disable browser sync or avoid sync storage at any time.
+      </p>
+
+      <h3>Page information</h3>
+      <p>
+        The extension injects a content script so it can detect supported video
+        pages, video thumbnails, and player controls. The script inspects the
+        page URL and hostname, video elements and video-related links, page
+        images used as thumbnails, and Open Graph/Twitter thumbnail metadata.
+        This information is not transmitted until you explicitly play or queue a
+        video, open the popup, or use a context-menu or keyboard action. The
+        extension does not read passwords, form fields, cookies, keystrokes, or
+        arbitrary page text.
+      </p>
+
+      <h3>Data sent to your Media Launcher server</h3>
+      <p>
+        When you play or queue a video, the extension sends the video or page
+        URL, an optional title, playback options derived from your settings, a
+        play/queue flag, and your API token in the
+        <code>Authorization</code> header to the server URL configured in its
+        options (default <code>http://localhost:5000</code>). History, settings,
+        and health requests are sent to the same server.
+      </p>
+      <div class="card">
+        <strong>Local by default.</strong> The default server runs on your own
+        computer. If you point the extension at a different machine, that machine
+        receives this data instead. The developer does not receive it.
+      </div>
+
+      <h3>Thumbnails and third-party requests</h3>
+      <p>
+        To show thumbnails in the popup, history, notifications, and in-page
+        controls, the extension loads images from <code>img.youtube.com</code>,
+        thumbnail hosts declared in the manifest (for example Vimeo, Twitch,
+        Dailymotion, Bilibili, SoundCloud, X/Twitter, Reddit, Rumble, and
+        Odysee CDNs), and thumbnail URLs provided by the page itself. Those
+        requests go directly from your browser to the image host and are
+        governed by that host's privacy policy. The extension does not proxy
+        them through the developer.
+      </p>
+
+      <h3>Settings export</h3>
+      <p>
+        The extension can export your preferences and server URL to a JSON file
+        you choose to save. <strong>The API token is excluded from exports.</strong>
+        Importing a settings file can still accept a token for backward
+        compatibility, but the extension never writes tokens into exported
+        files.
+      </p>
+
+      <h2>Data handled by the desktop app and local server</h2>
+
+      <h3>Stored on your computer</h3>
+      <ul>
+        <li>
+          <strong>SQLite database</strong> — playback history (URL, title,
+          thumbnail URL, timestamp, resume position), app settings, and hashed
+          remote-session records.
+        </li>
+        <li>
+          <strong>API token file</strong> — the master token used to authenticate
+          the extension. The server requests owner-only permissions where the
+          operating system supports them.
+        </li>
+        <li>
+          <strong>Logs</strong> — server output, which can include the player
+          command line and the URL being played.
+        </li>
+        <li>
+          <strong>Downloads</strong> — tools you explicitly download through the
+          app (for example yt-dlp) and any SponsorBlock script you install.
+        </li>
+      </ul>
+      <p>
+        The desktop app does not include analytics, telemetry, crash reporting,
+        or advertising SDKs.
+      </p>
+
+      <h3>Network activity</h3>
+      <p>
+        The server binds to <code>127.0.0.1</code> by default. When you enable
+        remote control, it listens on your local network (or a Tailscale
+        interface) so a paired phone can control playback. When you play a
+        video, the server runs mpv and/or yt-dlp, which contact the video site
+        and its media CDNs to stream the video and fetch metadata. If you
+        install SponsorBlock, its mpv script contacts the SponsorBlock API to
+        look up sponsor segments. Downloads of yt-dlp or other tools come from
+        their upstream GitHub releases. These requests are governed by those
+        services' policies.
+      </p>
+
+      <h2>Remote control</h2>
+      <p>
+        Remote control is intended for a trusted LAN or Tailscale network.
+      </p>
+      <ul>
+        <li>
+          Pairing uses single-use random codes with a five-minute lifetime.
+          Codes are kept in server memory and are lost when the server restarts.
+        </li>
+        <li>
+          A paired phone receives a revocable session token, stored in the phone
+          browser's <code>localStorage</code>.
+        </li>
+        <li>
+          The remote page can display recent history titles and URLs and can
+          control playback. Paired devices can be revoked from the desktop app.
+        </li>
+        <li>
+          The remote page is served over plain HTTP on the LAN. Use Tailscale
+          when you need encrypted transport outside your local network.
+        </li>
+      </ul>
+
+      <h2>What the developer does not do</h2>
+      <ul>
+        <li>
+          Does not receive, collect, sell, rent, or share your browsing history,
+          video URLs, or API token.
+        </li>
+        <li>
+          Does not use analytics, tracking pixels, advertising, or
+          fingerprinting.
+        </li>
+        <li>Does not load remote code into the extension.</li>
+        <li>
+          Does not require an account or collect personal information.
+        </li>
+      </ul>
+
+      <h2>Data retention and deletion</h2>
+      <ul>
+        <li>
+          <strong>Extension history:</strong> clear it from the popup or history
+          view, or remove the extension. Cached history is also replaced as new
+          entries arrive.
+        </li>
+        <li>
+          <strong>Extension settings:</strong> reset them in the options page or
+          remove the extension. Synced preferences may remain in your browser
+          account until you delete them through the browser's sync settings.
+        </li>
+        <li>
+          <strong>Desktop history:</strong> clear it in the app, or delete the
+          server data directory after quitting the app.
+        </li>
+        <li>
+          <strong>Logs:</strong> delete <code>server.log</code> from the app's
+          logs directory.
+        </li>
+        <li>
+          <strong>Remote devices:</strong> revoke individual sessions or all
+          sessions from the desktop app. Restarting the server invalidates
+          outstanding pairing codes.
+        </li>
+        <li>
+          <strong>Downloads:</strong> delete downloaded tools from the app's
+          Downloads section.
+        </li>
+      </ul>
+
+      <h2>Security</h2>
+      <ul>
+        <li>
+          The API binds to loopback by default and rejects non-loopback
+          <code>Host</code> headers unless remote control is explicitly enabled
+          for a private network.
+        </li>
+        <li>
+          Every API route except the health probe and the pairing page requires a
+          token.
+        </li>
+        <li>Remote session tokens are hashed at rest.</li>
+        <li>
+          The extension stores the master token in local storage, not browser
+          sync.
+        </li>
+        <li>The remote page uses a nonce-based Content Security Policy.</li>
+        <li>QR pairing uses single-use, expiring codes.</li>
+      </ul>
+      <p>
+        No system is perfectly secure. Protect your API token, use a trusted
+        network for remote control, and revoke devices you no longer use.
+      </p>
+
+      <h2>Children</h2>
+      <p>
+        Media Launcher is not directed at children and does not knowingly
+        collect personal information from anyone.
+      </p>
+
+      <h2>Changes to this policy</h2>
+      <p>
+        This policy may be updated when the extension or desktop app changes.
+        The effective date at the top will change, and material updates will be
+        noted in the project changelog or release notes.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Questions or requests about this policy can be raised at
+        <a href="https://github.com/riad-boussaid/media-launcher/issues"
+          >github.com/riad-boussaid/media-launcher/issues</a
+        >.
+      </p>
+
+      <footer>
+        Media Launcher is open source under the MIT License.
+        <a href="https://github.com/riad-boussaid/media-launcher"
+          >View the source</a
+        >.
+      </footer>
+    </main>
+  </body>
+</html>

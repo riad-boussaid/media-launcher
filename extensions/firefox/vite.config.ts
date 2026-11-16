@@ -29,4 +29,10 @@ export default defineConfig({
       additionalInputs: ["src/background/background.ts", "src/content/content.ts"],
     }),
   ],
+  build: {
+    // vite-plugin-web-extension forces emptyOutDir off unless it is set
+    // explicitly; without this, files from previous builds (old logos, chunks)
+    // would ship inside the XPI.
+    emptyOutDir: true,
+  },
 });

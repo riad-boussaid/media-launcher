@@ -1,5 +1,5 @@
 import { type JSX, useCallback, useEffect, useState } from "react";
-import { getServerStatus } from "./lib/api";
+import { getServerStatus, getSettings } from "./lib/api";
 import History from "./pages/History";
 import Play from "./pages/Play";
 import Settings from "./pages/Settings";
@@ -73,6 +73,7 @@ const TABS: { key: Tab; label: string; icon: () => JSX.Element }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>("play");
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
+  const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [searchSignal, setSearchSignal] = useState(0);
 
   const pollStatus = useCallback(async () => {
@@ -89,6 +90,12 @@ export default function App() {
     const t = setInterval(() => void pollStatus(), 5000);
     return () => clearInterval(t);
   }, [pollStatus]);
+
+  useEffect(() => {
+    void getSettings()
+      .then((settings) => setServerUrl(settings.serverUrl))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const cleanup = window.electronAPI.window.onNavigate((t) => {
@@ -120,6 +127,10 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  const serverLabel = serverUrl
+    ? serverUrl.replace(/^https?:\/\//, "")
+    : "online";
 
   return (
     <div className="h-screen flex flex-col bg-base">
@@ -168,7 +179,7 @@ export default function App() {
               serverOnline === null
                 ? "Checking server…"
                 : serverOnline
-                  ? "Server running on port 5000"
+                  ? `Server running at ${serverUrl ?? "localhost"}`
                   : "Server not responding"
             }
           >
@@ -183,7 +194,7 @@ export default function App() {
               }
             />
             <span className="text-[9px] text-muted leading-none">
-              {serverOnline ? ":5000" : "offline"}
+              {serverOnline ? serverLabel : "offline"}
             </span>
           </div>
         </nav>

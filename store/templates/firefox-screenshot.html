@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Media Launcher Firefox sidebar screenshot</title>
+    <link rel="stylesheet" href="base.css" />
+    <style>
+      .shot {
+        display: grid;
+        grid-template-columns: 380px 1fr;
+        gap: 32px;
+        padding: 54px 50px 40px;
+        align-items: center;
+      }
+      .glow-blue {
+        width: 560px;
+        height: 560px;
+        top: -260px;
+        left: -180px;
+      }
+      .glow-purple {
+        width: 540px;
+        height: 540px;
+        right: -180px;
+        bottom: -260px;
+        background: #8b5cf6;
+      }
+      .copy {
+        position: relative;
+        z-index: 2;
+      }
+      .copy h2 {
+        margin: 18px 0 14px;
+        font-size: 46px;
+        line-height: 1.04;
+        letter-spacing: -0.035em;
+        font-weight: 800;
+      }
+      .copy p {
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.55;
+      }
+      .callouts {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-top: 28px;
+      }
+      .callout {
+        display: flex;
+        gap: 11px;
+        align-items: flex-start;
+      }
+      .callout .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #a78bfa;
+        box-shadow: 0 0 12px #a78bfa;
+        margin-top: 6px;
+        flex: none;
+      }
+      .callout b {
+        display: block;
+        font-size: 14px;
+      }
+      .callout span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .ff-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 26px;
+        padding: 8px 13px;
+        border-radius: 999px;
+        border: 1px solid rgba(167, 139, 250, 0.3);
+        background: rgba(139, 92, 246, 0.1);
+        color: #c4b5fd;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .browser {
+        height: 674px;
+        border-radius: 20px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .ff-top {
+        height: 46px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 14px;
+        background: #1a1f27;
+        border-bottom: 1px solid var(--border);
+      }
+      .ff-tab {
+        height: 29px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 13px;
+        border-radius: 8px 8px 0 0;
+        background: #11151b;
+        color: #c9d1dd;
+        font-size: 11px;
+      }
+      .ff-url {
+        flex: 1;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border: 1px solid #2b3340;
+        border-radius: 999px;
+        background: #12161c;
+        color: #8792a2;
+        font-size: 10px;
+      }
+      .ff-body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      .page {
+        flex: 1;
+        position: relative;
+        background: #0e1116;
+        overflow: hidden;
+      }
+      .page-head {
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        padding: 0 17px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+      }
+      .yt-logo {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+      }
+      .yt-logo i {
+        width: 24px;
+        height: 17px;
+        border-radius: 5px;
+        background: #ff0033;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-style: normal;
+        color: #fff;
+        font-size: 8px;
+      }
+      .search {
+        flex: 1;
+        max-width: 230px;
+        height: 27px;
+        border: 1px solid #262d38;
+        border-radius: 999px;
+        background: #11151b;
+      }
+      .avatar {
+        width: 25px;
+        height: 25px;
+        border-radius: 50%;
+        margin-left: auto;
+        background: linear-gradient(135deg, #f59e0b, #ef4444);
+      }
+      .page-content {
+        padding: 15px 17px;
+      }
+      .video-frame {
+        position: relative;
+        height: 246px;
+        border-radius: 12px;
+        background:
+          linear-gradient(145deg, rgba(44, 180, 226, 0.55), rgba(58, 227, 138, 0.22)),
+          linear-gradient(180deg, #1a2433, #0f1722);
+        overflow: hidden;
+      }
+      .video-frame::before {
+        content: "";
+        position: absolute;
+        width: 190px;
+        height: 190px;
+        border-radius: 50%;
+        border: 28px solid rgba(255, 255, 255, 0.07);
+        right: -40px;
+        top: -50px;
+      }
+      .big-play {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(5, 13, 9, 0.62);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .big-play span {
+        width: 0;
+        height: 0;
+        border-top: 10px solid transparent;
+        border-bottom: 10px solid transparent;
+        border-left: 16px solid #fff;
+        margin-left: 4px;
+      }
+      .video-title {
+        margin-top: 13px;
+        font-size: 17px;
+        font-weight: 650;
+        line-height: 1.3;
+      }
+      .video-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .channel {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #22c55e, #0ea5e9);
+      }
+      .actions {
+        display: flex;
+        gap: 7px;
+        margin-top: 12px;
+      }
+      .pill {
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 11px;
+        border-radius: 999px;
+        background: #20262f;
+        color: #cdd5e1;
+        font-size: 10px;
+        font-weight: 600;
+      }
+      .pill.injected {
+        background: linear-gradient(135deg, #2cb4e2, #3ae38a);
+        color: #04120a;
+      }
+
+      .sidebar {
+        width: 332px;
+        flex: none;
+        background: #14181f;
+        border-left: 1px solid var(--border);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+      }
+      .sb-head {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .sb-head img {
+        width: 26px;
+        height: 26px;
+      }
+      .sb-head .name {
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .sb-head .pin {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .sb-sub {
+        margin-top: 2px;
+        font-size: 8.5px;
+        color: var(--muted);
+      }
+      .sb-current {
+        margin-top: 13px;
+        padding: 9px;
+        border-radius: 12px;
+        background: #11151b;
+        border: 1px solid var(--border);
+      }
+      .sb-thumb {
+        position: relative;
+        height: 106px;
+        border-radius: 8px;
+        background:
+          linear-gradient(145deg, rgba(44, 180, 226, 0.6), rgba(58, 227, 138, 0.25)),
+          linear-gradient(180deg, #1b2738, #101821);
+        overflow: hidden;
+      }
+      .sb-thumb::before {
+        content: "";
+        position: absolute;
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        border: 14px solid rgba(255, 255, 255, 0.08);
+        right: -14px;
+        top: -20px;
+      }
+      .sb-thumb .play-badge {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 33px;
+        height: 33px;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(6, 14, 10, 0.64);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .sb-thumb .play-badge span {
+        width: 0;
+        height: 0;
+        border-top: 6px solid transparent;
+        border-bottom: 6px solid transparent;
+        border-left: 9px solid #fff;
+        margin-left: 2px;
+      }
+      .sb-title {
+        margin-top: 8px;
+        font-size: 11.5px;
+        font-weight: 650;
+        line-height: 1.3;
+      }
+      .sb-meta {
+        margin-top: 3px;
+        font-size: 9px;
+        color: var(--muted);
+      }
+      .sb-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .sb-grid .field {
+        height: 31px;
+        margin-top: 5px;
+        font-size: 10px;
+      }
+      .sb-toggles {
+        margin-top: 11px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 10.5px;
+        color: #c8d0dc;
+      }
+      .sb-buttons {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .sb-buttons .btn {
+        padding: 9px 10px;
+        font-size: 11px;
+      }
+      .sb-divider {
+        margin: 12px 0 9px;
+      }
+      .sb-list-item {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 7px 0;
+      }
+      .sb-list-item .thumb {
+        width: 38px;
+        height: 25px;
+      }
+      .sb-list-title {
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1.25;
+      }
+      .sb-list-meta {
+        font-size: 8.5px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .sb-footer {
+        margin-top: auto;
+        padding-top: 9px;
+        font-size: 8px;
+        color: #596372;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage shot">
+      <div class="glow glow-blue"></div>
+      <div class="glow glow-purple"></div>
+
+      <div class="copy">
+        <span class="badge"><span class="badge-dot"></span>Firefox add-on</span>
+        <h2>Built for<br /><span class="gradient">Firefox.</span></h2>
+        <p>
+          Media Launcher uses Firefox's native sidebar instead of a cramped
+          popup. Keep the player controls and recent history open next to the
+          video.
+        </p>
+        <div class="callouts">
+          <div class="callout">
+            <span class="dot"></span>
+            <div>
+              <b>Native sidebar</b>
+              <span>Open it from View → Sidebar → Media Launcher.</span>
+            </div>
+          </div>
+          <div class="callout">
+            <span class="dot"></span>
+            <div>
+              <b>Same local server</b>
+              <span>Works with the same desktop app and API token as the Chrome build.</span>
+            </div>
+          </div>
+          <div class="callout">
+            <span class="dot"></span>
+            <div>
+              <b>No data collection</b>
+              <span>Everything stays on your device or your own network.</span>
+            </div>
+          </div>
+        </div>
+        <span class="ff-chip">🦊 Firefox 142+ · sidebar_action</span>
+      </div>
+
+      <div class="browser card">
+        <div class="ff-top">
+          <div class="window-dots"><span></span><span></span><span></span></div>
+          <div class="ff-tab">▶ How renewable energy actually works</div>
+          <div class="ff-url">youtube.com/watch?v=8f2c…</div>
+        </div>
+
+        <div class="ff-body">
+          <div class="page">
+            <div class="page-head">
+              <div class="yt-logo"><i>▶</i>YouTube</div>
+              <div class="search"></div>
+              <div class="avatar"></div>
+            </div>
+            <div class="page-content">
+              <div class="video-frame">
+                <div class="big-play"><span></span></div>
+              </div>
+              <div class="video-title">How renewable energy actually works</div>
+              <div class="video-meta">
+                <div class="channel"></div>
+                <span>DW Planet A</span>
+                <span>·</span>
+                <span>1.2M views</span>
+                <span>·</span>
+                <span>2 weeks ago</span>
+              </div>
+              <div class="actions">
+                <span class="pill">👍 24K</span>
+                <span class="pill">Share</span>
+                <span class="pill injected">▶ Play with Media Launcher</span>
+                <span class="pill">Queue</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sidebar">
+            <div class="sb-head">
+              <img src="../assets/icon-512.png" alt="" />
+              <div>
+                <div class="name">Media Launcher</div>
+                <div class="sb-sub">Firefox sidebar · connected</div>
+              </div>
+              <span class="pin">📌</span>
+            </div>
+
+            <div class="sb-current">
+              <div class="sb-thumb">
+                <span class="play-badge"><span></span></span>
+              </div>
+              <div class="sb-title">How renewable energy actually works</div>
+              <div class="sb-meta">DW Planet A · YouTube · 20:31</div>
+            </div>
+
+            <div class="sb-grid">
+              <div>
+                <div class="label">Resolution</div>
+                <div class="field select">1080p</div>
+              </div>
+              <div>
+                <div class="label">Codec</div>
+                <div class="field select">Auto</div>
+              </div>
+            </div>
+
+            <div class="sb-toggles">
+              <div class="row"><span>Audio only</span><span class="toggle"></span></div>
+              <div class="row"><span>Subtitles</span><span class="toggle on"></span></div>
+            </div>
+
+            <div class="sb-buttons">
+              <span class="btn btn-primary">▶ Play</span>
+              <span class="btn btn-secondary">＋ Queue</span>
+            </div>
+
+            <div class="divider sb-divider"></div>
+            <div class="row" style="margin-bottom: 2px">
+              <span class="label">Recent</span>
+              <span class="tiny muted">View all</span>
+            </div>
+            <div class="sb-list-item">
+              <div class="thumb v2"></div>
+              <div>
+                <div class="sb-list-title">Lo-fi beats to focus</div>
+                <div class="sb-list-meta">12:04 · yesterday</div>
+              </div>
+            </div>
+            <div class="sb-list-item">
+              <div class="thumb v3"></div>
+              <div>
+                <div class="sb-list-title">The physics of a perfect espresso</div>
+                <div class="sb-list-meta">18:42 · 2 days ago</div>
+              </div>
+            </div>
+            <div class="sb-list-item">
+              <div class="thumb v4"></div>
+              <div>
+                <div class="sb-list-title">Why cities are getting quieter</div>
+                <div class="sb-list-meta">9:16 · 3 days ago</div>
+              </div>
+            </div>
+            <div class="sb-footer">View → Sidebar → Media Launcher</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

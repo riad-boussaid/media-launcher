@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media Launcher documentation</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0f1115;
+        --card: #171a20;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --border: #2a2f38;
+        --accent: #3ae38a;
+        --accent-2: #2cb4e2;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f4f6f9;
+          --card: #fff;
+          --text: #1b1f27;
+          --muted: #5d6572;
+          --border: #dde2ea;
+          --accent: #0f9f62;
+          --accent-2: #0b83b0;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 32px 20px;
+        background:
+          radial-gradient(700px 360px at 0% 0%, rgba(44, 180, 226, 0.2), transparent 60%),
+          radial-gradient(700px 360px at 100% 100%, rgba(58, 227, 138, 0.16), transparent 60%),
+          var(--bg);
+        color: var(--text);
+        font:
+          16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+      }
+      main {
+        width: 100%;
+        max-width: 720px;
+        padding: 32px;
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        background: var(--card);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .brand img {
+        width: 40px;
+        height: 40px;
+      }
+      h1 {
+        margin: 18px 0 8px;
+        font-size: clamp(30px, 6vw, 42px);
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+      }
+      h1 span {
+        background: linear-gradient(90deg, var(--accent-2), var(--accent));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      p {
+        color: var(--muted);
+        margin: 0 0 24px;
+      }
+      .links {
+        display: grid;
+        gap: 12px;
+      }
+      a.card {
+        display: block;
+        padding: 16px 18px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        color: var(--text);
+        text-decoration: none;
+        transition: border-color 120ms ease, transform 120ms ease;
+      }
+      a.card:hover {
+        border-color: var(--accent-2);
+        transform: translateY(-1px);
+      }
+      a.card strong {
+        display: block;
+        font-size: 16px;
+      }
+      a.card span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">
+        <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+          <defs>
+            <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#2cb4e2" />
+              <stop offset="1" stop-color="#3ae38a" />
+            </linearGradient>
+          </defs>
+          <circle cx="20" cy="20" r="19" fill="url(#g)" />
+          <path d="M16 12.5 29 20l-13 7.5v-15z" fill="#07130c" />
+        </svg>
+        Media Launcher
+      </div>
+      <h1>Documentation</h1>
+      <p>
+        Privacy, release, and contribution information for the Media Launcher
+        browser extension and desktop app.
+      </p>
+      <div class="links">
+        <a class="card" href="privacy-policy.html">
+          <strong>Privacy Policy</strong>
+          <span>What the extension and desktop app store, send, and never collect.</span>
+        </a>
+        <a
+          class="card"
+          href="https://github.com/riad-boussaid/media-launcher/blob/main/docs/releasing.md"
+        >
+          <strong>Release guide</strong>
+          <span>Versioning, signing secrets, artifacts, and store submission.</span>
+        </a>
+        <a class="card" href="https://github.com/riad-boussaid/media-launcher">
+          <strong>Source code</strong>
+          <span>Media Launcher on GitHub (MIT License).</span>
+        </a>
+      </div>
+    </main>
+  </body>
+</html>

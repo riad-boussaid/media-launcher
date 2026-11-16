@@ -31,6 +31,48 @@ In-page buttons are injected where the site exposes stable player markup.
 Thumbnail play chips appear on video cards. Every site remains usable through
 the toolbar popup, the right-click menu, and keyboard shortcuts.
 
+## Install
+
+### Desktop app
+
+Download the latest installer from
+[GitHub Releases](https://github.com/riad-boussaid/media-launcher/releases/latest):
+
+- **Windows** — `Media-Launcher-<version>-win-x64.exe`
+- **macOS** — `Media-Launcher-<version>-mac-x64.dmg` or `...-mac-arm64.dmg`
+- **Linux** — `Media-Launcher-<version>-linux-x64.AppImage` or `.deb`
+
+The desktop app bundles and starts the API server. You still need mpv on your
+computer, and yt-dlp is strongly recommended:
+
+```bash
+# macOS (Homebrew)
+brew install mpv yt-dlp
+
+# Debian/Ubuntu
+sudo apt install mpv yt-dlp
+
+# Windows (winget)
+winget install mpv yt-dlp
+```
+
+macOS builds are signed and notarized when the release workflow has Apple
+credentials; otherwise see the Gatekeeper note in
+[docs/releasing.md](docs/releasing.md).
+
+### Browser extension
+
+Release artifacts are attached to every GitHub release:
+
+- **Chrome / Edge / Brave** — `media-launcher-chrome-<version>.zip`. Unzip it,
+  open `chrome://extensions`, enable **Developer mode**, and click **Load
+  unpacked**. A Chrome Web Store listing is planned for the 1.0 release.
+- **Firefox** — `media-launcher-firefox-<version>.xpi`. Signed XPIs can be
+  installed normally; unsigned XPIs are for temporary testing through
+  `about:debugging#/runtime/this-firefox`.
+
+Both extensions need the desktop app or a standalone server running locally.
+
 ## Architecture
 
 | Component | Directory | Tech |
@@ -231,10 +273,33 @@ pnpm dev:desktop
 pnpm dev:chrome
 pnpm dev:firefox
 pnpm -C server dev
+
+# Release checks and browser bundles
+pnpm version:check
+pnpm icons:check
+pnpm check:release
+pnpm release:extensions     # -> artifacts/*.zip and *.xpi
+
+# Desktop installers
+pnpm -C desktop run dist:win
+pnpm -C desktop run dist:mac
+pnpm -C desktop run dist:linux
 ```
 
 CI runs linting, type checks, and builds for the server, desktop app, and both
-extensions.
+extensions, then packages the Chrome ZIP and Firefox XPI. Tagging `v*` runs the
+full release workflow, including desktop installers for Windows, macOS, and
+Linux. See [docs/releasing.md](docs/releasing.md) for versioning, signing
+secrets, and store submission.
+
+## Privacy
+
+Media Launcher has no analytics, telemetry, advertising, or developer-operated
+backend. The extension sends video URLs and your API token only to the local
+server you configure. The token stays in local extension storage, is never
+synced, and is excluded from settings exports.
+
+See [docs/privacy-policy.md](docs/privacy-policy.md) for the full policy.
 
 ## Security
 
@@ -246,7 +311,10 @@ extensions.
   enforces a nonce based CSP. Paired phones cannot mint new pairing codes.
 - Remote control is for trusted LAN/Tailscale networks; the LAN page uses plain
   HTTP, so use Tailscale for encrypted access outside the local network.
-- The extension API token is stored in local storage, not in browser sync.
+- The extension API token is stored in local storage, not in browser sync, and
+  is not written to settings export files.
+- Release checksums and build-provenance attestations are published with every
+  GitHub release.
 
 ## License
 

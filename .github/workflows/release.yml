@@ -1,0 +1,245 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. v1.0.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  extensions:
+    name: Browser extensions
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      AMO_API_KEY: ${{ secrets.AMO_API_KEY }}
+      AMO_API_SECRET: ${{ secrets.AMO_API_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            extensions/chrome/pnpm-lock.yaml
+            extensions/firefox/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm -C extensions/chrome install --frozen-lockfile
+          pnpm -C extensions/firefox install --frozen-lockfile
+
+      - name: Verify release metadata
+        run: |
+          pnpm version:check
+          pnpm icons:check
+          node scripts/check-release.mjs "$TAG"
+
+      - name: Lint and type-check extensions
+        run: |
+          pnpm lint
+          pnpm -C extensions/chrome run type-check
+          pnpm -C extensions/firefox run type-check
+
+      - name: Build extensions
+        run: |
+          pnpm build:chrome
+          pnpm build:firefox
+
+      - name: Package extension artifacts
+        run: |
+          pnpm package:chrome
+          pnpm package:firefox
+
+      - name: Sign Firefox XPI with AMO
+        if: env.AMO_API_KEY != '' && env.AMO_API_SECRET != ''
+        run: |
+          pnpm dlx web-ext@latest sign \
+            --source-dir extensions/firefox/dist \
+            --artifacts-dir artifacts \
+            --channel unlisted \
+            --api-key "$AMO_API_KEY" \
+            --api-secret "$AMO_API_SECRET"
+
+      - name: Upload extension bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: extensions
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
+
+  desktop:
+    name: Desktop (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+          - os: ubuntu-latest
+            platform: linux
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            server/pnpm-lock.yaml
+            desktop/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm -C server install --frozen-lockfile
+          pnpm -C desktop install --frozen-lockfile
+
+      - name: Verify release metadata
+        shell: bash
+        run: node scripts/check-release.mjs "$TAG"
+
+      - name: Write notarization API key
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+        shell: bash
+        run: |
+          if [ -n "$APPLE_API_KEY_CONTENT" ]; then
+            printf '%s' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/AuthKey.p8"
+            echo "APPLE_API_KEY=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        run: pnpm -C desktop run dist:win
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Build macOS disk images
+        if: runner.os == 'macOS'
+        run: pnpm -C desktop run dist:mac
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      - name: Build Linux packages
+        if: runner.os == 'Linux'
+        run: pnpm -C desktop run dist:linux
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.AppImage
+            desktop/release/*.deb
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub release
+    needs: [extensions, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd release-assets
+          find . -maxdepth 2 -type f ! -name "SHA256SUMS.txt" -print0 \
+            | sort -z | xargs -0 sha256sum \
+            | sed 's#  \./#  #' > ../SHA256SUMS.txt
+
+      - name: Attest build provenance
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            release-assets/*.exe
+            release-assets/*.dmg
+            release-assets/*.zip
+            release-assets/*.AppImage
+            release-assets/*.deb
+            release-assets/*.xpi
+
+      - name: Build release notes
+        run: |
+          VERSION="${TAG#v}"
+          node scripts/changelog-section.mjs "$VERSION" > release-notes.md
+          {
+            echo ""
+            echo "SHA-256 checksums for every artifact are attached as \`SHA256SUMS.txt\`."
+          } >> release-notes.md
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          args=(
+            "$TAG"
+            release-assets/*
+            SHA256SUMS.txt
+            --title "Media Launcher ${TAG#v}"
+            --notes-file release-notes.md
+          )
+          if [[ "$TAG" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"

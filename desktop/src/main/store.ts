@@ -1,7 +1,10 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { app } from "electron";
-import { readServerToken } from "./server";
+import {
+  getServerUrl as getEmbeddedServerUrl,
+  readServerToken,
+} from "./server";
 
 export interface HistoryEntry {
   id: string;
@@ -52,10 +55,25 @@ export interface PlayerStatus {
   speed: number;
 }
 
-const DEFAULT_SERVER_URL = "http://localhost:5000";
-
 function normalizeServerUrl(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+/**
+ * Configs written before the embedded server gained port fallback keep
+ * `localhost:5000`. Follow the port the desktop actually selected instead of
+ * staying pinned to an occupied port (macOS AirPlay commonly owns 5000).
+ * Explicit non-loopback or custom-port URLs are preserved.
+ */
+function followActivePort(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const isLoopback =
+      parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+    return isLoopback && parsed.port === "5000" ? getEmbeddedServerUrl() : url;
+  } catch {
+    return url;
+  }
 }
 
 function localConfigPath(): string {
@@ -72,17 +90,19 @@ function readLocalConfig(): { serverUrl: string; remoteEnabled: boolean } {
       };
       return {
         serverUrl: normalizeServerUrl(
-          typeof parsed.serverUrl === "string"
-            ? parsed.serverUrl
-            : DEFAULT_SERVER_URL,
+          followActivePort(
+            typeof parsed.serverUrl === "string"
+              ? parsed.serverUrl
+              : getEmbeddedServerUrl(),
+          ),
         ),
         remoteEnabled: parsed.remoteEnabled === true,
       };
     } catch {
-      return { serverUrl: DEFAULT_SERVER_URL, remoteEnabled: false };
+      return { serverUrl: getEmbeddedServerUrl(), remoteEnabled: false };
     }
   }
-  return { serverUrl: DEFAULT_SERVER_URL, remoteEnabled: false };
+  return { serverUrl: getEmbeddedServerUrl(), remoteEnabled: false };
 }
 
 function writeLocalConfig(patch: {
