@@ -1,0 +1,692 @@
+---
+import { Image } from "astro:assets";
+import Icon from "../components/Icon.astro";
+import Base from "../layouts/Base.astro";
+import icon from "../assets/images/icon.png";
+import optionsShot from "../assets/images/options.png";
+import popupShot from "../assets/images/popup.png";
+import remoteShot from "../assets/images/remote.png";
+
+const repo = "https://github.com/riad-boussaid/media-launcher";
+const releases = `${repo}/releases/latest`;
+const issues = `${repo}/issues`;
+const installGuide = `${repo}/blob/main/docs/installing.md`;
+const chromeGuide = `${installGuide}#chrome-edge-and-brave-manual-install`;
+const firefoxGuide = `${installGuide}#firefox`;
+const privacyPolicy = "https://riad-boussaid.github.io/media-launcher/privacy-policy.html";
+
+type FeatureIcon =
+  | "bolt"
+  | "code"
+  | "history"
+  | "phone"
+  | "play"
+  | "queue"
+  | "shield"
+  | "sliders";
+
+const features: { icon: FeatureIcon; title: string; body: string }[] = [
+  {
+    icon: "play",
+    title: "One-click play",
+    body: "Send the current video from the page, toolbar popup, right-click menu, or a keyboard shortcut.",
+  },
+  {
+    icon: "queue",
+    title: "Queue without interrupting",
+    body: "Shift-click or use the Queue menu item to add a video to mpv's queue instead of replacing what is playing.",
+  },
+  {
+    icon: "sliders",
+    title: "Your quality, codec, audio",
+    body: "Set maximum resolution, codec, audio-only mode, subtitles, volume, speed, loop, and extra mpv arguments.",
+  },
+  {
+    icon: "history",
+    title: "Resume where you left off",
+    body: "A local watch history remembers your position so partially watched videos pick up where they stopped.",
+  },
+  {
+    icon: "phone",
+    title: "Your phone is the remote",
+    body: "Pair with a one-time QR code and control playback from the couch over your LAN or Tailscale.",
+  },
+  {
+    icon: "bolt",
+    title: "SponsorBlock and chapters",
+    body: "Skip sponsor segments with an optional mpv script and move through YouTube chapters from the app or phone.",
+  },
+  {
+    icon: "shield",
+    title: "Private by design",
+    body: "No analytics, no developer server, no account. The extension talks to the server on your own computer.",
+  },
+  {
+    icon: "code",
+    title: "Free and open source",
+    body: "MIT licensed, with a reproducible release pipeline, checksums, and build-provenance attestations.",
+  },
+];
+
+const sites = [
+  "YouTube",
+  "Shorts",
+  "Vimeo",
+  "Dailymotion",
+  "Twitch",
+  "Bilibili",
+  "SoundCloud",
+  "Facebook",
+  "X / Twitter",
+  "Reddit",
+  "TikTok",
+  "Instagram",
+  "Kick",
+  "Rumble",
+  "Odysee",
+];
+
+const faqs = [
+  {
+    question: "Is Media Launcher really free?",
+    answer:
+      "Yes. The desktop app, browser extensions, and server are MIT licensed and have no paid tiers, accounts, or subscriptions.",
+  },
+  {
+    question: "Do I need mpv installed?",
+    answer:
+      "Yes. Media Launcher sends videos to mpv, so mpv must be on your PATH. yt-dlp is strongly recommended because it lets mpv stream from supported sites.",
+  },
+  {
+    question: "Why is the Chrome extension not in the Chrome Web Store?",
+    answer:
+      "The Chrome Web Store charges a one-time developer registration fee. You can install the same ZIP manually in Chrome, Edge, or Brave for free; the install guide has the steps. The Firefox listing is free and is in review at addons.mozilla.org.",
+  },
+  {
+    question: "Does it collect my browsing history?",
+    answer:
+      "No. There is no analytics, telemetry, or developer-operated backend. The page URL is sent only to your own Media Launcher server when you play or queue a video, and history stays in a local SQLite database.",
+  },
+  {
+    question: "Can I control playback from my phone?",
+    answer:
+      "Yes. Enable remote control in the desktop app, scan the QR code, and the paired phone can seek, pause, skip, change chapters, and adjust volume and speed over your LAN or Tailscale.",
+  },
+  {
+    question: "Does it work with SponsorBlock?",
+    answer:
+      "Yes, optionally. Install the SponsorBlock mpv script from the desktop app's Downloads section and mpv will skip sponsor segments automatically.",
+  },
+];
+
+const desktopCards = [
+  {
+    title: "Windows",
+    body: "NSIS installer with a normal setup wizard. Unsigned builds show SmartScreen once.",
+    note: "SmartScreen: More info → Run anyway.",
+    links: [{ label: "Download for Windows", href: releases }],
+  },
+  {
+    title: "macOS",
+    body: "Universal downloads for Apple Silicon and Intel. Requires mpv; Homebrew is the easiest install.",
+    note: "Unsigned builds: right-click → Open, or clear quarantine.",
+    links: [{ label: "Download for macOS", href: releases }],
+  },
+  {
+    title: "Linux",
+    body: "AppImage for any distribution, or a Debian/Ubuntu package. mpv comes from your distro.",
+    note: "Checksums and attestations are attached to every release.",
+    links: [{ label: "Download for Linux", href: releases }],
+  },
+];
+
+const browserCards = [
+  {
+    title: "Chrome, Edge & Brave",
+    body: "Download the ZIP and load it unpacked. No store account or registration fee is required.",
+    note: "Chrome shows a developer-mode warning for unpacked extensions.",
+    links: [
+      { label: "Install guide", href: chromeGuide },
+      { label: "Download ZIP", href: releases },
+    ],
+  },
+  {
+    title: "Firefox",
+    body: "The AMO listing is free and currently in review. Until it is live, load the release XPI temporarily.",
+    note: "Permanent installs require an AMO-signed XPI.",
+    links: [
+      { label: "Firefox guide", href: firefoxGuide },
+      { label: "Download XPI", href: releases },
+    ],
+  },
+];
+
+const sourceCard = {
+  title: "Build from source",
+  body: "Clone the repository and build the desktop app, server, and extensions with Node 22+ and pnpm.",
+  note: "Development instructions are in the README.",
+  links: [
+    { label: "Source code", href: repo },
+    { label: "Development guide", href: `${repo}#development` },
+  ],
+};
+---
+
+<Base>
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/" aria-label="Media Launcher home">
+        <Image src={icon} alt="" width={34} height={34} />
+        <span>Media Launcher</span>
+      </a>
+
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="#features">Features</a>
+        <a href="#screenshots">Screenshots</a>
+        <a href="#install">Install</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+
+      <div class="nav-actions">
+        <a class="button button-ghost button-small" href={repo} rel="noopener">
+          GitHub
+        </a>
+        <a
+          class="button button-primary button-small"
+          href={releases}
+          rel="noopener"
+        >
+          Download
+          <Icon name="download" size={14} />
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow">
+            <span class="eyebrow-dot"></span>
+            Free & open source · MIT
+          </span>
+
+          <h1>
+            Send the video.<br />
+            <span class="gradient-text">Skip the tab.</span>
+          </h1>
+
+          <p class="hero-lead">
+            One click sends YouTube, Vimeo, Twitch, and more to mpv on your
+            computer — with queueing, resume, and phone control.
+          </p>
+
+          <div class="hero-actions">
+            <a class="button button-primary" href={releases} rel="noopener">
+              Download for free
+              <Icon name="download" size={15} />
+            </a>
+            <a class="button button-ghost" href="#install">How to install</a>
+          </div>
+
+          <ul class="hero-meta">
+            <li>Windows · macOS · Linux</li>
+            <li>Chrome · Edge · Brave · Firefox</li>
+            <li>No analytics</li>
+          </ul>
+        </div>
+
+        <div class="hero-visual">
+          <div class="browser-frame">
+            <Image
+              class="hero-shot"
+              src={popupShot}
+              alt="Media Launcher popup showing the current video, quality controls, play and queue buttons, and recent history."
+              widths={[640, 800]}
+              sizes="(max-width: 980px) 92vw, 560px"
+              format="webp"
+              quality={82}
+              loading="eager"
+            />
+          </div>
+
+          <div class="float-card float-play">
+            <div class="float-card-label">Now playing in mpv</div>
+            <div class="float-card-title">How renewable energy works</div>
+            <div class="float-progress"><span></span></div>
+          </div>
+
+          <div class="float-card float-queue">
+            <div class="float-card-label">Queued</div>
+            <div class="float-card-title">Lo-fi beats to focus</div>
+            <div class="float-card-title" style="color: var(--muted-2); font-weight: 500;">
+              +1 in queue
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-kicker">Everything in one click</div>
+          <h2 class="section-title">
+            A better way to watch<br />
+            <span class="gradient-text">on the big screen.</span>
+          </h2>
+          <p class="section-lead">
+            Media Launcher connects the browser you already use to mpv, the
+            player you already trust. No URL copying, no tab switching, no
+            vendor lock-in.
+          </p>
+        </div>
+
+        <div class="feature-grid">
+          {
+            features.map((feature) => (
+              <article class="feature-card">
+                <div class="feature-icon">
+                  <Icon name={feature.icon} size={19} />
+                </div>
+                <h3>{feature.title}</h3>
+                <p>{feature.body}</p>
+              </article>
+            ))
+          }
+        </div>
+
+        <div class="site-strip">
+          <div class="site-strip-label">Works with</div>
+          <div class="site-list">
+            {sites.map((site) => <span>{site}</span>)}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="screenshots">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-kicker">Screenshots</div>
+          <h2 class="section-title">Control from anywhere in the flow.</h2>
+          <p class="section-lead">
+            Play or queue from the page, fine-tune the stream before it starts,
+            and pick up the remote when you sit down.
+          </p>
+        </div>
+
+        <div class="showcase">
+          <div class="showcase-row">
+            <div class="showcase-copy">
+              <span class="pill">Browser popup</span>
+              <h3>Everything you need before pressing play.</h3>
+              <p>
+                The popup shows the current tab, thumbnail, quality and codec
+                controls, and recent history. Play now or add the video to the
+                queue without leaving the page.
+              </p>
+              <ul class="check-list">
+                <li>
+                  <Icon name="check" size={15} />
+                  Resolution, codec, audio-only, subtitles, volume and speed
+                </li>
+                <li>
+                  <Icon name="check" size={15} />
+                  Queue without replacing the current video
+                </li>
+                <li>
+                  <Icon name="check" size={15} />
+                  Recent history with resume positions
+                </li>
+              </ul>
+            </div>
+
+            <div class="shot-frame">
+              <Image
+                src={popupShot}
+                alt="Media Launcher popup with playback controls and recent history."
+                widths={[640, 960, 1280]}
+                sizes="(max-width: 980px) 92vw, 520px"
+                format="webp"
+                quality={82}
+                loading="lazy"
+              />
+              <div class="shot-caption">
+                <strong>Popup</strong>
+                <span>Play, queue, quality</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="showcase-row reverse">
+            <div class="showcase-copy">
+              <span class="pill">Remote control</span>
+              <h3>Your phone is the remote.</h3>
+              <p>
+                Pair once with a QR code, then pause, seek, skip chapters, and
+                change the volume from the couch. Everything runs over your LAN
+                or Tailscale; no cloud in the middle.
+              </p>
+              <ul class="check-list">
+                <li>
+                  <Icon name="check" size={15} />
+                  One-time pairing codes that expire after five minutes
+                </li>
+                <li>
+                  <Icon name="check" size={15} />
+                  Chapters, volume, mute, speed, and skip controls
+                </li>
+                <li>
+                  <Icon name="check" size={15} />
+                  Revoke paired devices at any time
+                </li>
+              </ul>
+            </div>
+
+            <div class="shot-frame">
+              <Image
+                src={remoteShot}
+                alt="Media Launcher desktop app with the now-playing card and a phone remote showing playback controls."
+                widths={[640, 960, 1280]}
+                sizes="(max-width: 980px) 92vw, 520px"
+                format="webp"
+                quality={82}
+                loading="lazy"
+              />
+              <div class="shot-caption">
+                <strong>Remote</strong>
+                <span>LAN or Tailscale</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="showcase-row">
+            <div class="showcase-copy">
+              <span class="pill">Settings</span>
+              <h3>Set your defaults once.</h3>
+              <p>
+                Choose the server URL and token, then set playback defaults for
+                every video. The API token stays in local extension storage and
+                is never synced or included in settings exports.
+              </p>
+              <ul class="check-list">
+                <li>
+                  <Icon name="check" size={15} />
+                  Auto-detect the local server on ports 5000–5010
+                </li>
+                <li>
+                  <Icon name="check" size={15} />
+                  Show or hide page buttons, thumbnail chips, and notifications
+                </li>
+                <li>
+                  <Icon name="check" size={15} />
+                  Light, dark, or system theme
+                </li>
+              </ul>
+            </div>
+
+            <div class="shot-frame">
+              <Image
+                src={optionsShot}
+                alt="Media Launcher extension options showing server connection, playback defaults, and on-page controls."
+                widths={[640, 960, 1280]}
+                sizes="(max-width: 980px) 92vw, 520px"
+                format="webp"
+                quality={82}
+                loading="lazy"
+              />
+              <div class="shot-caption">
+                <strong>Options</strong>
+                <span>Server and playback defaults</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="install">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-kicker">Install</div>
+          <h2 class="section-title">Free on every platform.</h2>
+          <p class="section-lead">
+            Download the desktop app and a browser extension. Desktop builds are
+            unsigned, so expect a one-time SmartScreen or Gatekeeper prompt;
+            the install guide shows the exact steps.
+          </p>
+        </div>
+
+        <div class="install-grid">
+          {
+            desktopCards.map((card) => (
+              <article class="install-card">
+                <div class="install-card-header">
+                  <div class="install-icon">
+                    <Icon
+                      name={card.title === "Linux" ? "terminal" : "monitor"}
+                      size={18}
+                    />
+                  </div>
+                  <h3>{card.title}</h3>
+                </div>
+                <p>{card.body}</p>
+                <div class="install-links">
+                  {card.links.map((link) => (
+                    <a
+                      class="button button-ghost"
+                      href={link.href}
+                      rel="noopener"
+                    >
+                      {link.label}
+                      <Icon name="arrow" size={13} />
+                    </a>
+                  ))}
+                </div>
+                <div class="install-note">{card.note}</div>
+              </article>
+            ))
+          }
+
+          {
+            browserCards.map((card) => (
+              <article class="install-card">
+                <div class="install-card-header">
+                  <div class="install-icon">
+                    <Icon name="globe" size={18} />
+                  </div>
+                  <h3>{card.title}</h3>
+                </div>
+                <p>{card.body}</p>
+                <div class="install-links">
+                  {card.links.map((link) => (
+                    <a
+                      class="button button-ghost"
+                      href={link.href}
+                      rel="noopener"
+                    >
+                      {link.label}
+                      <Icon name="arrow" size={13} />
+                    </a>
+                  ))}
+                </div>
+                <div class="install-note">{card.note}</div>
+              </article>
+            ))
+          }
+
+          <article class="install-card">
+            <div class="install-card-header">
+              <div class="install-icon">
+                <Icon name="code" size={18} />
+              </div>
+              <h3>{sourceCard.title}</h3>
+            </div>
+            <p>{sourceCard.body}</p>
+            <div class="install-links">
+              {sourceCard.links.map((link) => (
+                <a class="button button-ghost" href={link.href} rel="noopener">
+                  {link.label}
+                  <Icon name="arrow" size={13} />
+                </a>
+              ))}
+            </div>
+            <div class="install-note">{sourceCard.note}</div>
+          </article>
+        </div>
+
+        <div class="install-note" style="margin-top: 18px;">
+          Full download, update, verification, and troubleshooting steps:
+          <a href={installGuide} rel="noopener">installing.md</a>.
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="privacy">
+      <div class="container">
+        <div class="privacy-band">
+          <div class="privacy-grid">
+            <div>
+              <div class="section-kicker">Privacy</div>
+              <h2>Private by design.</h2>
+              <p>
+                Media Launcher is a local tool, not a cloud service. There is no
+                analytics, no telemetry, and no developer-operated backend. Your
+                video URLs, history, and API token stay on your devices.
+              </p>
+
+              <div class="privacy-list">
+                <div class="privacy-item">
+                  <Icon name="shield" size={17} />
+                  <div>
+                    <strong>No account, no tracking</strong>
+                    <span>Nothing is sent to the project or a third-party analytics service.</span>
+                  </div>
+                </div>
+                <div class="privacy-item">
+                  <Icon name="check" size={17} />
+                  <div>
+                    <strong>Token stays local</strong>
+                    <span>Stored in local extension storage, never synced, never included in exports.</span>
+                  </div>
+                </div>
+                <div class="privacy-item">
+                  <Icon name="check" size={17} />
+                  <div>
+                    <strong>Your server, your data</strong>
+                    <span>History and settings live in a local SQLite database on your computer.</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="hero-actions">
+                <a
+                  class="button button-ghost button-small"
+                  href={privacyPolicy}
+                  rel="noopener"
+                >
+                  Read the privacy policy
+                  <Icon name="arrow" size={13} />
+                </a>
+              </div>
+            </div>
+
+            <div class="device-card">
+              <h3>Stays on your device</h3>
+              <div class="device-row">
+                <Icon name="history" size={16} />
+                Watch history and resume positions
+              </div>
+              <div class="device-row">
+                <Icon name="sliders" size={16} />
+                Playback defaults and mpv arguments
+              </div>
+              <div class="device-row">
+                <Icon name="shield" size={16} />
+                API token and paired remote sessions
+              </div>
+              <div class="device-row">
+                <Icon name="check" size={16} />
+                No analytics, ever
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="faq">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-kicker">FAQ</div>
+          <h2 class="section-title">Questions, answered.</h2>
+        </div>
+
+        <div class="faq">
+          {
+            faqs.map((faq) => (
+              <details>
+                <summary>
+                  {faq.question}
+                  <span class="faq-plus" aria-hidden="true">+</span>
+                </summary>
+                <div class="faq-answer">{faq.answer}</div>
+              </details>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand-column">
+          <a class="footer-brand" href="/" aria-label="Media Launcher home">
+            <Image src={icon} alt="" width={28} height={28} />
+            <span>Media Launcher</span>
+          </a>
+          <p class="footer-tagline">
+            Send videos from your browser to mpv. Free, open source, and local
+            by default.
+          </p>
+        </div>
+
+        <div class="footer-column">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#screenshots">Screenshots</a>
+          <a href="#install">Install</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#faq">FAQ</a>
+        </div>
+
+        <div class="footer-column">
+          <h4>Resources</h4>
+          <a href={repo} rel="noopener">GitHub</a>
+          <a href={releases} rel="noopener">Releases</a>
+          <a href={installGuide} rel="noopener">Install guide</a>
+          <a href={privacyPolicy} rel="noopener">Privacy policy</a>
+        </div>
+
+        <div class="footer-column">
+          <h4>Community</h4>
+          <a href={issues} rel="noopener">Report an issue</a>
+          <a href={`${repo}/blob/main/LICENSE`} rel="noopener">MIT License</a>
+          <a href={`${repo}/blob/main/CHANGELOG.md`} rel="noopener">Changelog</a>
+          <a href={`${repo}/blob/main/docs/releasing.md`} rel="noopener">Release guide</a>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>© 2026 Riad Boussaid · MIT License</span>
+        <span>Not affiliated with YouTube, Vimeo, Twitch, or mpv.</span>
+        <span>Built with Astro.</span>
+      </div>
+    </div>
+  </footer>
+</Base>
