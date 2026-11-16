@@ -112,6 +112,7 @@ if ((chrome.permissions ?? []).includes("scripting")) {
 // 7. Release-facing documentation and artwork are present.
 const requiredFiles = [
   "docs/releasing.md",
+  "docs/installing.md",
   "docs/index.html",
   "docs/privacy-policy.md",
   "docs/privacy-policy.html",

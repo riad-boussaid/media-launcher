@@ -33,6 +33,11 @@ the toolbar popup, the right-click menu, and keyboard shortcuts.
 
 ## Install
 
+Everything can be installed for free. The Chrome Web Store registration and
+Apple notarization are optional paid conveniences; see
+[docs/installing.md](docs/installing.md) for the free paths and the warnings
+that unsigned builds show.
+
 ### Desktop app
 
 Download the latest installer from
@@ -56,21 +61,31 @@ sudo apt install mpv yt-dlp
 winget install mpv yt-dlp
 ```
 
-macOS builds are signed and notarized when the release workflow has Apple
-credentials; otherwise see the Gatekeeper note in
-[docs/releasing.md](docs/releasing.md).
+Releases are unsigned unless Apple/Windows signing credentials were configured.
+Windows SmartScreen and macOS Gatekeeper warnings are expected; the exact
+bypass and verification steps are in
+[docs/installing.md](docs/installing.md#windows-desktop) and
+[docs/installing.md](docs/installing.md#macos-desktop).
 
 ### Browser extension
 
-Release artifacts are attached to every GitHub release:
+Release artifacts are attached to every GitHub release.
 
-- **Chrome / Edge / Brave** — `media-launcher-chrome-<version>.zip`. Unzip it,
-  open `chrome://extensions`, enable **Developer mode**, and click **Load
-  unpacked**. A Chrome Web Store listing is planned for the 1.0 release.
-- **Firefox** — `media-launcher-firefox-<version>.xpi`. Signed XPIs can be
-  installed normally; unsigned XPIs are for temporary testing through
-  `about:debugging#/runtime/this-firefox`.
+**Chrome, Edge, Brave** — no store required:
 
+1. Download `media-launcher-chrome-<version>.zip`.
+2. Unzip it into a permanent folder.
+3. Open `chrome://extensions`, `edge://extensions`, or `brave://extensions`.
+4. Enable **Developer mode**, click **Load unpacked**, and select the folder
+   containing `manifest.json`.
+
+**Firefox** — install from
+[addons.mozilla.org](https://addons.mozilla.org/firefox/) once the listing is
+approved (AMO signing is free). Until then, download the XPI and load it
+temporarily through `about:debugging#/runtime/this-firefox`.
+
+Manual update and troubleshooting steps are in
+[docs/installing.md](docs/installing.md#chrome-edge-and-brave-manual-install).
 Both extensions need the desktop app or a standalone server running locally.
 
 ## Architecture

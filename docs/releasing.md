@@ -130,12 +130,17 @@ gh attestation verify "Media-Launcher-X.Y.Z-win-x64.exe" --repo riad-boussaid/me
 
 ## Store submission
 
+The Chrome Web Store registration costs **$5 one-time** and is optional. If you
+want a fully free release, skip it and distribute the Chrome ZIP manually; see
+[docs/installing.md](installing.md). Firefox AMO is free, and Edge Add-ons has no
+registration fee.
+
 Before submitting to either store, enable GitHub Pages for the repository
 (Settings → Pages → Source: GitHub Actions) so
 `https://riad-boussaid.github.io/media-launcher/privacy-policy.html` resolves.
 `pages.yml` publishes `docs/` on pushes to `main`.
 
-### Chrome Web Store
+### Chrome Web Store (optional, $5 one-time)
 
 1. Upload `artifacts/media-launcher-chrome-X.Y.Z.zip` in the developer console.
 2. Use `store/chrome/listing.md` for the name, summary, description, category,
