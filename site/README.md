@@ -58,7 +58,7 @@ and set `SITE_URL` to the same origin so canonical and Open Graph URLs match.
 
 ```bash
 pnpm -C site build
-pnpm dlx wrangler pages deploy site/dist --project-name media-launcher-site
+pnpm dlx wrangler pages deploy site/dist --project-name media-launcher
 ```
 
 `wrangler` needs a Cloudflare API token or an interactive `wrangler login`.
