@@ -289,6 +289,11 @@ pnpm dev:chrome
 pnpm dev:firefox
 pnpm -C server dev
 
+# Marketing site (Astro)
+pnpm dev:site
+pnpm build:site
+pnpm check:site
+
 # Release checks and browser bundles
 pnpm version:check
 pnpm icons:check
@@ -301,11 +306,13 @@ pnpm -C desktop run dist:mac
 pnpm -C desktop run dist:linux
 ```
 
-CI runs linting, type checks, and builds for the server, desktop app, and both
-extensions, then packages the Chrome ZIP and Firefox XPI. Tagging `v*` runs the
-full release workflow, including desktop installers for Windows, macOS, and
-Linux. See [docs/releasing.md](docs/releasing.md) for versioning, signing
-secrets, and store submission.
+CI runs linting, type checks, and builds for the server, desktop app, both
+extensions, and the Astro marketing site, then packages the Chrome ZIP and
+Firefox XPI. Tagging `v*` runs the full release workflow, including desktop
+installers for Windows, macOS, and Linux. See
+[docs/releasing.md](docs/releasing.md) for versioning, signing secrets, and
+store submission, and [site/README.md](site/README.md) for the Cloudflare Pages
+setup.
 
 ## Privacy
 
