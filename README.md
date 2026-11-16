@@ -40,7 +40,7 @@ Download the latest installer from
 
 - **Windows** — `Media-Launcher-<version>-win-x64.exe`
 - **macOS** — `Media-Launcher-<version>-mac-x64.dmg` or `...-mac-arm64.dmg`
-- **Linux** — `Media-Launcher-<version>-linux-x64.AppImage` or `.deb`
+- **Linux** — `Media-Launcher-<version>-linux-x86_64.AppImage` or `Media-Launcher-<version>-linux-amd64.deb`
 
 The desktop app bundles and starts the API server. You still need mpv on your
 computer, and yt-dlp is strongly recommended:
