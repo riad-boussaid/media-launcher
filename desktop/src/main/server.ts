@@ -55,6 +55,8 @@ export interface RemoteUrls {
   lan: string | null;
   /** Pairing link over Tailscale (works from outside the LAN too). */
   tailscale: string | null;
+  /** When the displayed one-time codes expire. */
+  expiresAt: number | null;
 }
 
 const REMOTE_TOKEN_RANGE = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+$/;
@@ -63,21 +65,40 @@ function pairingLink(ip: string, code: string): string {
   return `http://${ip}:5000/remote?c=${encodeURIComponent(code)}`;
 }
 
-/** Mint a one-time code from the local server (master-token protected). */
-async function fetchPairingCode(): Promise<string | null> {
+interface IssuedPairingCode {
+  code: string;
+  expiresAt: number;
+}
+
+/** Mint one-time codes from the local server (master-token protected). */
+async function fetchPairingCodes(
+  count: number,
+  fresh: boolean,
+): Promise<IssuedPairingCode[]> {
   const token = readServerToken();
-  if (!token) return null;
+  if (!token || count < 1) return [];
   try {
-    const res = await fetch(`${getServerUrl()}/remote/pairing-code`, {
+    const res = await fetch(`${getServerUrl()}/remote/pairing-codes`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ count, fresh }),
       signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { code?: unknown };
-    return typeof data.code === "string" && data.code ? data.code : null;
+    if (!res.ok) return [];
+    const data = (await res.json()) as { codes?: unknown };
+    if (!Array.isArray(data.codes)) return [];
+    return data.codes.filter(
+      (entry): entry is IssuedPairingCode =>
+        !!entry &&
+        typeof entry === "object" &&
+        typeof (entry as { code?: unknown }).code === "string" &&
+        typeof (entry as { expiresAt?: unknown }).expiresAt === "number",
+    );
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -85,9 +106,12 @@ async function fetchPairingCode(): Promise<string | null> {
  * Pairing links per transport: the LAN IP (Wi-Fi/Ethernet) and the machine's
  * Tailscale IP when its adapter is up. Null entries mean that transport
  * isn't currently available; remoteEnabled off means both are null.
+ * `fresh` invalidates outstanding unused codes before minting a new batch.
  */
-export async function getRemoteUrls(): Promise<RemoteUrls> {
-  if (!isRemoteEnabled()) return { lan: null, tailscale: null };
+export async function getRemoteUrls(fresh = false): Promise<RemoteUrls> {
+  if (!isRemoteEnabled()) {
+    return { lan: null, tailscale: null, expiresAt: null };
+  }
   // Pick the most likely LAN address. Skips loopback, link-local (169.254 —
   // adapters with no network) and virtual adapters (Hyper-V/WSL/Docker)
   // whose addresses the phone usually can't reach. Tailscale's own adapter
@@ -113,18 +137,25 @@ export async function getRemoteUrls(): Promise<RemoteUrls> {
     candidates.find((ip) => /^172\.(1[6-9]|2\d|3[01])\./.test(ip)) ??
     candidates[0] ??
     null;
-  // Use an independent one-time code for each transport: scanning the LAN QR
-  // must not consume the Tailscale QR (or vice versa).
-  const [lanCode, tailscaleCode] = await Promise.all([
-    lanIp ? fetchPairingCode() : Promise.resolve(null),
-    tailscaleIp ? fetchPairingCode() : Promise.resolve(null),
-  ]);
+  // One independent one-time code per transport: scanning the LAN QR must not
+  // consume the Tailscale QR (or vice versa).
+  const needed = (lanIp ? 1 : 0) + (tailscaleIp ? 1 : 0);
+  const codes = needed > 0 ? await fetchPairingCodes(needed, fresh) : [];
+  const expiresAt =
+    codes.length > 0
+      ? Math.min(...codes.map((entry) => entry.expiresAt))
+      : null;
+
+  let codeIndex = 0;
+  const lanCode = lanIp ? (codes[codeIndex++]?.code ?? null) : null;
+  const tailscaleCode = tailscaleIp ? (codes[codeIndex++]?.code ?? null) : null;
   return {
     lan: lanIp && lanCode ? pairingLink(lanIp, lanCode) : null,
     tailscale:
       tailscaleIp && tailscaleCode
         ? pairingLink(tailscaleIp, tailscaleCode)
         : null,
+    expiresAt,
   };
 }
 

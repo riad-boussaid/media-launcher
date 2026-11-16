@@ -313,6 +313,10 @@ export default function Options() {
           <p className="mt-2 text-xs text-muted-foreground">
             The token is stored only on this device — it is never synced.
           </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Tip: Shift-click an in-page play button to queue. Shortcuts:
+            Alt+Shift+P plays the current page, Alt+Shift+Q queues it.
+          </p>
         </div>
       )}
 

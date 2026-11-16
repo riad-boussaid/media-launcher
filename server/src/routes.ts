@@ -5,7 +5,7 @@ import {
   consumePairingCode,
   extractToken,
   hashToken,
-  issuePairingCode,
+  issuePairingCodes,
   matchesMasterToken,
 } from "./auth.js";
 import {
@@ -259,13 +259,23 @@ function pairRateLimited(ip: string): boolean {
   return entry.count > 10;
 }
 
-// Desktop-only: mint a one-time pairing code for the QR/manual flow. Session
-// tokens from paired phones must not be able to mint more codes.
-app.post("/remote/pairing-code", (c) => {
+// Desktop-only: mint one-time codes for the QR/manual flow. Session tokens
+// from paired phones must not be able to mint more codes. `fresh` invalidates
+// previously issued unused codes (used by the "New code" action).
+app.post("/remote/pairing-codes", async (c) => {
   if (!matchesMasterToken(extractToken(c))) {
     return c.json({ err: "master token required" }, 403);
   }
-  return c.json(issuePairingCode());
+  let body: { count?: unknown; fresh?: unknown } = {};
+  try {
+    body = await c.req.json();
+  } catch {
+    /* empty body is fine */
+  }
+  const count = typeof body.count === "number" ? body.count : 1;
+  return c.json({
+    codes: issuePairingCodes(count, body.fresh === true),
+  });
 });
 
 app.post("/remote/pair", async (c) => {

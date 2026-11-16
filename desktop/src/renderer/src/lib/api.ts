@@ -90,6 +90,8 @@ export interface RemoteUrls {
   lan: string | null;
   /** Pairing link over Tailscale (works from outside the LAN too). */
   tailscale: string | null;
+  /** When the displayed one-time codes expire. */
+  expiresAt: number | null;
 }
 
 export interface RemoteSessionInfo {
@@ -99,8 +101,8 @@ export interface RemoteSessionInfo {
   lastSeen: number;
 }
 
-export async function getRemoteUrls(): Promise<RemoteUrls> {
-  return api.server.remoteUrls();
+export async function getRemoteUrls(fresh = false): Promise<RemoteUrls> {
+  return api.server.remoteUrls(fresh);
 }
 
 export async function getRemoteSessions(): Promise<RemoteSessionInfo[]> {

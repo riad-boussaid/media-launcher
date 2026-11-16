@@ -203,19 +203,29 @@ export default function Popup({
       if (tab?.title) setTabTitle(tab.title);
     });
 
-    getServerHealthInfo()
-      .then((info) => {
-        setServerStatus(info.ok ? "connected" : "disconnected");
-        setServerInfo(
-          info.ok
-            ? { version: info.version, apiVersion: info.apiVersion }
-            : null,
-        );
-      })
-      .catch(() => {
-        setServerStatus("disconnected");
-        setServerInfo(null);
-      });
+    // The embedded server can still be starting when the popup opens. Retry a
+    // few times while disconnected, then stop.
+    let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    const checkHealth = async () => {
+      const info = await getServerHealthInfo();
+      if (cancelled) return;
+      setServerStatus(info.ok ? "connected" : "disconnected");
+      setServerInfo(
+        info.ok ? { version: info.version, apiVersion: info.apiVersion } : null,
+      );
+      if (!info.ok && attempts < 4) {
+        attempts += 1;
+        retry = setTimeout(() => void checkHealth(), 3000);
+      }
+    };
+    void checkHealth();
+
+    return () => {
+      cancelled = true;
+      if (retry) clearTimeout(retry);
+    };
   }, []);
 
   // yt-dlp metadata enrichment can take a while — keep polling while a visible

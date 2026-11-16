@@ -136,6 +136,7 @@ export default function SettingsPage() {
   const [copiedCodeTransport, setCopiedCodeTransport] = useState<
     "lan" | "tailscale" | null
   >(null);
+  const [nowTs, setNowTs] = useState(() => Date.now());
   const { theme, setTheme } = useTheme();
 
   const loadedRef = useRef(false);
@@ -148,9 +149,9 @@ export default function SettingsPage() {
   }, []);
 
   const loadRemoteUrls = useCallback(
-    async (isCancelled?: () => boolean): Promise<RemoteUrls> => {
+    async (fresh = false, isCancelled?: () => boolean): Promise<RemoteUrls> => {
       try {
-        const urls = await getRemoteUrls();
+        const urls = await getRemoteUrls(fresh);
         if (isCancelled?.()) return urls;
         const lanQr = urls.lan
           ? await QRCode.toDataURL(urls.lan, { margin: 1 })
@@ -164,8 +165,14 @@ export default function SettingsPage() {
         setQrTailscale(tailscaleQr);
         return urls;
       } catch {
-        if (isCancelled?.()) return { lan: null, tailscale: null };
-        const empty: RemoteUrls = { lan: null, tailscale: null };
+        if (isCancelled?.()) {
+          return { lan: null, tailscale: null, expiresAt: null };
+        }
+        const empty: RemoteUrls = {
+          lan: null,
+          tailscale: null,
+          expiresAt: null,
+        };
         setRemoteUrls(empty);
         setQrLan(null);
         setQrTailscale(null);
@@ -270,7 +277,7 @@ export default function SettingsPage() {
       }
     };
     const load = async () => {
-      const urls = await loadRemoteUrls(() => cancelled);
+      const urls = await loadRemoteUrls(false, () => cancelled);
       if (cancelled) return;
       // Stop the startup retry loop once the server has answered; each call
       // mints new one-time codes, so don't churn them unnecessarily.
@@ -296,6 +303,14 @@ export default function SettingsPage() {
       clearInterval(refresh);
     };
   }, [settings?.remoteEnabled, loadRemoteUrls]);
+
+  // Tick the one-time-code countdown while codes are displayed.
+  useEffect(() => {
+    if (!remoteUrls?.expiresAt) return;
+    setNowTs(Date.now());
+    const timer = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [remoteUrls?.expiresAt]);
 
   // Paired devices: keep the list live while the page is open (phones pair
   // and unpair independently of this page).
@@ -342,7 +357,7 @@ export default function SettingsPage() {
     }
     const remotePage = url.split("?")[0];
     return (
-      <div className="flex items-start gap-3 mt-3 first:mt-2">
+      <div className="flex flex-wrap items-start gap-3 mt-3 first:mt-2">
         {qr && (
           <img
             src={qr}
@@ -350,7 +365,7 @@ export default function SettingsPage() {
             className="w-28 h-28 flex-shrink-0 rounded-lg border border-border bg-white p-1"
           />
         )}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-64">
           <p className="text-[11px] text-text font-medium leading-snug m-0">
             {label}
           </p>
@@ -438,6 +453,17 @@ export default function SettingsPage() {
   };
   const urlInvalid =
     settings.serverUrl.trim() !== "" && !isHttpUrl(settings.serverUrl.trim());
+  const codeRemainingMs = remoteUrls?.expiresAt
+    ? Math.max(0, remoteUrls.expiresAt - nowTs)
+    : null;
+  const codeRemainingLabel =
+    codeRemainingMs === null
+      ? null
+      : codeRemainingMs > 0
+        ? `${Math.floor(codeRemainingMs / 60000)}:${String(
+            Math.floor((codeRemainingMs % 60000) / 1000),
+          ).padStart(2, "0")}`
+        : "Expired";
 
   const handleProbe = async () => {
     setProbing(true);
@@ -669,17 +695,30 @@ export default function SettingsPage() {
           </p>
         )}
         {settings.remoteEnabled && (
-          <div className="mt-3 flex items-center justify-between">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
             <span className="text-[9px] uppercase tracking-[0.06em] font-semibold text-muted">
               One-time pairing
             </span>
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              onClick={() => void loadRemoteUrls()}
-            >
-              New code
-            </button>
+            <div className="flex items-center gap-2">
+              {codeRemainingLabel && (
+                <span
+                  className={`text-[10px] ${
+                    codeRemainingMs === 0 ? "text-danger" : "text-muted"
+                  }`}
+                >
+                  {codeRemainingMs === 0
+                    ? "Expired — click New code"
+                    : `Expires in ${codeRemainingLabel}`}
+                </span>
+              )}
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => void loadRemoteUrls(true)}
+              >
+                New code
+              </button>
+            </div>
           </div>
         )}
         {settings.remoteEnabled &&

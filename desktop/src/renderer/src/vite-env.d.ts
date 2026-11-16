@@ -21,9 +21,10 @@ interface ElectronAPI {
     getToken: () => Promise<string | null>;
     status: () => Promise<{ online: boolean }>;
     probe: (url: string) => Promise<{ ok: boolean; detail?: string }>;
-    remoteUrls: () => Promise<{
+    remoteUrls: (fresh?: boolean) => Promise<{
       lan: string | null;
       tailscale: string | null;
+      expiresAt: number | null;
     }>;
   };
   remote: {

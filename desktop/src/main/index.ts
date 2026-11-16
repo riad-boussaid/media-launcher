@@ -154,7 +154,9 @@ if (!gotTheLock) {
       if (win) refreshTrayMenu(win);
       return updated;
     });
-    ipcMain.handle("server:remoteUrls", () => getRemoteUrls());
+    ipcMain.handle("server:remoteUrls", (_event, fresh?: boolean) =>
+      getRemoteUrls(fresh === true),
+    );
     ipcMain.handle("remote:sessions", () => getRemoteSessions());
     ipcMain.handle("remote:revokeSession", (_event, id: string) =>
       revokeRemoteSession(id),

@@ -92,14 +92,30 @@ export interface IssuedPairingCode {
   expiresAt: number;
 }
 
-/** Creates a random one-time code for the desktop QR/manual pairing UI. */
-export function issuePairingCode(now = Date.now()): IssuedPairingCode {
+/**
+ * Creates one-time codes for the desktop QR/manual pairing UI.
+ *
+ * Outstanding codes are process-local: restarting the server forgets them.
+ * `clearPrevious` invalidates unused codes so "New code" can replace them.
+ */
+export function issuePairingCodes(
+  count = 1,
+  clearPrevious = false,
+  now = Date.now(),
+): IssuedPairingCode[] {
+  const n = Math.max(1, Math.min(4, Math.trunc(count) || 1));
+  if (clearPrevious) pairingCodes.clear();
   prunePairingCodes(pairingCodes, now);
   prunePairingCodes(consumedPairingCodes, now);
-  const code = randomBytes(18).toString("base64url");
-  const expiresAt = now + PAIRING_CODE_TTL_MS;
-  pairingCodes.set(hashToken(code), expiresAt);
-  return { code, expiresAt };
+
+  const codes: IssuedPairingCode[] = [];
+  for (let index = 0; index < n; index += 1) {
+    const code = randomBytes(18).toString("base64url");
+    const expiresAt = now + PAIRING_CODE_TTL_MS;
+    pairingCodes.set(hashToken(code), expiresAt);
+    codes.push({ code, expiresAt });
+  }
+  return codes;
 }
 
 export type PairingCodeResult = "ok" | "used" | "expired" | "invalid";

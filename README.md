@@ -170,7 +170,9 @@ the desktop app.
 
 Remote control is intended for a trusted LAN or Tailscale. The remote page is
 served over plain HTTP on the LAN; use Tailscale (which encrypts traffic) when
-you need to control the player from outside the local network.
+you need to control the player from outside the local network. Outstanding
+pairing codes are kept in server memory, so restarting the server invalidates
+them.
 
 ## Firefox sidebar
 

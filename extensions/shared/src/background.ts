@@ -1,4 +1,5 @@
 import { getServerUrl, sendUrl } from "@shared/api";
+import { EXPECTED_SERVER_API_VERSION } from "@shared/discovery";
 import { ext } from "@shared/ext";
 import { getSettings, migrateAuthToken } from "@shared/settings";
 
@@ -70,24 +71,50 @@ async function notify(message: string, thumbnailUrl?: string) {
   }
 }
 
-async function checkServerStatus(): Promise<boolean> {
+type ServerStatus = "online" | "incompatible" | "offline";
+
+async function checkServerStatus(): Promise<ServerStatus> {
   const url = await getServerUrl();
-  if (!url) return false;
+  if (!url) return "offline";
   try {
     const res = await fetch(`${url}/api/health`, {
       signal: AbortSignal.timeout(3000),
       cache: "no-store",
     });
-    return res.ok;
+    if (!res.ok) return "offline";
+    const data = (await res.json()) as {
+      app?: unknown;
+      apiVersion?: unknown;
+    };
+    if (data.app !== "media-launcher") return "offline";
+    return data.apiVersion === EXPECTED_SERVER_API_VERSION
+      ? "online"
+      : "incompatible";
   } catch {
-    return false;
+    return "offline";
   }
 }
 
 async function updatePersistentBadge() {
-  const ok = await checkServerStatus();
-  chrome.action.setBadgeText({ text: ok ? "✓" : "✗" });
-  chrome.action.setBadgeBackgroundColor({ color: ok ? "#22c55e" : "#ef4444" });
+  const status = await checkServerStatus();
+  const text =
+    status === "online" ? "✓" : status === "incompatible" ? "!" : "✗";
+  const color =
+    status === "online"
+      ? "#22c55e"
+      : status === "incompatible"
+        ? "#f59e0b"
+        : "#ef4444";
+  chrome.action.setBadgeText({ text });
+  chrome.action.setBadgeBackgroundColor({ color });
+  chrome.action.setTitle({
+    title:
+      status === "online"
+        ? "Media Launcher server connected"
+        : status === "incompatible"
+          ? "Server API mismatch — update the extension and desktop app"
+          : "Media Launcher server not found",
+  });
 }
 
 function setTemporaryBadge(text: string, color: string) {
