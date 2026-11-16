@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "description": "Modern desktop tray app for media-launcher",
   "license": "MIT",
+  "homepage": "https://github.com/riad-boussaid/media-launcher",
+  "desktopName": "media-launcher.desktop",
   "author": {
     "name": "Riad Boussaid",
     "email": "riadsoso@gmail.com"
