@@ -19,7 +19,14 @@ const readJson = (relative) =>
   JSON.parse(readFileSync(join(root, relative), "utf-8"));
 
 const version = readJson("package.json").version;
-const tag = (process.argv[2] || process.env.GITHUB_REF_NAME || "").trim();
+// Only treat the environment ref as a tag when GitHub says it is one. On pull
+// requests GITHUB_REF_NAME is something like "1/merge", not a release tag.
+const explicitTag = process.argv[2]?.trim();
+const envTag =
+  process.env.GITHUB_REF_TYPE === "tag"
+    ? process.env.GITHUB_REF_NAME?.trim()
+    : undefined;
+const tag = explicitTag || envTag || "";
 
 // 1. All package and manifest versions match the root version.
 const sync = spawnSync(
