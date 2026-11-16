@@ -19,7 +19,13 @@ const COMMON_PATHS: Record<string, string[]> = {
     "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
   ],
   iina: ["/Applications/IINA.app/Contents/MacOS/iina"],
-  mpv: ["/usr/bin/mpv", "/usr/local/bin/mpv"],
+  mpv: [
+    "/usr/bin/mpv",
+    "/usr/local/bin/mpv",
+    // Apple Silicon Homebrew. Packaged apps launched from Finder inherit a
+    // minimal PATH, so `which mpv` alone misses this.
+    "/opt/homebrew/bin/mpv",
+  ],
 };
 
 function checkCommonPaths(name: string): boolean {

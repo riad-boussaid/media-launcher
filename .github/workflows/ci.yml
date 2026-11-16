@@ -37,6 +37,18 @@ jobs:
           pnpm -C extensions/chrome install --frozen-lockfile
           pnpm -C extensions/firefox install --frozen-lockfile
 
+      - name: Verify versions, icons and release metadata
+        run: |
+          pnpm version:check
+          pnpm icons:check
+          pnpm check:release
+
+      - name: Syntax-check release scripts
+        run: |
+          for file in scripts/*.mjs desktop/scripts/*.js; do
+            node --check "$file"
+          done
+
       - name: Lint
         run: pnpm lint
 
@@ -45,3 +57,16 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Package browser extensions
+        run: |
+          pnpm package:chrome
+          pnpm package:firefox
+
+      - name: Upload extension artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-extensions
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14

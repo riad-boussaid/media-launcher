@@ -1,9 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "media-launcher",
-  "version": "0.1.0",
-  "description": "Sends videos in pages like YouTube to an external media player",
-  "icons": { "128": "play-logo.png" },
+  "name": "Media Launcher",
+  "version": "1.0.0",
+  "description": "Send videos from YouTube, Vimeo, Twitch and more to mpv on your computer.",
+  "homepage_url": "https://github.com/riad-boussaid/media-launcher",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
 
   "commands": {
     "play-current-page": {
@@ -18,17 +25,27 @@
 
   "sidebar_action": {
     "default_panel": "sidebar.html",
-    "default_title": "media-launcher"
+    "default_title": "Media Launcher",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png",
+      "128": "icons/icon-128.png"
+    }
   },
 
   "browser_specific_settings": {
     "gecko": {
       "id": "media-launcher@riad-boussaid",
-      "strict_min_version": "120.0"
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   },
 
-  "permissions": ["storage", "activeTab", "contextMenus", "scripting", "notifications", "alarms"],
+  "permissions": ["storage", "activeTab", "contextMenus", "notifications", "alarms"],
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",
@@ -49,7 +66,13 @@
 
   "action": {
     "default_title": "Play with Media Launcher",
-    "default_icon": { "128": "play-logo.png" },
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png",
+      "128": "icons/icon-128.png"
+    },
     "default_popup": "popup.html"
   },
 

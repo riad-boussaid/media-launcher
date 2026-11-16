@@ -19,5 +19,7 @@ desktop-old/
 .pnpm-store/
 .server-staging/
 data/
+artifacts/
+release-notes.md
 
 .zcode/

@@ -11,6 +11,9 @@ importers:
       '@biomejs/biome':
         specifier: 2.6.7
         version: 2.6.7
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.3
 
 packages:
 
@@ -83,6 +86,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
+
 snapshots:
 
   '@biomejs/biome@2.6.7':
@@ -127,3 +133,5 @@ snapshots:
 
   '@biomejs/cli-win32-x64@2.6.7':
     optional: true
+
+  fflate@0.8.3: {}

@@ -205,7 +205,10 @@ export default function Options() {
   );
 
   const exportSettings = () => {
-    const blob = new Blob([JSON.stringify(currentSettings(), null, 2)], {
+    // The API token is a secret; keep it out of files the user may share.
+    const exportable: Partial<Settings> = { ...currentSettings() };
+    delete exportable.authToken;
+    const blob = new Blob([JSON.stringify(exportable, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -214,7 +217,7 @@ export default function Options() {
     a.download = "media-launcher-settings.json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast.success("Settings exported.");
+    toast.success("Settings exported (API token excluded).");
   };
 
   const importSettings = async (file: File) => {
@@ -664,6 +667,10 @@ export default function Options() {
               }}
             />
           </div>
+          <p className="text-xs text-muted-foreground">
+            Exports include playback preferences and the server URL, never the
+            API token.
+          </p>
         </div>
       </Section>
     </div>

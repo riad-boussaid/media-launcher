@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Media Launcher remote screenshot</title>
+    <link rel="stylesheet" href="base.css" />
+    <style>
+      .shot {
+        display: grid;
+        grid-template-columns: 380px 1fr;
+        gap: 30px;
+        padding: 54px 50px 40px;
+        align-items: center;
+      }
+      .glow-blue {
+        width: 560px;
+        height: 560px;
+        top: -260px;
+        left: -180px;
+      }
+      .glow-green {
+        width: 540px;
+        height: 540px;
+        right: -180px;
+        bottom: -260px;
+      }
+      .copy {
+        position: relative;
+        z-index: 2;
+      }
+      .copy h2 {
+        margin: 18px 0 14px;
+        font-size: 46px;
+        line-height: 1.04;
+        letter-spacing: -0.035em;
+        font-weight: 800;
+      }
+      .copy p {
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.55;
+      }
+      .callouts {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-top: 28px;
+      }
+      .callout {
+        display: flex;
+        gap: 11px;
+        align-items: flex-start;
+      }
+      .callout .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 12px var(--accent);
+        margin-top: 6px;
+        flex: none;
+      }
+      .callout b {
+        display: block;
+        font-size: 14px;
+      }
+      .callout span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .chip-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 26px;
+      }
+      .chip-row .chip {
+        font-size: 11px;
+      }
+
+      .scene {
+        position: relative;
+        height: 680px;
+      }
+      .desktop {
+        position: absolute;
+        left: 0;
+        top: 18px;
+        width: 600px;
+        height: 640px;
+        border-radius: 18px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .titlebar {
+        height: 38px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+        background: #14181f;
+        border-bottom: 1px solid var(--border);
+      }
+      .titlebar .app-name {
+        font-size: 11px;
+        color: #aeb8c6;
+      }
+      .titlebar .spacer {
+        flex: 1;
+      }
+      .titlebar .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 10px var(--accent);
+      }
+      .titlebar .status-text {
+        font-size: 9px;
+        color: var(--muted);
+      }
+      .app-body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      .rail {
+        width: 66px;
+        flex: none;
+        background: #14181f;
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 9px;
+        padding: 13px 0;
+      }
+      .rail-item {
+        width: 50px;
+        padding: 8px 0 6px;
+        border-radius: 9px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        color: #7e8999;
+        font-size: 8px;
+        font-weight: 600;
+      }
+      .rail-item.active {
+        background: #1e242d;
+        color: var(--accent);
+      }
+      .rail-icon {
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+      }
+      .rail .spacer {
+        flex: 1;
+      }
+      .main {
+        flex: 1;
+        padding: 18px 18px 14px;
+        overflow: hidden;
+      }
+      .section-label {
+        font-size: 9px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #6f7a8a;
+        font-weight: 700;
+      }
+      .now-card {
+        margin-top: 9px;
+        padding: 12px;
+        border-radius: 13px;
+        background: #171c23;
+        border: 1px solid var(--border);
+      }
+      .now-top {
+        display: flex;
+        gap: 11px;
+      }
+      .now-thumb {
+        width: 88px;
+        height: 56px;
+        border-radius: 8px;
+        flex: none;
+        background:
+          linear-gradient(145deg, rgba(44, 180, 226, 0.62), rgba(58, 227, 138, 0.24)),
+          linear-gradient(180deg, #1b2738, #101821);
+        position: relative;
+        overflow: hidden;
+      }
+      .now-thumb::before {
+        content: "";
+        position: absolute;
+        width: 66px;
+        height: 66px;
+        border-radius: 50%;
+        border: 11px solid rgba(255, 255, 255, 0.08);
+        right: -12px;
+        top: -18px;
+      }
+      .now-thumb span {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 0;
+        height: 0;
+        border-top: 7px solid transparent;
+        border-bottom: 7px solid transparent;
+        border-left: 10px solid rgba(255, 255, 255, 0.9);
+        margin-left: 2px;
+      }
+      .now-title {
+        font-size: 13px;
+        font-weight: 650;
+        line-height: 1.3;
+      }
+      .now-sub {
+        margin-top: 3px;
+        font-size: 9.5px;
+        color: var(--muted);
+      }
+      .now-chapter {
+        margin-top: 5px;
+        font-size: 9.5px;
+        color: var(--accent-2);
+      }
+      .now-progress {
+        margin-top: 12px;
+      }
+      .now-times {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 5px;
+        font-size: 8.5px;
+        color: var(--muted);
+      }
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 11px;
+      }
+      .controls .icon-btn {
+        width: 30px;
+        height: 30px;
+        font-size: 11px;
+      }
+      .controls .play-btn {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--accent-2), var(--accent));
+        color: #04120a;
+        border: none;
+      }
+      .controls .play-btn::before {
+        content: "";
+        width: 10px;
+        height: 12px;
+        border-left: 3px solid currentColor;
+        border-right: 3px solid currentColor;
+      }
+      .volume {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-left: 4px;
+      }
+      .volume .progress {
+        flex: 1;
+      }
+      .volume .tiny {
+        color: var(--muted);
+      }
+      .queue {
+        margin-top: 17px;
+      }
+      .queue-item {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+      }
+      .queue-item .thumb {
+        width: 42px;
+        height: 28px;
+      }
+      .q-title {
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+      .q-meta {
+        font-size: 8.5px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .q-index {
+        margin-left: auto;
+        font-size: 9px;
+        color: #6f7a8a;
+      }
+
+      .phone {
+        position: absolute;
+        right: 4px;
+        top: 76px;
+        width: 270px;
+        height: 552px;
+        border-radius: 34px;
+        padding: 9px;
+        background: linear-gradient(160deg, #313946, #171c23);
+        box-shadow:
+          0 40px 90px rgba(0, 0, 0, 0.62),
+          0 0 0 1px rgba(255, 255, 255, 0.06);
+        z-index: 5;
+      }
+      .phone-screen {
+        height: 100%;
+        border-radius: 27px;
+        background: #0d1117;
+        border: 1px solid #232a35;
+        overflow: hidden;
+        padding: 16px 14px 14px;
+        display: flex;
+        flex-direction: column;
+      }
+      .phone-notch {
+        width: 84px;
+        height: 18px;
+        border-radius: 999px;
+        background: #05070a;
+        margin: 0 auto 12px;
+      }
+      .phone-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .phone-head img {
+        width: 22px;
+        height: 22px;
+      }
+      .phone-head .name {
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .phone-head .badge-pair {
+        margin-left: auto;
+        padding: 3px 7px;
+        border-radius: 999px;
+        border: 1px solid rgba(58, 227, 138, 0.28);
+        background: rgba(58, 227, 138, 0.09);
+        color: var(--accent);
+        font-size: 8px;
+        font-weight: 700;
+      }
+      .phone-video {
+        margin-top: 13px;
+        height: 108px;
+        border-radius: 13px;
+        background:
+          linear-gradient(145deg, rgba(44, 180, 226, 0.62), rgba(58, 227, 138, 0.24)),
+          linear-gradient(180deg, #1b2738, #101821);
+        position: relative;
+        overflow: hidden;
+      }
+      .phone-video::before {
+        content: "";
+        position: absolute;
+        width: 92px;
+        height: 92px;
+        border-radius: 50%;
+        border: 15px solid rgba(255, 255, 255, 0.08);
+        right: -16px;
+        top: -22px;
+      }
+      .phone-title {
+        margin-top: 11px;
+        font-size: 12px;
+        font-weight: 650;
+        line-height: 1.3;
+      }
+      .phone-sub {
+        margin-top: 3px;
+        font-size: 9px;
+        color: var(--muted);
+      }
+      .phone-progress {
+        margin-top: 13px;
+      }
+      .phone-times {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 5px;
+        font-size: 8px;
+        color: var(--muted);
+      }
+      .phone-controls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        margin-top: 14px;
+      }
+      .phone-controls .icon-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+      }
+      .phone-controls .pause-btn {
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--accent-2), var(--accent));
+        color: #04120a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+      }
+      .phone-controls .pause-btn i {
+        width: 3px;
+        height: 14px;
+        border-radius: 2px;
+        background: currentColor;
+      }
+      .phone-chapter {
+        margin-top: 15px;
+        padding: 9px 10px;
+        border-radius: 10px;
+        background: #161b22;
+        border: 1px solid var(--border);
+      }
+      .phone-chapter .label {
+        font-size: 8px;
+      }
+      .phone-chapter .chapter-title {
+        margin-top: 4px;
+        font-size: 10px;
+        font-weight: 600;
+      }
+      .chapter-nav {
+        display: flex;
+        gap: 7px;
+        margin-top: 8px;
+      }
+      .chapter-nav .field {
+        flex: 1;
+        height: 27px;
+        justify-content: center;
+        font-size: 9px;
+        color: var(--muted);
+      }
+      .phone-sliders {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .phone-slider {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 9px;
+        color: #aeb8c6;
+      }
+      .phone-slider .progress {
+        flex: 1;
+      }
+      .phone-footer {
+        margin-top: auto;
+        padding-top: 10px;
+        font-size: 8px;
+        color: #596372;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage shot">
+      <div class="glow glow-blue"></div>
+      <div class="glow glow-green"></div>
+
+      <div class="copy">
+        <span class="badge"><span class="badge-dot"></span>Remote control</span>
+        <h2>Your phone<br /><span class="gradient">is the remote.</span></h2>
+        <p>
+          Scan a QR code once, then pause, seek, skip chapters, and change
+          volume from the couch. Works over your LAN or Tailscale.
+        </p>
+        <div class="callouts">
+          <div class="callout">
+            <span class="dot"></span>
+            <div>
+              <b>One-time pairing codes</b>
+              <span>Codes expire after five minutes and can be used once.</span>
+            </div>
+          </div>
+          <div class="callout">
+            <span class="dot"></span>
+            <div>
+              <b>Full playback controls</b>
+              <span>Seek, pause, skip, chapters, volume, mute, and speed.</span>
+            </div>
+          </div>
+          <div class="callout">
+            <span class="dot"></span>
+            <div>
+              <b>No cloud in the middle</b>
+              <span>The phone talks directly to your own server; revoke devices anytime.</span>
+            </div>
+          </div>
+        </div>
+        <div class="chip-row">
+          <span class="chip">LAN</span>
+          <span class="chip">Tailscale</span>
+          <span class="chip">Revocable</span>
+        </div>
+      </div>
+
+      <div class="scene">
+        <div class="desktop card">
+          <div class="titlebar">
+            <div class="window-dots"><span></span><span></span><span></span></div>
+            <span class="app-name">media-launcher</span>
+            <div class="spacer"></div>
+            <span class="status-dot"></span>
+            <span class="status-text">localhost:5000</span>
+          </div>
+          <div class="app-body">
+            <div class="rail">
+              <div class="rail-item active">
+                <span class="rail-icon">▶</span>
+                <span>Play</span>
+              </div>
+              <div class="rail-item">
+                <span class="rail-icon">◷</span>
+                <span>History</span>
+              </div>
+              <div class="rail-item">
+                <span class="rail-icon">⚙</span>
+                <span>Settings</span>
+              </div>
+              <div class="spacer"></div>
+            </div>
+
+            <div class="main">
+              <div class="section-label">Now playing</div>
+              <div class="now-card">
+                <div class="now-top">
+                  <div class="now-thumb"><span></span></div>
+                  <div style="min-width: 0">
+                    <div class="now-title">How renewable energy actually works</div>
+                    <div class="now-sub">DW Planet A · 1080p · mpv</div>
+                    <div class="now-chapter">Chapter 4 / 9 — Grid storage</div>
+                  </div>
+                </div>
+                <div class="now-progress">
+                  <div class="progress"><span style="width: 62%"></span><i style="left: 62%"></i></div>
+                  <div class="now-times"><span>12:48</span><span>20:31</span></div>
+                </div>
+                <div class="controls">
+                  <span class="icon-btn">⏮</span>
+                  <span class="icon-btn play-btn"></span>
+                  <span class="icon-btn">⏭</span>
+                  <div class="volume">
+                    <span class="tiny">🔊</span>
+                    <div class="progress"><span style="width: 72%"></span></div>
+                    <span class="tiny">72</span>
+                  </div>
+                  <span class="icon-btn" style="width: 46px; font-size: 9px">1.25×</span>
+                </div>
+              </div>
+
+              <div class="queue">
+                <div class="row">
+                  <span class="section-label">Queue</span>
+                  <span class="tiny muted">2 videos</span>
+                </div>
+                <div class="queue-item">
+                  <div class="thumb v2"></div>
+                  <div>
+                    <div class="q-title">Lo-fi beats to focus</div>
+                    <div class="q-meta">SoundCloud · 1:02:14</div>
+                  </div>
+                  <span class="q-index">Next</span>
+                </div>
+                <div class="queue-item">
+                  <div class="thumb v3"></div>
+                  <div>
+                    <div class="q-title">The physics of a perfect espresso</div>
+                    <div class="q-meta">YouTube · 18:42</div>
+                  </div>
+                  <span class="q-index">3</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-head">
+              <img src="../assets/icon-512.png" alt="" />
+              <span class="name">Media Launcher</span>
+              <span class="badge-pair">PAIRED</span>
+            </div>
+
+            <div class="phone-video"></div>
+            <div class="phone-title">How renewable energy actually works</div>
+            <div class="phone-sub">DW Planet A · Chapter 4 / 9</div>
+
+            <div class="phone-progress">
+              <div class="progress"><span style="width: 62%"></span><i style="left: 62%"></i></div>
+              <div class="phone-times"><span>12:48</span><span>20:31</span></div>
+            </div>
+
+            <div class="phone-controls">
+              <span class="icon-btn">⏮</span>
+              <span class="pause-btn"><i></i><i></i></span>
+              <span class="icon-btn">⏭</span>
+            </div>
+
+            <div class="phone-chapter">
+              <div class="label">Chapter</div>
+              <div class="chapter-title">Grid storage</div>
+              <div class="chapter-nav">
+                <span class="field">‹ Previous</span>
+                <span class="field">Next ›</span>
+              </div>
+            </div>
+
+            <div class="phone-sliders">
+              <div class="phone-slider">
+                <span>🔊</span>
+                <div class="progress"><span style="width: 72%"></span></div>
+                <span>72</span>
+              </div>
+              <div class="phone-slider">
+                <span>1.25×</span>
+                <div class="progress"><span style="width: 42%"></span></div>
+                <span>Speed</span>
+              </div>
+            </div>
+
+            <div class="phone-footer">Connected over LAN · revoke in desktop settings</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

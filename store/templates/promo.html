@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Media Launcher promo tile</title>
+    <link rel="stylesheet" href="base.css" />
+    <style>
+      .promo {
+        padding: 30px 32px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .glow-blue {
+        width: 320px;
+        height: 320px;
+        top: -160px;
+        left: -120px;
+      }
+      .glow-green {
+        width: 280px;
+        height: 280px;
+        right: -140px;
+        bottom: -150px;
+      }
+      .promo .brand img {
+        width: 44px;
+        height: 44px;
+      }
+      .promo .brand-name {
+        font-size: 20px;
+      }
+      .promo h1 {
+        font-size: 46px;
+        line-height: 1.02;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        margin-top: 14px;
+      }
+      .promo p {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 15px;
+      }
+      .promo .feature-row {
+        display: flex;
+        gap: 7px;
+        margin-top: 13px;
+      }
+      .promo .chip {
+        padding: 5px 9px;
+        font-size: 10px;
+      }
+      .promo-foot {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: rgba(238, 241, 246, 0.48);
+        font-size: 10.5px;
+        letter-spacing: 0.02em;
+      }
+      .promo-foot .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage promo">
+      <div class="glow glow-blue"></div>
+      <div class="glow glow-green"></div>
+      <div>
+        <div class="brand">
+          <img src="../assets/icon-512.png" alt="" />
+          <span class="brand-name">Media Launcher</span>
+        </div>
+        <h1>Your browser,<br /><span class="gradient">meet mpv.</span></h1>
+        <p>One click sends the video to your player.</p>
+        <div class="feature-row">
+          <span class="chip">Play</span>
+          <span class="chip">Queue</span>
+          <span class="chip">Remote</span>
+        </div>
+      </div>
+      <div class="promo-foot">
+        <span class="dot"></span>
+        Works with mpv on Windows, macOS &amp; Linux
+      </div>
+    </div>
+  </body>
+</html>
