@@ -20,11 +20,18 @@ import {
 import { fetchMetadata } from "./metadata.js";
 import { launchPlayer } from "./player.js";
 import {
+  chapterNext,
+  chapterPrev,
   getPlayerStatus,
   playNow,
   queueUrl,
   registerPlayer,
+  seekTo,
+  setSpeed,
+  setVolume,
   skipTrack,
+  stopPlayback,
+  toggleMute,
   togglePause,
 } from "./player-ipc.js";
 
@@ -149,10 +156,84 @@ app.post("/player/skip", async (c) => {
   return c.json({ data: "ok" });
 });
 
+app.post("/player/chapter-prev", async (c) => {
+  const ok = await chapterPrev();
+  if (!ok) {
+    return c.json({ err: "No mpv instance with IPC connected" }, 409);
+  }
+  return c.json({ data: "ok" });
+});
+
+app.post("/player/chapter-next", async (c) => {
+  const ok = await chapterNext();
+  if (!ok) {
+    return c.json({ err: "No mpv instance with IPC connected" }, 409);
+  }
+  return c.json({ data: "ok" });
+});
+
+app.post("/player/seek", async (c) => {
+  const { position } = await c.req.json<{ position?: number }>();
+  if (
+    typeof position !== "number" ||
+    !Number.isFinite(position) ||
+    position < 0
+  ) {
+    return c.json({ err: "position must be a non-negative number" }, 400);
+  }
+  const ok = await seekTo(position);
+  if (!ok) {
+    return c.json({ err: "No mpv instance with IPC connected" }, 409);
+  }
+  return c.json({ data: "ok" });
+});
+
+app.post("/player/volume", async (c) => {
+  const { volume } = await c.req.json<{ volume?: number }>();
+  if (typeof volume !== "number" || !Number.isFinite(volume)) {
+    return c.json({ err: "volume must be a number" }, 400);
+  }
+  const ok = await setVolume(volume);
+  if (!ok) {
+    return c.json({ err: "No mpv instance with IPC connected" }, 409);
+  }
+  return c.json({ data: "ok" });
+});
+
+app.post("/player/mute", async (c) => {
+  const ok = await toggleMute();
+  if (!ok) {
+    return c.json({ err: "No mpv instance with IPC connected" }, 409);
+  }
+  return c.json({ data: "ok" });
+});
+
+app.post("/player/speed", async (c) => {
+  const { speed } = await c.req.json<{ speed?: number }>();
+  if (typeof speed !== "number" || !Number.isFinite(speed)) {
+    return c.json({ err: "speed must be a number" }, 400);
+  }
+  const ok = await setSpeed(speed);
+  if (!ok) {
+    return c.json({ err: "No mpv instance with IPC connected" }, 409);
+  }
+  return c.json({ data: "ok" });
+});
+
+app.post("/player/stop", async (c) => {
+  const ok = await stopPlayback();
+  if (!ok) {
+    return c.json({ err: "No mpv instance with IPC connected" }, 409);
+  }
+  return c.json({ data: "ok" });
+});
+
 // --- Remote-control pairing + session management ---
 
 // Pairing presents the master token, so brute-force attempts are throttled
-// per source IP (10 per minute — generous for humans, hostile for scripts).
+// per source IP (10 failed attempts per minute — generous for humans,
+// hostile for scripts). Only FAILED attempts count: a correct pairing is
+// never locked out by the limiter.
 const pairAttempts = new Map<string, { count: number; window: number }>();
 
 function pairRateLimited(ip: string): boolean {
@@ -169,17 +250,20 @@ function pairRateLimited(ip: string): boolean {
 app.post("/remote/pair", async (c) => {
   try {
     const ip = getConnInfo(c).remote.address ?? "unknown";
-    if (pairRateLimited(ip)) {
-      return c.json(
-        { err: "Too many pairing attempts — try again in a minute." },
-        429,
-      );
-    }
     const { token, device } = await c.req.json<{
       token?: string;
       device?: string;
     }>();
-    if (typeof token !== "string" || !matchesMasterToken(token)) {
+    const invalid = typeof token !== "string" || !matchesMasterToken(token);
+    if (invalid) {
+      // Only failed attempts count toward the limiter, so legitimate retries
+      // are never locked out — but a burst of wrong tokens still hits 429.
+      if (pairRateLimited(ip)) {
+        return c.json(
+          { err: "Too many pairing attempts — try again in a minute." },
+          429,
+        );
+      }
       return c.json({ err: "invalid pairing token" }, 401);
     }
     const session = randomBytes(24).toString("base64url");

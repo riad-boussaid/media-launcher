@@ -59,7 +59,9 @@ async function buildMenu(
   if (player.alive && player.url) {
     items.push(
       {
-        label: `Now playing: ${truncate(player.title || displayName(player.url))}`,
+        label: `Now playing: ${truncate(
+          player.title || displayName(player.url, ""),
+        )}`,
         enabled: false,
       },
       {
@@ -90,7 +92,6 @@ async function buildMenu(
     {
       label: "Quit",
       click: () => {
-        app.isQuiting = true;
         app.quit();
       },
     },
@@ -112,7 +113,7 @@ export function createTray(win: BrowserWindow): void {
       tray?.setToolTip(
         player.alive
           ? `media-launcher — ${truncate(
-              player.title || displayName(player.url ?? ""),
+              player.title || displayName(player.url ?? "", ""),
             )}`
           : "media-launcher",
       );

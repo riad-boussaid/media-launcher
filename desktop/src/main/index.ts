@@ -27,6 +27,8 @@ import {
   stopServer,
 } from "./server";
 import {
+  chapterNext,
+  chapterPrev,
   clearHistory,
   deleteHistory,
   getHistory,
@@ -37,8 +39,13 @@ import {
   replayUrl,
   revokeAllRemoteSessions,
   revokeRemoteSession,
+  seekTo,
   setSettings,
+  setSpeed,
+  setVolume,
   skipTrack,
+  stopPlayback,
+  toggleMute,
   togglePause,
 } from "./store";
 import { createTray, destroyTray, refreshTrayMenu } from "./tray";
@@ -162,6 +169,17 @@ if (!gotTheLock) {
     ipcMain.handle("player:status", () => getPlayerStatus());
     ipcMain.handle("player:togglePause", () => togglePause());
     ipcMain.handle("player:skip", () => skipTrack());
+    ipcMain.handle("player:chapterPrev", () => chapterPrev());
+    ipcMain.handle("player:chapterNext", () => chapterNext());
+    ipcMain.handle("player:seek", (_event, position: number) =>
+      seekTo(position),
+    );
+    ipcMain.handle("player:volume", (_event, volume: number) =>
+      setVolume(volume),
+    );
+    ipcMain.handle("player:mute", () => toggleMute());
+    ipcMain.handle("player:speed", (_event, speed: number) => setSpeed(speed));
+    ipcMain.handle("player:stop", () => stopPlayback());
     ipcMain.handle("downloads:list", () => listDownloads());
     ipcMain.handle("downloads:start", async (_event, id) => {
       await startDownload(id);

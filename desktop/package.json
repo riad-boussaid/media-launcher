@@ -7,7 +7,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "build:server": "pnpm -C ../server run build && node scripts/prepare-server.js",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "preview": "electron-vite preview",
     "dist": "pnpm run build:server && pnpm run build && electron-builder",
     "dist:win": "pnpm run build:server && pnpm run build && electron-builder --win",
@@ -45,6 +45,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.5",
     "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",

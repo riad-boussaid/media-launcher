@@ -1,11 +1,18 @@
 import { type DragEvent, useEffect, useState } from "react";
 import {
+  chapterNext,
+  chapterPrev,
   getHistory,
   getPlayerStatus,
   type HistoryEntry,
   type PlayerStatus,
   replayUrl,
+  seekTo,
+  setSpeed,
+  setVolume,
   skipTrack,
+  stopPlayback,
+  toggleMute,
   togglePause,
 } from "../lib/api";
 
@@ -234,35 +241,43 @@ export default function Play() {
                   {player.title || hostOf(player.url)}
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <button
-                  type="button"
-                  className="btn-ghost btn-sm"
-                  title={player.paused ? "Resume" : "Pause"}
-                  disabled={!player.ipcReady}
-                  onClick={() => {
-                    void togglePause().then(loadPlayer);
-                  }}
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                title="Stop playback"
+                aria-label="Stop playback"
+                onClick={() => {
+                  void stopPlayback().then(loadPlayer);
+                }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="13"
+                  height="13"
+                  fill="currentColor"
+                  aria-hidden="true"
                 >
-                  {player.paused ? "Resume" : "Pause"}
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost btn-sm"
-                  title="Skip to next in queue"
-                  disabled={!player.ipcReady || player.queue.length === 0}
-                  onClick={() => {
-                    void skipTrack().then(loadPlayer);
-                  }}
-                >
-                  Skip
-                </button>
-              </div>
+                  <rect x="5" y="5" width="14" height="14" rx="2" />
+                </svg>
+              </button>
             </div>
 
             {player.duration > 0 && (
               <div className="mt-2.5">
-                <div className="progress-track">
+                {/* biome-ignore lint/a11y/noStaticElementInteractions: click-to-seek bar */}
+                {/* biome-ignore lint/a11y/useKeyWithClickEvents: pointer-only seek; keyboard users have the seek/chapter buttons */}
+                <div
+                  className="progress-track cursor-pointer"
+                  title="Click to seek"
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const ratio = Math.min(
+                      1,
+                      Math.max(0, (e.clientX - rect.left) / rect.width),
+                    );
+                    void seekTo(ratio * player.duration).then(loadPlayer);
+                  }}
+                >
                   <div
                     className="progress-fill"
                     style={{
@@ -277,7 +292,268 @@ export default function Play() {
                   <span>{formatTime(player.position)}</span>
                   <span>{formatTime(player.duration)}</span>
                 </div>
+                {player.chapter !== null && player.chapters[player.chapter] && (
+                  <div className="text-[10px] text-muted mt-1 truncate">
+                    Chapter {player.chapter + 1}/{player.chapters.length}
+                    {player.chapters[player.chapter].title
+                      ? `: ${player.chapters[player.chapter].title}`
+                      : ""}
+                  </div>
+                )}
               </div>
+            )}
+
+            <div className="flex items-center justify-center gap-2 mt-3">
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                title="Back 10 seconds"
+                aria-label="Back 10 seconds"
+                disabled={!player.ipcReady || player.position <= 0}
+                onClick={() => {
+                  void seekTo(Math.max(0, player.position - 10)).then(
+                    loadPlayer,
+                  );
+                }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="13"
+                  height="13"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <polygon points="11 19 2 12 11 5 11 19" />
+                  <polygon points="22 19 13 12 22 5 22 19" />
+                </svg>
+              </button>
+              {player.chapters.length > 0 && (
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  title="Previous chapter"
+                  aria-label="Previous chapter"
+                  disabled={
+                    !player.ipcReady ||
+                    player.chapter === null ||
+                    player.chapter <= 0
+                  }
+                  onClick={() => {
+                    void chapterPrev().then(loadPlayer);
+                  }}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="12"
+                    height="12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m15 18-6-6 6-6" />
+                  </svg>
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                title={player.paused ? "Resume" : "Pause"}
+                aria-label={player.paused ? "Resume" : "Pause"}
+                disabled={!player.ipcReady}
+                onClick={() => {
+                  void togglePause().then(loadPlayer);
+                }}
+              >
+                {player.paused ? (
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="13"
+                    height="13"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <polygon points="6 3 20 12 6 21 6 3" />
+                  </svg>
+                ) : (
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="13"
+                    height="13"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <rect x="6" y="4" width="4" height="16" rx="1" />
+                    <rect x="14" y="4" width="4" height="16" rx="1" />
+                  </svg>
+                )}
+              </button>
+              {player.chapters.length > 0 && (
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  title="Next chapter"
+                  aria-label="Next chapter"
+                  disabled={
+                    !player.ipcReady ||
+                    player.chapter === null ||
+                    player.chapter >= player.chapters.length - 1
+                  }
+                  onClick={() => {
+                    void chapterNext().then(loadPlayer);
+                  }}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="12"
+                    height="12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                title="Forward 10 seconds"
+                aria-label="Forward 10 seconds"
+                disabled={!player.ipcReady}
+                onClick={() => {
+                  void seekTo(player.position + 10).then(loadPlayer);
+                }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="13"
+                  height="13"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <polygon points="13 19 22 12 13 5 13 19" />
+                  <polygon points="2 19 11 12 2 5 2 19" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                title={player.muted ? "Unmute" : "Mute"}
+                aria-label={player.muted ? "Unmute" : "Mute"}
+                disabled={!player.ipcReady}
+                onClick={() => {
+                  void toggleMute().then(loadPlayer);
+                }}
+              >
+                {player.muted ? (
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="13"
+                    height="13"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M11 5 6 9H2v6h4l5 4V5z" />
+                    <path d="m22 9-6 6" />
+                    <path d="m16 9 6 6" />
+                  </svg>
+                ) : (
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="13"
+                    height="13"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M11 5 6 9H2v6h4l5 4V5z" />
+                    <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                    <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+                  </svg>
+                )}
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(player.volume)}
+                onChange={(e) => {
+                  void setVolume(Number(e.target.value)).then(loadPlayer);
+                }}
+                className="flex-1"
+                style={{ accentColor: "var(--color-accent)" }}
+                aria-label="Volume"
+                disabled={!player.ipcReady}
+              />
+              <span className="text-[10px] text-muted w-9 text-right flex-shrink-0">
+                {Math.round(player.volume)}%
+              </span>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 mt-2">
+              <span className="text-[10px] text-muted uppercase tracking-[0.06em] font-semibold">
+                Speed
+              </span>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                title="Slower"
+                aria-label="Slower"
+                disabled={!player.ipcReady || player.speed <= 0.25}
+                onClick={() => {
+                  void setSpeed(Math.max(0.25, player.speed - 0.25)).then(
+                    loadPlayer,
+                  );
+                }}
+              >
+                −
+              </button>
+              <span className="text-xs text-text w-12 text-center">
+                {player.speed.toFixed(2)}×
+              </span>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                title="Faster"
+                aria-label="Faster"
+                disabled={!player.ipcReady || player.speed >= 4}
+                onClick={() => {
+                  void setSpeed(Math.min(4, player.speed + 0.25)).then(
+                    loadPlayer,
+                  );
+                }}
+              >
+                +
+              </button>
+            </div>
+
+            {player.queue.length > 0 && (
+              <button
+                type="button"
+                className="btn-ghost btn-sm w-full mt-2"
+                title="Skip to next queued video"
+                onClick={() => {
+                  void skipTrack().then(loadPlayer);
+                }}
+              >
+                Skip to next in queue ({player.queue.length})
+              </button>
             )}
 
             {player.queue.length > 0 && (

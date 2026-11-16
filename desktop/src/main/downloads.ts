@@ -179,6 +179,25 @@ const DEFINITIONS: DownloadableDef[] = [
     platformDarwin: null,
     platformLinux: null,
   },
+  {
+    id: "sponsorblock",
+    name: "SponsorBlock",
+    description:
+      "Auto-skips sponsor segments in YouTube videos (mpv Lua script, queries the SponsorBlock API via curl). Loaded automatically when mpv launches.",
+    size: "~5 KB",
+    platformWin32: {
+      url: "https://codeberg.org/jouni/mpv_sponsorblock_minimal/raw/branch/master/sponsorblock_minimal.lua",
+      type: "single",
+    },
+    platformDarwin: {
+      url: "https://codeberg.org/jouni/mpv_sponsorblock_minimal/raw/branch/master/sponsorblock_minimal.lua",
+      type: "single",
+    },
+    platformLinux: {
+      url: "https://codeberg.org/jouni/mpv_sponsorblock_minimal/raw/branch/master/sponsorblock_minimal.lua",
+      type: "single",
+    },
+  },
 ];
 
 function ensureBinDir() {
@@ -358,9 +377,7 @@ function getDefForPlatform(def: DownloadableDef): PlatformSource | null {
   >;
   const key =
     `platform${p.charAt(0).toUpperCase() + p.slice(1)}` as keyof DownloadableDef;
-  return (
-    (def[key] as { url: string; type: string; extract?: string } | null) ?? null
-  );
+  return (def[key] as PlatformSource | null) ?? null;
 }
 
 const COMMON_PATHS: Record<string, string[]> = {
@@ -408,6 +425,7 @@ function getSystemExeName(def: DownloadableDef): string {
   if (def.id === "ffmpeg") return win ? "ffmpeg.exe" : "ffmpeg";
   if (def.id === "iina") return "iina";
   if (def.id === "potplayer") return "PotPlayerMini64";
+  if (def.id === "sponsorblock") return "sponsorblock.lua";
   return def.id;
 }
 
@@ -474,7 +492,7 @@ export async function startDownload(id: string): Promise<void> {
     // Moving releases resolve their URL/checksum/extract at download time.
     const source: ResolvedSource = platform.resolver
       ? await platform.resolver()
-      : platform;
+      : (platform as ResolvedSource);
     if (!source.url) throw new Error(`No download URL for ${id}`);
 
     // Derive the archive extension from the actual URL (the mpv artifact is a
@@ -562,6 +580,8 @@ export async function deleteDownload(id: string): Promise<void> {
   } else if (id === "mpv") {
     candidates.push(join(BIN_DIR, "mpv"));
     candidates.push(join(BIN_DIR, "mpv.exe"));
+  } else if (id === "sponsorblock") {
+    candidates.push(join(BIN_DIR, "sponsorblock.lua"));
   }
 
   for (const p of candidates) {

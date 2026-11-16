@@ -29,6 +29,13 @@ const api = {
     status: () => ipcRenderer.invoke("player:status"),
     togglePause: () => ipcRenderer.invoke("player:togglePause"),
     skip: () => ipcRenderer.invoke("player:skip"),
+    chapterPrev: () => ipcRenderer.invoke("player:chapterPrev"),
+    chapterNext: () => ipcRenderer.invoke("player:chapterNext"),
+    seek: (position: number) => ipcRenderer.invoke("player:seek", position),
+    volume: (value: number) => ipcRenderer.invoke("player:volume", value),
+    mute: () => ipcRenderer.invoke("player:mute"),
+    speed: (value: number) => ipcRenderer.invoke("player:speed", value),
+    stop: () => ipcRenderer.invoke("player:stop"),
   },
   downloads: {
     list: () => ipcRenderer.invoke("downloads:list"),

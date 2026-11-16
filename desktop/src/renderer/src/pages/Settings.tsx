@@ -795,9 +795,9 @@ export default function SettingsPage() {
 
       <Section title="Downloads">
         <p className="text-[11px] text-muted -mt-1 mb-3 leading-snug">
-          Portable binaries saved to the app's data directory — no admin rights
-          needed. Downloaded copies are used automatically over system-installed
-          ones.
+          Portable binaries and scripts saved to the app's data directory — no
+          admin rights needed. Downloaded copies are used automatically over
+          system-installed ones.
         </p>
         {downloads.map((d) => {
           const hasUpdate = d.id === "yt-dlp" && updateCheck?.updateAvailable;

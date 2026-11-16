@@ -12,6 +12,11 @@ export interface QueueEntry {
   title: string;
 }
 
+export interface ChapterEntry {
+  title: string;
+  time: number;
+}
+
 export interface PlayerStatus {
   /** True when the configured player is mpv (the only one with IPC support). */
   supported: boolean;
@@ -25,6 +30,15 @@ export interface PlayerStatus {
   duration: number;
   paused: boolean;
   queue: QueueEntry[];
+  /** Embedded chapters (empty when the media has none). */
+  chapters: ChapterEntry[];
+  /** Index of the current chapter, or null when the media has none. */
+  chapter: number | null;
+  /** Player volume, 0-100 (mpv's default range). */
+  volume: number;
+  muted: boolean;
+  /** Playback speed multiplier. */
+  speed: number;
 }
 
 interface PlaylistEntry {
@@ -39,9 +53,25 @@ interface NowPlaying {
   position: number;
   duration: number;
   paused: boolean;
+  chapters: ChapterEntry[];
+  chapter: number;
+  volume: number;
+  muted: boolean;
+  speed: number;
 }
 
-const OBSERVED = ["time-pos", "duration", "pause", "media-title", "playlist"];
+const OBSERVED = [
+  "time-pos",
+  "duration",
+  "pause",
+  "media-title",
+  "playlist",
+  "chapter-list",
+  "chapter",
+  "volume",
+  "mute",
+  "speed",
+];
 
 let proc: ChildProcess | null = null;
 let socket: Socket | null = null;
@@ -86,6 +116,25 @@ function handleLine(line: string): void {
       case "media-title":
         if (typeof data === "string" && data) current.title = data;
         break;
+      case "chapter-list":
+        if (Array.isArray(data)) {
+          current.chapters = (data as { title?: string; time: number }[]).map(
+            (c) => ({ title: c.title ?? "", time: c.time }),
+          );
+        }
+        break;
+      case "chapter":
+        current.chapter = typeof data === "number" ? data : -1;
+        break;
+      case "volume":
+        current.volume = typeof data === "number" ? data : 0;
+        break;
+      case "mute":
+        current.muted = data === true;
+        break;
+      case "speed":
+        current.speed = typeof data === "number" && data > 0 ? data : 1;
+        break;
       case "playlist":
         if (Array.isArray(data)) {
           playlist = data as PlaylistEntry[];
@@ -98,6 +147,12 @@ function handleLine(line: string): void {
               position: 0,
               duration: 0,
               paused: false,
+              chapters: [],
+              chapter: -1,
+              // Player-level state survives the track change.
+              volume: current.volume,
+              muted: current.muted,
+              speed: current.speed,
             };
           }
         }
@@ -207,7 +262,18 @@ export function registerPlayer(
   url: string,
 ): void {
   proc = child;
-  current = { url, title: "", position: 0, duration: 0, paused: false };
+  current = {
+    url,
+    title: "",
+    position: 0,
+    duration: 0,
+    paused: false,
+    chapters: [],
+    chapter: -1,
+    volume: 0,
+    muted: false,
+    speed: 1,
+  };
   connectPipe(pipePath);
   flushTimer = setInterval(() => flushPosition(), 10000);
   child.once("exit", () => {
@@ -245,14 +311,72 @@ export function getPlayerStatus(): PlayerStatus {
     duration: current?.duration ?? 0,
     paused: current?.paused ?? false,
     queue,
+    chapters: current?.chapters ?? [],
+    chapter: current && current.chapter >= 0 ? current.chapter : null,
+    volume: Math.round(current?.volume ?? 0),
+    muted: current?.muted ?? false,
+    speed: current?.speed ?? 1,
   };
+}
+
+/** Seeks to an absolute position in seconds (clamped to the media length). */
+export async function seekTo(position: number): Promise<boolean> {
+  if (!ipcReady || !current) return false;
+  const target = Math.max(0, Math.floor(position));
+  const res = await request(["seek", target, "absolute"]);
+  if (res.sent) current.position = target;
+  return res.sent;
+}
+
+export async function setVolume(volume: number): Promise<boolean> {
+  if (!ipcReady || !current) return false;
+  const v = Math.min(100, Math.max(0, Math.round(volume)));
+  const res = await request(["set_property", "volume", v]);
+  if (res.sent) current.volume = v;
+  return res.sent;
+}
+
+export async function toggleMute(): Promise<boolean> {
+  if (!ipcReady || !current) return false;
+  const next = !current.muted;
+  const res = await request(["set_property", "mute", next]);
+  if (res.sent) current.muted = next;
+  return res.sent;
+}
+
+export async function setSpeed(speed: number): Promise<boolean> {
+  if (!ipcReady || !current) return false;
+  const s = Math.min(4, Math.max(0.25, Math.round(speed * 100) / 100));
+  const res = await request(["set_property", "speed", s]);
+  if (res.sent) current.speed = s;
+  return res.sent;
+}
+
+/** Ends playback: mpv quits and the feedback loop resets. */
+export async function stopPlayback(): Promise<boolean> {
+  if (!ipcReady) return false;
+  flushPosition();
+  const res = await request(["quit"]);
+  return res.sent;
 }
 
 /** Replaces the currently playing video. */
 export async function playNow(url: string): Promise<boolean> {
   if (!ipcReady || !current) return false;
   flushPosition();
-  current = { url, title: "", position: 0, duration: 0, paused: false };
+  current = {
+    url,
+    title: "",
+    position: 0,
+    duration: 0,
+    paused: false,
+    chapters: [],
+    chapter: -1,
+    // Player-level state (volume/mute/speed) persists across track changes.
+    volume: current.volume,
+    muted: current.muted,
+    speed: current.speed,
+  };
   const res = await request(["loadfile", url, "replace"]);
   return res.sent;
 }
@@ -275,6 +399,26 @@ export async function togglePause(): Promise<boolean> {
 export async function skipTrack(): Promise<boolean> {
   if (!ipcReady) return false;
   const res = await request(["playlist-next", "force"]);
+  return res.sent;
+}
+
+export async function chapterPrev(): Promise<boolean> {
+  if (!ipcReady || !current || current.chapter < 0) return false;
+  // Walk to the previous chapter (no restart-the-current-chapter nicety —
+  // a couple of seconds into a chapter that jump looks like a no-op).
+  const target = Math.max(0, current.chapter - 1);
+  const res = await request(["set_property", "chapter", target]);
+  if (res.sent) current.chapter = target;
+  return res.sent;
+}
+
+export async function chapterNext(): Promise<boolean> {
+  if (!ipcReady || !current) return false;
+  const last = current.chapters.length - 1;
+  if (current.chapter < 0 || current.chapter >= last) return false;
+  const target = current.chapter + 1;
+  const res = await request(["set_property", "chapter", target]);
+  if (res.sent) current.chapter = target;
   return res.sent;
 }
 

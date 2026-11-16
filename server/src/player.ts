@@ -157,6 +157,15 @@ export async function launchPlayer(
     case "mpv": {
       pipePath = makeIpcPipePath();
       const userArgs = parseArgs(settings.playerArgs?.mpv || "");
+      // SponsorBlock script (downloaded via the desktop's Downloads section)
+      // is loaded automatically when present.
+      const sponsorblockPath = join(
+        getBinDir(settings.binDir),
+        "sponsorblock.lua",
+      );
+      const scriptArgs = existsSync(sponsorblockPath)
+        ? [`--script=${sponsorblockPath}`]
+        : [];
       args = [
         "--keep-open=yes",
         "--no-resume-playback",
@@ -164,6 +173,7 @@ export async function launchPlayer(
         // User args come last and can still override.
         "--pause=no",
         `--input-ipc-server=${pipePath}`,
+        ...scriptArgs,
         ...extensionOptions,
         ...userArgs,
         "--",

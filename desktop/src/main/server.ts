@@ -1,10 +1,11 @@
+import { type ChildProcess, execSync, spawn } from "node:child_process";
 import {
-  type ChildProcess,
-  execSync,
+  closeSync,
+  existsSync,
+  mkdirSync,
   openSync,
-  spawn,
-} from "node:child_process";
-import { closeSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+  readFileSync,
+} from "node:fs";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { app } from "electron";
@@ -126,7 +127,7 @@ async function probeHealth(timeoutMs = 1500): Promise<HealthResponse | null> {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return null;
-    const data: HealthResponse = await res.json();
+    const data = (await res.json()) as HealthResponse;
     return data.app === "media-launcher" ? data : null;
   } catch {
     return null;
@@ -149,7 +150,7 @@ export async function probeServerUrl(
       signal: AbortSignal.timeout(2500),
     });
     if (!res.ok) return { ok: false, detail: `HTTP ${res.status}` };
-    const data: HealthResponse = await res.json();
+    const data = (await res.json()) as HealthResponse;
     if (data.app !== "media-launcher") {
       return { ok: false, detail: "Reached a server, but not media-launcher" };
     }

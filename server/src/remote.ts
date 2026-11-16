@@ -53,6 +53,8 @@ export function remotePageHtml(): string {
   }
   ul button:active { background: rgb(255 255 255 / 0.06); }
   ul .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  #np-prev, #np-next { flex: 0 0 auto; width: 46px; padding: 10px 0; }
+  #np-prev svg, #np-next svg { display: block; margin: 0 auto; }
   #unpair-row { margin-top: 4px; }
   #unpair {
     flex: none; display: block; width: 100%;
@@ -91,10 +93,54 @@ export function remotePageHtml(): string {
   <div class="label">Now playing</div>
   <div class="np-title" id="np-title"></div>
   <div class="np-sub" id="np-pos"></div>
-  <div class="track"><div class="fill" id="np-fill"></div></div>
+  <div class="track" id="np-track"><div class="fill" id="np-fill"></div></div>
+  <div class="np-sub" id="np-chapter" hidden></div>
   <div class="row">
+    <button id="np-rewind" class="secondary" title="Back 10 seconds" aria-label="Back 10 seconds">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true">
+        <polygon points="11 19 2 12 11 5 11 19"/>
+        <polygon points="22 19 13 12 22 5 22 19"/>
+      </svg>
+    </button>
+    <button id="np-prev" class="secondary" hidden>
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m15 18-6-6 6-6"/>
+      </svg>
+    </button>
     <button id="np-toggle" class="secondary">Pause</button>
-    <button id="np-skip" class="secondary">Skip</button>
+    <button id="np-skip" class="secondary" hidden>Skip</button>
+    <button id="np-next" class="secondary" hidden>
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m9 18 6-6-6-6"/>
+      </svg>
+    </button>
+    <button id="np-forward" class="secondary" title="Forward 10 seconds" aria-label="Forward 10 seconds">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true">
+        <polygon points="13 19 22 12 13 5 13 19"/>
+        <polygon points="2 19 11 12 2 5 2 19"/>
+      </svg>
+    </button>
+  </div>
+  <div class="row">
+    <button id="np-mute" class="secondary" title="Mute" aria-label="Mute" hidden>
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M11 5 6 9H2v6h4l5 4V5z"/>
+        <path d="m22 9-6 6"/>
+        <path d="m16 9 6 6"/>
+      </svg>
+    </button>
+    <input id="np-volume" type="range" min="0" max="100" value="0"
+      style="flex:1;accent-color:#64ffda" aria-label="Volume" disabled />
+  </div>
+  <div class="row">
+    <button id="np-slower" class="secondary" title="Slower" aria-label="Slower">&minus;</button>
+    <span id="np-speed" class="np-sub" style="min-width:52px;text-align:center">1.00&times;</span>
+    <button id="np-faster" class="secondary" title="Faster" aria-label="Faster">+</button>
+    <button id="np-stop" class="secondary" title="Stop playback" aria-label="Stop playback"
+      style="margin-left:8px">Stop</button>
   </div>
 </div>
 
@@ -127,7 +173,7 @@ export function remotePageHtml(): string {
         : "Desktop";
     var browser = /Firefox/i.test(ua)
       ? "Firefox"
-      : /Edg\//i.test(ua)
+      : /Edg//i.test(ua)
         ? "Edge"
         : /Chrome/i.test(ua)
           ? "Chrome"
@@ -250,10 +296,23 @@ export function remotePageHtml(): string {
   var npFill = document.getElementById("np-fill");
   var npToggle = document.getElementById("np-toggle");
   var npSkip = document.getElementById("np-skip");
+  var npPrev = document.getElementById("np-prev");
+  var npNext = document.getElementById("np-next");
+  var npChapter = document.getElementById("np-chapter");
+  var npRewind = document.getElementById("np-rewind");
+  var npForward = document.getElementById("np-forward");
+  var npMute = document.getElementById("np-mute");
+  var npVolume = document.getElementById("np-volume");
+  var npSlower = document.getElementById("np-slower");
+  var npFaster = document.getElementById("np-faster");
+  var npSpeed = document.getElementById("np-speed");
+  var npStop = document.getElementById("np-stop");
   var dot = document.getElementById("dot");
+  var lastStatus = null;
 
   function loadPlayer() {
     api("/player").then(function (p) {
+      lastStatus = p;
       var alive = !!(p.alive && p.url);
       dot.className = "dot";
       np.hidden = !alive;
@@ -266,9 +325,44 @@ export function remotePageHtml(): string {
         p.duration > 0
           ? Math.min(100, Math.round((p.position / p.duration) * 100)) + "%"
           : "0%";
-      npToggle.textContent = p.paused ? "Resume" : "Pause";
+      npToggle.innerHTML = p.paused
+        ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="display:block;margin:0 auto"><polygon points="6 3 20 12 6 21 6 3"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="display:block;margin:0 auto"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+      npToggle.title = p.paused ? "Resume" : "Pause";
+      npToggle.setAttribute("aria-label", npToggle.title);
       npToggle.disabled = !p.ipcReady;
-      npSkip.disabled = !p.ipcReady || p.queue.length === 0;
+      // Skip only makes sense when there is a queue to advance through.
+      npSkip.hidden = !p.ipcReady || p.queue.length === 0;
+      // Chapter navigation + label, when the media has chapters.
+      var hasChapters = p.chapters.length > 0;
+      npPrev.hidden = !hasChapters;
+      npNext.hidden = !hasChapters;
+      npPrev.disabled = !p.ipcReady || p.chapter === null || p.chapter <= 0;
+      npNext.disabled =
+        !p.ipcReady ||
+        p.chapter === null ||
+        p.chapter >= p.chapters.length - 1;
+      if (p.chapter !== null && p.chapters[p.chapter]) {
+        var c = p.chapters[p.chapter];
+        npChapter.textContent =
+          "Chapter " + (p.chapter + 1) + "/" + p.chapters.length +
+          (c.title ? ": " + c.title : "");
+        npChapter.hidden = false;
+      } else {
+        npChapter.textContent = "";
+        npChapter.hidden = true;
+      }
+      // Volume + mute feedback.
+      npMute.innerHTML = p.muted
+        ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="m22 9-6 6"/><path d="m16 9 6 6"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+      npMute.title = p.muted ? "Unmute" : "Mute";
+      npVolume.value = Math.round(p.volume);
+      npVolume.disabled = !p.ipcReady;
+      npSpeed.textContent = p.speed.toFixed(2) + "\\u00d7";
+      npSlower.disabled = !p.ipcReady || p.speed <= 0.25;
+      npFaster.disabled = !p.ipcReady || p.speed >= 4;
+      npStop.disabled = !p.ipcReady;
     }).catch(function () {
       dot.className = "dot off";
       np.hidden = true;
@@ -280,6 +374,52 @@ export function remotePageHtml(): string {
   });
   npSkip.addEventListener("click", function () {
     api("/player/skip", { method: "POST" }).then(loadPlayer).catch(function () {});
+  });
+  npPrev.addEventListener("click", function () {
+    api("/player/chapter-prev", { method: "POST" }).then(loadPlayer).catch(function () {});
+  });
+  npNext.addEventListener("click", function () {
+    api("/player/chapter-next", { method: "POST" }).then(loadPlayer).catch(function () {});
+  });
+  npRewind.addEventListener("click", function () {
+    var target = lastStatus ? Math.max(0, Math.floor(lastStatus.position - 10)) : 0;
+    api("/player/seek", {
+      method: "POST",
+      body: JSON.stringify({ position: target }),
+    }).then(loadPlayer).catch(function () {});
+  });
+  npForward.addEventListener("click", function () {
+    var target = lastStatus ? Math.floor(lastStatus.position + 10) : 10;
+    api("/player/seek", {
+      method: "POST",
+      body: JSON.stringify({ position: target }),
+    }).then(loadPlayer).catch(function () {});
+  });
+  npMute.addEventListener("click", function () {
+    api("/player/mute", { method: "POST" }).then(loadPlayer).catch(function () {});
+  });
+  npVolume.addEventListener("change", function () {
+    api("/player/volume", {
+      method: "POST",
+      body: JSON.stringify({ volume: Number(npVolume.value) }),
+    }).then(loadPlayer).catch(function () {});
+  });
+  npSlower.addEventListener("click", function () {
+    var s = lastStatus ? Math.max(0.25, lastStatus.speed - 0.25) : 1;
+    api("/player/speed", {
+      method: "POST",
+      body: JSON.stringify({ speed: s }),
+    }).then(loadPlayer).catch(function () {});
+  });
+  npFaster.addEventListener("click", function () {
+    var s = lastStatus ? Math.min(4, lastStatus.speed + 0.25) : 1;
+    api("/player/speed", {
+      method: "POST",
+      body: JSON.stringify({ speed: s }),
+    }).then(loadPlayer).catch(function () {});
+  });
+  npStop.addEventListener("click", function () {
+    api("/player/stop", { method: "POST" }).then(loadPlayer).catch(function () {});
   });
   setInterval(loadPlayer, 3000);
 

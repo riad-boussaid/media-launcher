@@ -25,6 +25,11 @@ export interface PlayerQueueEntry {
   title: string;
 }
 
+export interface PlayerChapter {
+  title: string;
+  time: number;
+}
+
 export interface PlayerStatus {
   supported: boolean;
   alive: boolean;
@@ -35,6 +40,11 @@ export interface PlayerStatus {
   duration: number;
   paused: boolean;
   queue: PlayerQueueEntry[];
+  chapters: PlayerChapter[];
+  chapter: number | null;
+  volume: number;
+  muted: boolean;
+  speed: number;
 }
 
 export interface DownloadItem {
@@ -157,6 +167,34 @@ export async function togglePause(): Promise<boolean> {
 
 export async function skipTrack(): Promise<boolean> {
   return api.player.skip();
+}
+
+export async function chapterPrev(): Promise<boolean> {
+  return api.player.chapterPrev();
+}
+
+export async function chapterNext(): Promise<boolean> {
+  return api.player.chapterNext();
+}
+
+export async function seekTo(position: number): Promise<boolean> {
+  return api.player.seek(position);
+}
+
+export async function setVolume(volume: number): Promise<boolean> {
+  return api.player.volume(volume);
+}
+
+export async function toggleMute(): Promise<boolean> {
+  return api.player.mute();
+}
+
+export async function setSpeed(speed: number): Promise<boolean> {
+  return api.player.speed(speed);
+}
+
+export async function stopPlayback(): Promise<boolean> {
+  return api.player.stop();
 }
 
 export async function getDownloads(): Promise<DownloadItem[]> {

@@ -107,9 +107,21 @@ interface ElectronAPI {
       duration: number;
       paused: boolean;
       queue: { url: string; title: string }[];
+      chapters: { title: string; time: number }[];
+      chapter: number | null;
+      volume: number;
+      muted: boolean;
+      speed: number;
     }>;
     togglePause: () => Promise<boolean>;
     skip: () => Promise<boolean>;
+    chapterPrev: () => Promise<boolean>;
+    chapterNext: () => Promise<boolean>;
+    seek: (position: number) => Promise<boolean>;
+    volume: (value: number) => Promise<boolean>;
+    mute: () => Promise<boolean>;
+    speed: (value: number) => Promise<boolean>;
+    stop: () => Promise<boolean>;
   };
   downloads: {
     list: () => Promise<DownloadItem[]>;
@@ -136,8 +148,9 @@ interface ElectronAPI {
   };
 }
 
-declare global {
-  interface Window {
-    electronAPI: ElectronAPI;
-  }
+// Global-script augmentation: this file is not a module, so the interface
+// merges directly into Window (declare global is ignored under the web
+// tsconfig's composite settings).
+interface Window {
+  electronAPI: ElectronAPI;
 }

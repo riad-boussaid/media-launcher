@@ -22,11 +22,17 @@ export interface Settings {
   autoStart: boolean;
   startMinimized: boolean;
   resumePlayback: boolean;
+  remoteEnabled: boolean;
 }
 
 export interface PlayerQueueEntry {
   url: string;
   title: string;
+}
+
+export interface PlayerChapter {
+  title: string;
+  time: number;
 }
 
 export interface PlayerStatus {
@@ -39,6 +45,11 @@ export interface PlayerStatus {
   duration: number;
   paused: boolean;
   queue: PlayerQueueEntry[];
+  chapters: PlayerChapter[];
+  chapter: number | null;
+  volume: number;
+  muted: boolean;
+  speed: number;
 }
 
 const DEFAULT_SERVER_URL = "http://localhost:5000";
@@ -108,7 +119,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const res = await fetch(`${getServerUrl()}${path}`, { ...init, headers });
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-  return res.json();
+  return (await res.json()) as T;
 }
 
 export async function initDatabase(): Promise<void> {
@@ -121,10 +132,23 @@ export async function initDatabase(): Promise<void> {
   }
 }
 
+/** Shape of the server's /settings payload (all optional for defensive reads). */
+interface ServerSettingsPayload {
+  player?: string;
+  playerArgs?: Record<string, string>;
+  customPlayerPath?: string;
+  customPlayerArgs?: string;
+  binDir?: string;
+  autoStart?: boolean;
+  startMinimized?: boolean;
+  resumePlayback?: boolean;
+  remoteEnabled?: boolean;
+}
+
 export async function getSettings(): Promise<Settings> {
   const local = readLocalConfig();
   try {
-    const serverSettings = await api<Record<string, unknown>>("/settings");
+    const serverSettings = await api<ServerSettingsPayload>("/settings");
     return {
       serverUrl: local.serverUrl,
       player: serverSettings.player ?? "mpv",
@@ -227,6 +251,11 @@ export async function getPlayerStatus(): Promise<PlayerStatus> {
       duration: 0,
       paused: false,
       queue: [],
+      chapters: [],
+      chapter: null,
+      volume: 0,
+      muted: false,
+      speed: 1,
     };
   }
 }
@@ -243,6 +272,81 @@ export async function togglePause(): Promise<boolean> {
 export async function skipTrack(): Promise<boolean> {
   try {
     await api("/player/skip", { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function chapterPrev(): Promise<boolean> {
+  try {
+    await api("/player/chapter-prev", { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function chapterNext(): Promise<boolean> {
+  try {
+    await api("/player/chapter-next", { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function seekTo(position: number): Promise<boolean> {
+  try {
+    await api("/player/seek", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ position }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function setVolume(volume: number): Promise<boolean> {
+  try {
+    await api("/player/volume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ volume }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function toggleMute(): Promise<boolean> {
+  try {
+    await api("/player/mute", { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function setSpeed(speed: number): Promise<boolean> {
+  try {
+    await api("/player/speed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ speed }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function stopPlayback(): Promise<boolean> {
+  try {
+    await api("/player/stop", { method: "POST" });
     return true;
   } catch {
     return false;
