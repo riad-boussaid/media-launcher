@@ -4,6 +4,10 @@
 
 Send videos from your browser to an external media player (mpv) with one click.
 
+[Website](https://media-launcher.pages.dev/) ·
+[Install guide](docs/installing.md) ·
+[Privacy](docs/privacy-policy.md)
+
 ## Features
 
 - **One-click playback** from video pages, thumbnails, playlists, and YouTube Shorts.
