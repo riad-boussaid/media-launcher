@@ -16,7 +16,31 @@ interface DownloadItem {
   error?: string;
 }
 
+interface ToolInfo {
+  id: string;
+  path: string | null;
+  source: "portable" | "system" | null;
+  version: string | null;
+  sizeBytes: number | null;
+  verifiedAt: number | null;
+  imported: boolean;
+}
+
+interface AppUpdateInfo {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseName: string | null;
+  releaseUrl: string | null;
+  downloadUrl: string | null;
+  notes: string;
+  publishedAt: string | null;
+  checkedAt: number;
+  error: string | null;
+}
+
 interface ElectronAPI {
+  platform: "win32" | "darwin" | "linux";
   server: {
     getToken: () => Promise<string | null>;
     status: () => Promise<{ online: boolean }>;
@@ -26,6 +50,10 @@ interface ElectronAPI {
       tailscale: string | null;
       expiresAt: number | null;
     }>;
+  };
+  updates: {
+    state: () => Promise<AppUpdateInfo | null>;
+    check: () => Promise<AppUpdateInfo>;
   };
   remote: {
     sessions: () => Promise<
@@ -95,6 +123,7 @@ interface ElectronAPI {
     >;
     clear: () => Promise<void>;
     replay: (url: string) => Promise<{ success: boolean; error?: string }>;
+    queue: (url: string) => Promise<{ success: boolean; error?: string }>;
   };
   player: {
     check: (exe: string) => Promise<boolean>;
@@ -104,15 +133,56 @@ interface ElectronAPI {
       ipcReady: boolean;
       url: string | null;
       title: string;
+      thumbnail: string;
+      source: "queue" | "playlist" | null;
+      playlistId: string | null;
+      playlistTitle: string | null;
+      playlistUrl: string | null;
+      playlistTotal: number | null;
+      playlistTruncated: boolean;
+      playlistIndex: number | null;
+      error: {
+        url: string;
+        title: string;
+        playlistTitle: string | null;
+        playlistIndex: number | null;
+        message: string;
+      } | null;
       position: number;
       duration: number;
       paused: boolean;
-      queue: { url: string; title: string }[];
+      queue: {
+        index: number;
+        url: string;
+        title: string;
+        thumbnail: string;
+        source: "queue" | "playlist";
+        playlistId: string | null;
+        playlistTitle: string | null;
+        playlistUrl: string | null;
+        playlistTotal: number | null;
+        playlistTruncated: boolean;
+        playlistIndex: number | null;
+      }[];
+      past: {
+        index: number;
+        url: string;
+        title: string;
+        thumbnail: string;
+        source: "queue" | "playlist";
+        playlistId: string | null;
+        playlistTitle: string | null;
+        playlistUrl: string | null;
+        playlistTotal: number | null;
+        playlistTruncated: boolean;
+        playlistIndex: number | null;
+      }[];
       chapters: { title: string; time: number }[];
       chapter: number | null;
       volume: number;
       muted: boolean;
       speed: number;
+      repeat: "off" | "one" | "all";
     }>;
     togglePause: () => Promise<boolean>;
     skip: () => Promise<boolean>;
@@ -123,9 +193,34 @@ interface ElectronAPI {
     mute: () => Promise<boolean>;
     speed: (value: number) => Promise<boolean>;
     stop: () => Promise<boolean>;
+    queueRemove: (index: number) => Promise<boolean>;
+    queueMove: (index: number, direction: "up" | "down") => Promise<boolean>;
+    queueMoveTo: (index: number, target: number) => Promise<boolean>;
+    queueShuffle: () => Promise<boolean>;
+    setRepeat: (mode: "off" | "one" | "all") => Promise<boolean>;
+    queuePlay: (index: number) => Promise<boolean>;
+    queueClear: () => Promise<boolean>;
+    loadMorePlaylist: (
+      playlistUrl: string,
+      playlistId: string,
+    ) => Promise<boolean>;
+    savedQueue: () => Promise<import("./lib/api").SavedQueue | null>;
+    restoreSavedQueue: () => Promise<boolean>;
+    discardSavedQueue: () => Promise<boolean>;
+    queueRemovePlaylist: (playlistId: string) => Promise<boolean>;
+    queueClearPlayed: (playlistId?: string) => Promise<boolean>;
+    clearError: () => Promise<boolean>;
   };
   downloads: {
     list: () => Promise<DownloadItem[]>;
+    recheck: () => Promise<DownloadItem[]>;
+    info: () => Promise<ToolInfo[]>;
+    import: () => Promise<string | null>;
+    openFolder: () => Promise<void>;
+    reveal: (path: string) => Promise<boolean>;
+    cancel: (id: string) => Promise<boolean>;
+    getAutoUpdate: () => Promise<boolean>;
+    setAutoUpdate: (enabled: boolean) => Promise<boolean>;
     start: (id: string) => Promise<DownloadItem[]>;
     delete: (id: string) => Promise<DownloadItem[]>;
     updateCheck: (id: string) => Promise<{

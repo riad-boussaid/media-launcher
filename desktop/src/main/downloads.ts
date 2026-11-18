@@ -5,12 +5,16 @@ import {
   createWriteStream,
   existsSync,
   mkdirSync,
+  readFileSync,
+  renameSync,
   rmSync,
+  statSync,
   unlinkSync,
+  writeFileSync,
 } from "node:fs";
-import { chmod, rename } from "node:fs/promises";
-import { join } from "node:path";
-import { app } from "electron";
+import { chmod, copyFile, rename } from "node:fs/promises";
+import { basename, join, resolve } from "node:path";
+import { app, dialog, net, shell } from "electron";
 
 const BIN_DIR = join(app.getPath("userData"), "bin");
 
@@ -28,6 +32,19 @@ export interface DownloadItem {
   /** 0..1 when the content length is known, -1 for indeterminate, null otherwise. */
   progress: number | null;
   error?: string;
+}
+
+export interface ToolInfo {
+  id: string;
+  /** Effective executable path the app would use. */
+  path: string | null;
+  source: "portable" | "system" | null;
+  version: string | null;
+  sizeBytes: number | null;
+  /** Set when the portable copy came from a checksum-verified download. */
+  verifiedAt: number | null;
+  /** True when the user supplied the portable copy manually. */
+  imported: boolean;
 }
 
 interface ChecksumSpec {
@@ -73,7 +90,7 @@ const FFMPEG_CHECKSUM =
 // from the release API instead of a pinned URL that rots (the old pinned
 // release already 404s).
 async function resolveMpvWinbuild(): Promise<ResolvedSource> {
-  const res = await fetch(
+  const res = await net.fetch(
     "https://api.github.com/repos/zhongfly/mpv-winbuild/releases/latest",
     {
       headers: {
@@ -209,25 +226,113 @@ export function getBinDir(): string {
   return BIN_DIR;
 }
 
+export async function openToolsFolder(): Promise<void> {
+  ensureBinDir();
+  const error = await shell.openPath(BIN_DIR);
+  if (error) throw new Error(error);
+}
+
+export function revealToolPath(path: string): boolean {
+  if (!path || !existsSync(path)) return false;
+  shell.showItemInFolder(path);
+  return true;
+}
+
+function toolIdForFile(filePath: string): string | null {
+  const name = basename(filePath).toLowerCase();
+  if (/^mpv(\.exe)?$/.test(name)) return "mpv";
+  if (/^yt-dlp(\.exe)?$/.test(name)) return "yt-dlp";
+  if (/^ffmpeg(\.exe)?$/.test(name)) return "ffmpeg";
+  if (/sponsorblock.*\.lua$/.test(name)) return "sponsorblock";
+  return null;
+}
+
+/**
+ * Copies a user-supplied mpv/yt-dlp/ffmpeg/SponsorBlock binary into the app's
+ * tools folder. The file name determines the tool; arbitrary executables are
+ * rejected.
+ */
+export async function importTool(): Promise<string | null> {
+  const windows = process.platform === "win32";
+  const picked = await dialog.showOpenDialog({
+    title: "Import a playback tool",
+    properties: ["openFile"],
+    filters: [
+      windows
+        ? { name: "Playback tools", extensions: ["exe", "lua"] }
+        : { name: "Playback tools", extensions: ["lua"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  if (picked.canceled || picked.filePaths.length === 0) return null;
+  const sourcePath = picked.filePaths[0];
+  const id = toolIdForFile(sourcePath);
+  if (!id) {
+    throw new Error(
+      "Unsupported file name. Choose mpv, yt-dlp, ffmpeg, or a SponsorBlock .lua file.",
+    );
+  }
+  const def = DEFINITIONS.find((item) => item.id === id);
+  if (!def) throw new Error(`Unknown tool: ${id}`);
+
+  ensureBinDir();
+  const target = join(BIN_DIR, getSystemExeName(def));
+  const normalize = (value: string) =>
+    process.platform === "win32"
+      ? resolve(value).toLowerCase()
+      : resolve(value);
+  const sameFile = normalize(sourcePath) === normalize(target);
+  if (!sameFile && existsSync(target)) {
+    const answer = await dialog.showMessageBox({
+      type: "question",
+      buttons: ["Replace", "Cancel"],
+      defaultId: 0,
+      cancelId: 1,
+      message: `Replace the existing ${def.name} copy?`,
+      detail: `The current file at ${target} will be overwritten.`,
+    });
+    if (answer.response !== 0) return null;
+  }
+
+  if (!sameFile) {
+    await copyFile(sourcePath, target);
+    if (process.platform !== "win32" && id !== "sponsorblock") {
+      try {
+        await chmod(target, 0o755);
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+  downloadState.set(id, "done");
+  downloadErrors.delete(id);
+  setToolMeta(id, { importedAt: Date.now() });
+  return id;
+}
+
 const downloadState = new Map<string, DownloadItem["status"]>();
 const downloadErrors = new Map<string, string>();
 const downloadProgress = new Map<string, { received: number; total: number }>();
+const activeDownloads = new Map<string, AbortController>();
+const cancelledDownloads = new Set<string>();
 
 async function fetchWithRedirect(
   url: string,
   signal: AbortSignal,
 ): Promise<Response> {
-  const res = await fetch(url, { redirect: "follow", signal });
+  const res = await net.fetch(url, { redirect: "follow", signal });
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
   return res;
 }
 
 async function downloadFile(
+  id: string,
   url: string,
   destPath: string,
   onProgress?: (received: number, total: number) => void,
 ): Promise<void> {
   const controller = new AbortController();
+  activeDownloads.set(id, controller);
   const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
   try {
     const res = await fetchWithRedirect(url, controller.signal);
@@ -266,6 +371,7 @@ async function downloadFile(
     });
   } finally {
     clearTimeout(timer);
+    activeDownloads.delete(id);
   }
 }
 
@@ -348,7 +454,9 @@ async function verifyChecksum(
   filePath: string,
   spec: ChecksumSpec,
 ): Promise<void> {
-  const res = await fetch(spec.url, { signal: AbortSignal.timeout(30000) });
+  const res = await net.fetch(spec.url, {
+    signal: AbortSignal.timeout(30000),
+  });
   if (!res.ok) {
     throw new Error(`Checksum list unavailable: HTTP ${res.status}`);
   }
@@ -392,32 +500,64 @@ const COMMON_PATHS: Record<string, string[]> = {
   ffmpeg: [
     "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
     "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
+    "/opt/homebrew/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+    "/usr/bin/ffmpeg",
   ],
   "ffmpeg.exe": [
     "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
     "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
   ],
+  "yt-dlp": [
+    "/opt/homebrew/bin/yt-dlp",
+    "/usr/local/bin/yt-dlp",
+    "/usr/bin/yt-dlp",
+  ],
   iina: ["/Applications/IINA.app/Contents/MacOS/iina"],
-  mpv: ["/usr/bin/mpv", "/usr/local/bin/mpv"],
+  mpv: ["/opt/homebrew/bin/mpv", "/usr/local/bin/mpv", "/usr/bin/mpv"],
 };
 
-export function checkSystemPath(binName: string): Promise<boolean> {
+const SYSTEM_CACHE = new Map<string, string | null>();
+
+function probeSystemPath(binName: string): Promise<string | null> {
   return new Promise((resolve) => {
     const cmd = process.platform === "win32" ? "where" : "which";
-    execFile(cmd, [binName], (err) => {
-      if (!err) return resolve(true);
+    execFile(cmd, [binName], (err, stdout) => {
+      if (!err) {
+        const first = stdout
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .find(Boolean);
+        if (first) return resolve(first);
+      }
       const paths = COMMON_PATHS[binName];
       if (paths) {
         for (const p of paths) {
-          if (existsSync(p)) return resolve(true);
+          if (existsSync(p)) return resolve(p);
         }
       }
-      resolve(false);
+      resolve(null);
     });
   });
 }
 
-const SYSTEM_CACHE = new Map<string, boolean>();
+async function getSystemPath(binName: string): Promise<string | null> {
+  if (!SYSTEM_CACHE.has(binName)) {
+    SYSTEM_CACHE.set(binName, await probeSystemPath(binName));
+  }
+  return SYSTEM_CACHE.get(binName) ?? null;
+}
+
+export async function checkSystemPath(binName: string): Promise<boolean> {
+  return (await getSystemPath(binName)) !== null;
+}
+
+/** Lets the UI re-probe PATH after the user installs a tool externally. */
+export function invalidateSystemCache(): void {
+  SYSTEM_CACHE.clear();
+  TOOL_INFO_CACHE.clear();
+}
+
 function getSystemExeName(def: DownloadableDef): string {
   const win = process.platform === "win32";
   if (def.id === "yt-dlp") return win ? "yt-dlp.exe" : "yt-dlp";
@@ -429,21 +569,165 @@ function getSystemExeName(def: DownloadableDef): string {
   return def.id;
 }
 
+const TOOL_INFO_CACHE = new Map<string, { at: number; info: ToolInfo }>();
+const TOOL_INFO_TTL = 30_000;
+const VERSIONED_TOOLS = new Set(["mpv", "yt-dlp", "ffmpeg"]);
+const TOOL_META_PATH = join(BIN_DIR, ".tool-meta.json");
+
+interface ToolMetaEntry {
+  verifiedAt?: number;
+  importedAt?: number;
+  sourceUrl?: string;
+}
+type ToolMeta = Record<string, ToolMetaEntry>;
+
+function readToolMeta(): ToolMeta {
+  if (!existsSync(TOOL_META_PATH)) return {};
+  try {
+    const parsed = JSON.parse(
+      readFileSync(TOOL_META_PATH, "utf-8"),
+    ) as ToolMeta;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeToolMeta(meta: ToolMeta): void {
+  ensureBinDir();
+  const temp = `${TOOL_META_PATH}.tmp`;
+  try {
+    writeFileSync(temp, JSON.stringify(meta), "utf-8");
+    renameSync(temp, TOOL_META_PATH);
+  } catch (err) {
+    console.warn(
+      `[download] could not save tool metadata: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    try {
+      unlinkSync(temp);
+    } catch {
+      /* ignore */
+    }
+  }
+  invalidateToolInfo();
+}
+
+function setToolMeta(id: string, entry: ToolMetaEntry | null): void {
+  const meta = readToolMeta();
+  if (entry) meta[id] = entry;
+  else delete meta[id];
+  writeToolMeta(meta);
+}
+
+function invalidateToolInfo(): void {
+  TOOL_INFO_CACHE.clear();
+}
+
+function readToolVersion(id: string, path: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const args = id === "ffmpeg" ? ["-version"] : ["--version"];
+    execFile(
+      path,
+      args,
+      { windowsHide: true, timeout: 8000 },
+      (err, stdout) => {
+        if (err) return resolve(null);
+        const line = stdout.split(/\r?\n/)[0]?.trim() ?? "";
+        if (!line) return resolve(null);
+        if (id === "mpv") {
+          return resolve(line.match(/^mpv\s+(\S+)/)?.[1] ?? line);
+        }
+        if (id === "ffmpeg") {
+          return resolve(line.match(/version\s+(\S+)/)?.[1] ?? line);
+        }
+        resolve(line);
+      },
+    );
+  });
+}
+
+async function collectToolInfo(
+  def: DownloadableDef,
+  meta: ToolMeta,
+): Promise<ToolInfo> {
+  const exeName = getSystemExeName(def);
+  const portable = join(BIN_DIR, exeName);
+  let path: string | null = null;
+  let source: ToolInfo["source"] = null;
+  if (existsSync(portable)) {
+    path = portable;
+    source = "portable";
+  } else {
+    path = await getSystemPath(exeName);
+    if (path) source = "system";
+  }
+  let sizeBytes: number | null = null;
+  let modifiedAt: number | null = null;
+  if (path) {
+    try {
+      const stat = statSync(path);
+      sizeBytes = stat.size;
+      modifiedAt = stat.mtimeMs;
+    } catch {
+      /* ignore */
+    }
+  }
+  const version =
+    path && VERSIONED_TOOLS.has(def.id)
+      ? await readToolVersion(def.id, path)
+      : null;
+  const entry = source === "portable" ? meta[def.id] : undefined;
+  // A file replaced outside the app invalidates the old checksum record.
+  const verifiedAt =
+    entry?.verifiedAt &&
+    modifiedAt !== null &&
+    modifiedAt <= entry.verifiedAt + 5000
+      ? entry.verifiedAt
+      : null;
+  return {
+    id: def.id,
+    path,
+    source,
+    version,
+    sizeBytes,
+    verifiedAt,
+    imported: Boolean(entry?.importedAt),
+  };
+}
+
+/** Resolves the effective path, version, and size for each downloadable tool. */
+export async function getToolInfo(force = false): Promise<ToolInfo[]> {
+  ensureBinDir();
+  const result: ToolInfo[] = [];
+  const meta = readToolMeta();
+  for (const def of DEFINITIONS) {
+    const cached = TOOL_INFO_CACHE.get(def.id);
+    if (!force && cached && Date.now() - cached.at < TOOL_INFO_TTL) {
+      result.push(cached.info);
+      continue;
+    }
+    const info = await collectToolInfo(def, meta);
+    TOOL_INFO_CACHE.set(def.id, { at: Date.now(), info });
+    result.push(info);
+  }
+  return result;
+}
+
 export async function listDownloads(): Promise<DownloadItem[]> {
   ensureBinDir();
   await Promise.all(
     DEFINITIONS.map(async (def) => {
       const name = getSystemExeName(def);
-      if (!SYSTEM_CACHE.has(name)) {
-        SYSTEM_CACHE.set(name, await checkSystemPath(name));
-      }
+      await getSystemPath(name);
     }),
   );
   return DEFINITIONS.map((def) => {
     const platform = getDefForPlatform(def);
     const exeName = getSystemExeName(def);
     const installed = existsSync(join(BIN_DIR, exeName));
-    const systemAvailable = SYSTEM_CACHE.get(exeName) ?? false;
+    const systemAvailable = (SYSTEM_CACHE.get(exeName) ?? null) !== null;
     const status = downloadState.get(def.id) ?? (installed ? "done" : "idle");
     const prog = downloadProgress.get(def.id);
     const progress =
@@ -508,7 +792,7 @@ export async function startDownload(id: string): Promise<void> {
     tempPath = join(BIN_DIR, `.${id}${ext}`);
 
     console.log(`[download] ${id} → ${tempPath} (${source.url})`);
-    await downloadFile(source.url, tempPath, (received, total) =>
+    await downloadFile(id, source.url, tempPath, (received, total) =>
       downloadProgress.set(id, { received, total }),
     );
     downloadProgress.delete(id);
@@ -547,7 +831,16 @@ export async function startDownload(id: string): Promise<void> {
       }
     }
 
+    if (source.checksum) {
+      setToolMeta(id, {
+        verifiedAt: Date.now(),
+        sourceUrl: source.url,
+      });
+    } else {
+      setToolMeta(id, null);
+    }
     downloadState.set(id, "done");
+    invalidateToolInfo();
   } catch (err: unknown) {
     downloadProgress.delete(id);
     if (tempPath && existsSync(tempPath)) {
@@ -557,12 +850,29 @@ export async function startDownload(id: string): Promise<void> {
         /* best-effort cleanup */
       }
     }
+    const cancelled = cancelledDownloads.has(id);
+    cancelledDownloads.delete(id);
+    if (cancelled) {
+      downloadErrors.delete(id);
+      downloadState.set(id, "idle");
+      console.log(`[download] ${id} cancelled`);
+      return;
+    }
     const message = err instanceof Error ? err.message : String(err);
     downloadState.set(id, "error");
     downloadErrors.set(id, message);
     console.error(`[download] ${id} failed:`, message);
     throw err;
   }
+}
+
+/** Aborts an in-progress download; the partial file is removed by startDownload. */
+export function cancelDownload(id: string): boolean {
+  const controller = activeDownloads.get(id);
+  if (!controller) return false;
+  cancelledDownloads.add(id);
+  controller.abort();
+  return true;
 }
 
 export async function deleteDownload(id: string): Promise<void> {
@@ -616,6 +926,7 @@ export async function deleteDownload(id: string): Promise<void> {
   }
   downloadState.set(id, "idle");
   downloadErrors.delete(id);
+  setToolMeta(id, null);
 }
 
 export interface UpdateCheck {
@@ -651,7 +962,7 @@ async function getLatestYtDlpVersion(): Promise<string | null> {
     return latestYtDlpCache.version;
   }
   try {
-    const res = await fetch(
+    const res = await net.fetch(
       "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest",
       {
         headers: {
@@ -683,4 +994,32 @@ export async function checkUpdate(id: string): Promise<UpdateCheck> {
       !!latestVersion &&
       installedVersion !== latestVersion,
   };
+}
+
+let autoUpdateRunning = false;
+
+/**
+ * Updates the portable yt-dlp copy when a newer release exists. Run at startup
+ * and periodically; system-installed copies are left to the OS/package
+ * manager.
+ */
+export async function autoUpdateYtDlp(): Promise<boolean> {
+  if (autoUpdateRunning) return false;
+  const exeName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+  if (!existsSync(join(BIN_DIR, exeName))) return false;
+  // Never overwrite a binary the user supplied manually; manual updates still
+  // work from the Downloads section.
+  if (readToolMeta()["yt-dlp"]?.importedAt) return false;
+  autoUpdateRunning = true;
+  try {
+    const update = await checkUpdate("yt-dlp");
+    if (!update.updateAvailable) return false;
+    console.log(
+      `[download] auto-updating yt-dlp ${update.installedVersion} → ${update.latestVersion}`,
+    );
+    await startDownload("yt-dlp");
+    return true;
+  } finally {
+    autoUpdateRunning = false;
+  }
 }

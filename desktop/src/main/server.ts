@@ -1,4 +1,4 @@
-import { type ChildProcess, execSync, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -369,7 +369,9 @@ export function stopServer(): void {
   const pid = serverProcess.pid;
   if (process.platform === "win32") {
     try {
-      execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore" });
+      execFileSync("taskkill", ["/F", "/T", "/PID", String(pid)], {
+        stdio: "ignore",
+      });
     } catch {
       serverProcess.kill("SIGKILL");
     }

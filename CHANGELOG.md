@@ -6,6 +6,121 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-18
+
+### Added
+
+- Show video artwork on the desktop now-playing card and thumbnails in queue
+  rows, using the metadata already stored in history.
+- Queue management from the desktop now-playing card: jump to a queued video,
+  move it up or down, remove it, or clear the queue. The Play page can also
+  queue another URL, and History rows can queue videos while a player is
+  active.
+- YouTube and Vimeo playlists are resolved into individual queue entries with
+  titles and thumbnails. Play replaces the queue with the playlist, Queue
+  appends it, and Up Next groups tracks by their source playlist.
+- Played playlist tracks stay in the queue with a played marker instead of
+  disappearing when you jump ahead; clicking one replays it. Played tracks are
+  collapsed behind a per-playlist “Show N played” toggle by default.
+- Playlist groups in Up Next can be collapsed, removed from the queue as a
+  whole, or have their played tracks cleared. Truncated playlists report how
+  many tracks are shown.
+- Playback errors are surfaced on the desktop and remote now-playing panels
+  with the failed track's playlist position and a Dismiss action, instead of
+  the player silently skipping to the next track.
+- The remote page shows played playlist tracks behind a toggle so they can be
+  replayed, and keeps the up-next list visible when only played tracks remain.
+- History rows are keyboard-accessible and reveal their actions on focus; the
+  Play page's recent chips have a separate queue button.
+- Extension notifications report how many videos a queued playlist added
+  (“Queued 13 videos”).
+- The remote page now shows the entire queue grouped by playlist, with
+  tap-to-play and per-item remove buttons plus a playlist-level Remove action.
+  Now-playing and recent rows show proxied artwork.
+- Truncated playlists have a **Load more** action that resolves and appends the
+  next 200 tracks without restarting playback.
+- The queue is snapshotted to disk, so after an app or server restart the Play
+  page offers **Restore** or **Discard** for the previous queue.
+- Partially watched queued and playlist tracks resume from their saved position
+  when they load, not just videos launched from a URL.
+- Playback errors offer **Retry** when the failed track is still in the queue.
+- Playlist resolution now skips private, deleted, and unavailable entries
+  instead of queueing tracks that fail later.
+- Upcoming queue items can be reordered by drag and drop, with **Shuffle** and
+  **Repeat all / Repeat one** controls in the queue header.
+- **Load more** inserts the next playlist page next to the existing playlist
+  group (rather than after manual queue items), and remains available when the
+  playlist’s current track is the only one left in the queue.
+- The remote queue now matches desktop controls: move up/down, shuffle,
+  repeat off/all/one, clear queue, and Load more for both playlist groups and
+  the current-track-only case. The page requests a screen wake lock while
+  visible on secure origins.
+- Queue shuffle and playlist Load more now operate in place using
+  `playlist-move` / `loadfile insert-at` instead of clearing and re-appending
+  the upcoming queue, so playback keeps running during the operation.
+- Repeat is available from the main playback controls (and the remote’s utility
+  row), so repeat-one/all works even for a single video with no queue.
+- Queue actions now show visible error feedback on desktop and remote when
+  Load more, shuffle, move, clear, or repeat fails — including the case where
+  playback ended while a playlist page was resolving.
+- Playlist groups report how many tracks are actually available when private or
+  deleted entries were skipped.
+- The remote page includes a web app manifest and embedded PNG icons, a
+  best-effort service worker on secure origins, a connection-lost indicator,
+  and a wake-lock status hint.
+- Desktop app update awareness: GitHub Releases are checked at startup and
+  every 12 hours. Settings → About shows current/latest versions, release notes,
+  last-checked time, and a platform-matched download link; the tray adds an
+  “Update available” action.
+- App update checks and tool downloads now use Electron’s network stack
+  (`net.fetch`), so they respect system proxy and certificate configuration
+  instead of failing where Node’s global fetch cannot reach GitHub.
+- A first-run **Set up playback** card detects missing mpv, yt-dlp, and ffmpeg.
+  Windows can install verified portable copies with one click; macOS/Linux get
+  copyable package-manager commands. **Recheck** re-probes `PATH` after an
+  external install.
+- Settings → Downloads is now a grouped tool manager: playback engine, extras,
+  and other players, with installed versions, portable/system source, disk
+  usage, and an “In use” marker. Downloads can be cancelled, removals require
+  confirmation, and platform-unavailable tools show install guidance instead of
+  dead rows.
+- yt-dlp can update itself automatically at startup and every 12 hours (on by
+  default for portable copies), with a toggle and manual check/update controls
+  in Downloads.
+- Downloads can **import** an existing mpv/yt-dlp/ffmpeg/SponsorBlock file,
+  **open the tools folder**, or reveal a specific binary in the file manager.
+  Portable downloads are marked **Verified** when their checksum passed, while
+  manual imports are marked **Imported** and are excluded from automatic
+  updates.
+
+### Fixed
+
+- "Play playlist" now actually loads the whole playlist instead of relying on
+  mpv's default `--no-playlist` behavior.
+- Playback now exits when the last video ends instead of sitting paused on its
+  final frame, so the Now Playing card clears. Queued videos still advance
+  normally.
+- Queued videos now show their resolved titles before playback instead of
+  bare hostnames.
+- The remote volume slider now renders its track and fill in Firefox.
+- Collapsing a playlist group or expanding its played tracks no longer resets
+  when the current track changes or the queue is edited.
+- Queueing a video while nothing is playing is rejected with a clear message
+  instead of launching a player and playing it.
+- The remote page surfaces server errors when sending or queueing fails.
+- Portable yt-dlp and ffmpeg copies are now on mpv's `PATH`, and Homebrew bins
+  are added on macOS, so downloaded tools take precedence over system installs
+  and mpv's ytdl hook can find them.
+
+### Changed
+
+- Redesigned the desktop now-playing panel with a draggable progress bar and
+  chapter markers, a prominent play/pause control, and compact volume and
+  speed controls.
+- Rebuilt the mobile remote-control page around a full playback console:
+  draggable seek bar with chapter markers, speed presets, queue overview,
+  connection status, and a recent-videos list with separate play and queue actions.
+
 ## [1.0.0] - 2026-11-16
 
 First public release.
@@ -57,5 +172,6 @@ First public release.
 - The remote page uses a nonce-based Content Security Policy.
 - QR pairing uses single-use random codes with a five-minute TTL.
 
-[Unreleased]: https://github.com/riad-boussaid/media-launcher/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/riad-boussaid/media-launcher/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/riad-boussaid/media-launcher/releases/tag/v1.1.0
 [1.0.0]: https://github.com/riad-boussaid/media-launcher/releases/tag/v1.0.0

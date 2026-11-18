@@ -21,8 +21,44 @@ export interface Settings {
 }
 
 export interface PlayerQueueEntry {
+  index: number;
   url: string;
   title: string;
+  thumbnail: string;
+  source: "queue" | "playlist";
+  playlistId: string | null;
+  playlistTitle: string | null;
+  playlistUrl: string | null;
+  playlistTotal: number | null;
+  playlistTruncated: boolean;
+  playlistIndex: number | null;
+}
+
+export interface PlaybackError {
+  url: string;
+  title: string;
+  playlistTitle: string | null;
+  playlistIndex: number | null;
+  message: string;
+}
+
+export interface SavedQueueEntry {
+  url: string;
+  title: string;
+  thumbnail: string;
+  source: "queue" | "playlist";
+  playlistId: string | null;
+  playlistTitle: string | null;
+  playlistUrl: string | null;
+  playlistTotal: number | null;
+  playlistTruncated: boolean;
+  playlistIndex: number | null;
+}
+
+export interface SavedQueue {
+  savedAt: number;
+  current: SavedQueueEntry | null;
+  entries: SavedQueueEntry[];
 }
 
 export interface PlayerChapter {
@@ -36,15 +72,26 @@ export interface PlayerStatus {
   ipcReady: boolean;
   url: string | null;
   title: string;
+  thumbnail: string;
+  source: "queue" | "playlist" | null;
+  playlistId: string | null;
+  playlistTitle: string | null;
+  playlistUrl: string | null;
+  playlistTotal: number | null;
+  playlistTruncated: boolean;
+  playlistIndex: number | null;
+  error: PlaybackError | null;
   position: number;
   duration: number;
   paused: boolean;
   queue: PlayerQueueEntry[];
+  past: PlayerQueueEntry[];
   chapters: PlayerChapter[];
   chapter: number | null;
   volume: number;
   muted: boolean;
   speed: number;
+  repeat: "off" | "one" | "all";
 }
 
 export interface DownloadItem {
@@ -63,8 +110,31 @@ export interface DownloadItem {
   error?: string;
 }
 
+export interface ToolInfo {
+  id: string;
+  path: string | null;
+  source: "portable" | "system" | null;
+  version: string | null;
+  sizeBytes: number | null;
+  verifiedAt: number | null;
+  imported: boolean;
+}
+
 export interface ServerStatus {
   online: boolean;
+}
+
+export interface AppUpdateInfo {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseName: string | null;
+  releaseUrl: string | null;
+  downloadUrl: string | null;
+  notes: string;
+  publishedAt: string | null;
+  checkedAt: number;
+  error: string | null;
 }
 
 export interface ProbeResult {
@@ -81,8 +151,20 @@ export interface UpdateCheck {
 
 const api = window.electronAPI;
 
+export function getPlatform(): "win32" | "darwin" | "linux" {
+  return api.platform;
+}
+
 export async function getServerStatus(): Promise<ServerStatus> {
   return api.server.status();
+}
+
+export async function getAppUpdateState(): Promise<AppUpdateInfo | null> {
+  return api.updates.state();
+}
+
+export async function checkAppUpdate(): Promise<AppUpdateInfo> {
+  return api.updates.check();
 }
 
 export interface RemoteUrls {
@@ -155,6 +237,12 @@ export async function replayUrl(
   return api.history.replay(url);
 }
 
+export async function queueUrl(
+  url: string,
+): Promise<{ success: boolean; error?: string }> {
+  return api.history.queue(url);
+}
+
 export async function checkPlayer(exe: string): Promise<boolean> {
   return api.player.check(exe);
 }
@@ -169,6 +257,77 @@ export async function togglePause(): Promise<boolean> {
 
 export async function skipTrack(): Promise<boolean> {
   return api.player.skip();
+}
+
+export async function removeQueueItem(index: number): Promise<boolean> {
+  return api.player.queueRemove(index);
+}
+
+export async function moveQueueItem(
+  index: number,
+  direction: "up" | "down",
+): Promise<boolean> {
+  return api.player.queueMove(index, direction);
+}
+
+export async function moveQueueItemTo(
+  index: number,
+  target: number,
+): Promise<boolean> {
+  return api.player.queueMoveTo(index, target);
+}
+
+export async function shuffleQueue(): Promise<boolean> {
+  return api.player.queueShuffle();
+}
+
+export async function setRepeatMode(
+  mode: "off" | "one" | "all",
+): Promise<boolean> {
+  return api.player.setRepeat(mode);
+}
+
+export async function playQueueItem(index: number): Promise<boolean> {
+  return api.player.queuePlay(index);
+}
+
+export async function loadMorePlaylist(
+  playlistUrl: string,
+  playlistId: string,
+): Promise<boolean> {
+  return api.player.loadMorePlaylist(playlistUrl, playlistId);
+}
+
+export async function getSavedQueue(): Promise<SavedQueue | null> {
+  return api.player.savedQueue();
+}
+
+export async function restoreSavedQueue(): Promise<boolean> {
+  return api.player.restoreSavedQueue();
+}
+
+export async function discardSavedQueue(): Promise<boolean> {
+  return api.player.discardSavedQueue();
+}
+
+export async function clearQueue(): Promise<boolean> {
+  return api.player.queueClear();
+}
+
+export async function removePlaylistFromQueue(
+  playlistId: string,
+): Promise<boolean> {
+  return api.player.queueRemovePlaylist(playlistId);
+}
+
+export async function clearPlayedPlaylist(
+  playlistId?: string,
+): Promise<boolean> {
+  return api.player.queueClearPlayed(playlistId);
+}
+
+export async function clearPlaybackError(): Promise<boolean> {
+  return api.player.clearError();
 }
 
 export async function chapterPrev(): Promise<boolean> {
@@ -201,6 +360,38 @@ export async function stopPlayback(): Promise<boolean> {
 
 export async function getDownloads(): Promise<DownloadItem[]> {
   return api.downloads.list();
+}
+
+export async function recheckDownloads(): Promise<DownloadItem[]> {
+  return api.downloads.recheck();
+}
+
+export async function getToolInfo(): Promise<ToolInfo[]> {
+  return api.downloads.info();
+}
+
+export async function importTool(): Promise<string | null> {
+  return api.downloads.import();
+}
+
+export async function openToolsFolder(): Promise<void> {
+  return api.downloads.openFolder();
+}
+
+export async function revealTool(path: string): Promise<boolean> {
+  return api.downloads.reveal(path);
+}
+
+export async function cancelDownload(id: string): Promise<boolean> {
+  return api.downloads.cancel(id);
+}
+
+export async function getAutoUpdateYtDlp(): Promise<boolean> {
+  return api.downloads.getAutoUpdate();
+}
+
+export async function setAutoUpdateYtDlp(enabled: boolean): Promise<boolean> {
+  return api.downloads.setAutoUpdate(enabled);
 }
 
 export async function startDownload(id: string): Promise<DownloadItem[]> {

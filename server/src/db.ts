@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema.js";
 import type {
@@ -238,6 +238,7 @@ export function setSettings(partial: SettingsUpdate): Settings {
 }
 
 const HISTORY_LIMIT = 200;
+const QUEUE_METADATA_LOOKUP_LIMIT = 500;
 
 export function getHistory(): HistoryEntry[] {
   return db
@@ -283,6 +284,43 @@ export function getHistoryPosition(url: string): number {
     .where(eq(schema.history.url, url))
     .get();
   return row?.position ?? 0;
+}
+
+/**
+ * Metadata for queued URLs. mpv reports a playlist entry's title only after it
+ * loads the file, so the queue UI would show bare hostnames until then; the
+ * title and thumbnail recorded in history when the link was queued fill that
+ * gap.
+ */
+export interface HistoryMetadata {
+  title: string;
+  thumbnail: string;
+}
+
+export function getHistoryMetadata(
+  urls: string[],
+): Map<string, HistoryMetadata> {
+  const metadata = new Map<string, HistoryMetadata>();
+  const unique = [...new Set(urls)].slice(0, QUEUE_METADATA_LOOKUP_LIMIT);
+  if (unique.length === 0) return metadata;
+  const rows = db
+    .select({
+      url: schema.history.url,
+      title: schema.history.title,
+      thumbnail: schema.history.thumbnail,
+    })
+    .from(schema.history)
+    .where(inArray(schema.history.url, unique))
+    .all();
+  for (const row of rows) {
+    if (row.title || row.thumbnail) {
+      metadata.set(row.url, {
+        title: row.title,
+        thumbnail: row.thumbnail,
+      });
+    }
+  }
+  return metadata;
 }
 
 export function updateHistoryPositionByUrl(

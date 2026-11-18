@@ -13,16 +13,52 @@ Send videos from your browser to an external media player (mpv) with one click.
 - **One-click playback** from video pages, thumbnails, playlists, and YouTube Shorts.
 - **Queue instead of replace**: Shift-click an in-page button, use the
   Queue context-menu items, or press a keyboard shortcut.
+- **Queue titles**: queued videos show their resolved title before they start,
+  instead of a bare hostname.
+- **Queue management**: drag to reorder, shuffle, and choose repeat-one/repeat-all
+  from the desktop player; jump, remove, or clear queued videos from the desktop
+  or the phone remote; add new URLs with Queue; queue any item from History or
+  the Play page's recent chips while a video is playing. Queueing requires an
+  active player, and the queue is snapshotted so it can be restored after
+  restarting the app or server.
+- **Playlists**: play or queue an entire YouTube/Vimeo playlist. Tracks are
+  resolved up front, grouped in Up Next by playlist, and keep their titles and
+  thumbnails. Private/deleted entries are skipped automatically. Played tracks
+  are collapsed by default; each group can show or clear them, be removed from
+  the queue, or be replayed. Truncated playlists say how many tracks are shown
+  and offer **Load more**, which inserts the next page next to its group.
+- **Playback failures**: when a queued or playlist track cannot be played, the
+  desktop and remote pages name the failed track instead of silently skipping
+  it, with Dismiss and (when it is still queued) Retry actions.
 - **Per-page controls**: choose resolution, codec, audio-only mode, subtitles,
   volume, speed, loop, and extra mpv arguments.
 - **History and resume**: watch history is stored by the local server and
-  partially watched videos resume where they left off.
+  partially watched videos resume where they left off, including queued and
+  playlist tracks when they load. History rows are keyboard-accessible and
+  reveal their actions on focus.
 - **Remote control from a phone**: LAN or Tailscale, with player status,
-  seek/pause/skip, chapters, volume, mute, speed, and recent history.
+  seek/pause/skip, chapters, volume, mute, speed, repeat, artwork and
+  recent-history thumbnails, full grouped queue management (move, remove,
+  shuffle, repeat, clear, load more), played-track replay, playback errors,
+  reconnect feedback, PWA metadata/icons, and a best-effort screen wake lock.
 - **SponsorBlock**: optional mpv Lua script, installed from the desktop app's
   Downloads section.
 - **Injected-UI controls**: turn the page button, thumbnail buttons, and native
   notifications on or off from the extension settings.
+- **Guided setup**: a first-run card detects missing mpv, yt-dlp, and ffmpeg,
+  installs portable copies on Windows, and shows copyable package-manager
+  commands elsewhere.
+- **App updates**: the desktop app checks GitHub Releases at startup and every
+  12 hours, shows the current/latest version in Settings → About, and surfaces
+  an update action in the tray and Settings with release notes and a download
+  link.
+- **Tool manager**: Settings groups the playback engine, extras, and other
+  players; shows versions, portable/system source, size, and which copy is in
+  use; and supports importing existing binaries, opening/revealing the tools
+  folder, cancelling downloads, update checks, removal confirmation, rechecking
+  external installs, and optional automatic yt-dlp updates. Downloaded portable
+  copies are marked as checksum-verified, and manually imported copies are
+  labelled separately.
 - **Safety first**: the API binds to loopback by default, requires a token, and
   remote pairing uses short-lived codes rather than the master token.
 
@@ -51,19 +87,25 @@ Download the latest installer from
 - **macOS** — `Media-Launcher-<version>-mac-x64.dmg` or `...-mac-arm64.dmg`
 - **Linux** — `Media-Launcher-<version>-linux-x86_64.AppImage` or `Media-Launcher-<version>-linux-amd64.deb`
 
-The desktop app bundles and starts the API server. You still need mpv on your
-computer, and yt-dlp is strongly recommended:
+The desktop app bundles and starts the API server. On first launch it checks
+for mpv, yt-dlp, and ffmpeg and shows a setup card when something is missing:
+
+- **Windows** — install portable copies with one click; no admin rights needed.
+- **macOS / Linux** — download yt-dlp in the app and install mpv/ffmpeg with
+  your package manager (the card shows the command to copy):
 
 ```bash
 # macOS (Homebrew)
-brew install mpv yt-dlp
+brew install mpv ffmpeg
 
 # Debian/Ubuntu
-sudo apt install mpv yt-dlp
-
-# Windows (winget)
-winget install mpv yt-dlp
+sudo apt install mpv ffmpeg
 ```
+
+Already have them elsewhere? Point the app at a custom player in Settings or
+put the binaries on `PATH`; the setup card has a **Recheck** action. Portable
+yt-dlp copies are updated automatically at startup and every 12 hours; this can
+be disabled in **Settings → Downloads**.
 
 Releases are unsigned unless Apple/Windows signing credentials were configured.
 Windows SmartScreen and macOS Gatekeeper warnings are expected; the exact
@@ -182,9 +224,16 @@ sync storage.
   subscribe button.
 - **Thumbnails**: hover a video card for a compact **Play** chip. Clicking it
   sends the video without navigating.
-- **Playlists**: pages with a playlist use a playlist-aware button label.
+- **Playlists**: playing a YouTube or Vimeo playlist resolves its tracks and
+  replaces the queue with them; shift-click to append the playlist instead.
+  Up Next groups the tracks under the playlist name, with controls to jump,
+  replay played tracks, clear played tracks, remove the rest of the playlist,
+  or load the next page of a long playlist. Private and deleted videos are
+  filtered out during resolution. Queueing needs an active player.
 - **Queue**: Shift-click any in-page play button (or the playlist badge) to add
-  the video to mpv's queue instead of replacing the current video.
+  the video or playlist to mpv's queue instead of replacing the current video.
+  When you queue a playlist, the extension notification reports how many videos
+  were added.
 
 ### Toolbar popup
 
@@ -220,8 +269,13 @@ Options are grouped into:
 
 1. In the desktop app open **Settings → Remote control** and enable it.
 2. Scan the QR code with a phone on the same LAN (or over Tailscale).
-3. The phone can seek, pause, skip, change chapters, volume, mute, speed, and
-   play recent history.
+3. The phone can seek, pause, skip, change chapters, volume, mute, speed, play
+   recent history, review and replay played playlist tracks, move items in the
+   queue, shuffle, choose repeat modes, clear the queue, load more playlist
+   pages, and dismiss or retry playback errors. Artwork and recent thumbnails
+   are proxied through the local server. On HTTPS/localhost, the page also
+   registers a lightweight service worker, exposes PWA metadata/icons for
+   installable mode, and requests a screen wake lock while visible.
 
 QR codes contain a one-time pairing code, not the API token. The desktop mints
 a fresh code from the local server when the displayed codes are about to

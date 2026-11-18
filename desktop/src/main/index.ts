@@ -11,10 +11,17 @@ import {
   shell,
 } from "electron";
 import {
+  autoUpdateYtDlp,
+  cancelDownload,
   checkUpdate,
   deleteDownload,
   getBinDir,
+  getToolInfo,
+  importTool,
+  invalidateSystemCache,
   listDownloads,
+  openToolsFolder,
+  revealToolPath,
   startDownload,
 } from "./downloads";
 import { checkPlayerExists } from "./player";
@@ -30,25 +37,43 @@ import {
   chapterNext,
   chapterPrev,
   clearHistory,
+  clearPlaybackError,
+  clearPlayedPlaylist,
+  clearQueue,
   deleteHistory,
+  discardSavedQueue,
+  getAutoUpdateYtDlp,
   getHistory,
   getPlayerStatus,
   getRemoteSessions,
+  getSavedQueue,
   getSettings,
   initDatabase,
+  loadMorePlaylist,
+  moveQueueItem,
+  moveQueueItemTo,
+  playQueueItem,
+  queueUrl,
+  removePlaylistFromQueue,
+  removeQueueItem,
   replayUrl,
+  restoreSavedQueue,
   revokeAllRemoteSessions,
   revokeRemoteSession,
   seekTo,
+  setAutoUpdateYtDlp,
+  setRepeatMode,
   setSettings,
   setSpeed,
   setVolume,
+  shuffleQueue,
   skipTrack,
   stopPlayback,
   toggleMute,
   togglePause,
 } from "./store";
 import { createTray, destroyTray, refreshTrayMenu } from "./tray";
+import { checkAppUpdate, getAppUpdateState } from "./updates";
 
 if (require("electron-squirrel-startup")) app.quit();
 
@@ -82,14 +107,22 @@ if (!gotTheLock) {
   } as const;
 
   function createWindow(): void {
-    const { width: screenWidth, height: screenHeight } =
-      screen.getPrimaryDisplay().workAreaSize;
+    const {
+      x: workAreaX,
+      y: workAreaY,
+      width: screenWidth,
+      height: screenHeight,
+    } = screen.getPrimaryDisplay().workArea;
+
+    // Breathing room between the window and the work-area edges.
+    const EDGE_MARGIN = 12;
 
     win = new BrowserWindow({
       width: 560,
-      height: 730,
-      x: screenWidth - 570,
-      y: screenHeight - 740,
+      // Full available screen height, anchored to the right edge.
+      height: screenHeight - EDGE_MARGIN * 2,
+      x: workAreaX + screenWidth - 560 - EDGE_MARGIN,
+      y: workAreaY + EDGE_MARGIN,
       show: false,
       // Frameless look while keeping native window controls (WCO overlay).
       titleBarStyle: "hidden",
@@ -135,6 +168,12 @@ if (!gotTheLock) {
   function registerIPC(): void {
     ipcMain.handle("server:token", () => readServerToken());
     ipcMain.handle("server:status", () => getServerStatus());
+    ipcMain.handle("updates:state", () => getAppUpdateState());
+    ipcMain.handle("updates:check", async () => {
+      const update = await checkAppUpdate(true);
+      if (win) refreshTrayMenu(win);
+      return update;
+    });
     ipcMain.handle("server:probe", (_event, url: string) =>
       probeServerUrl(url),
     );
@@ -182,7 +221,60 @@ if (!gotTheLock) {
     ipcMain.handle("player:mute", () => toggleMute());
     ipcMain.handle("player:speed", (_event, speed: number) => setSpeed(speed));
     ipcMain.handle("player:stop", () => stopPlayback());
+    ipcMain.handle("player:queueRemove", (_event, index: number) =>
+      removeQueueItem(index),
+    );
+    ipcMain.handle(
+      "player:queueMove",
+      (_event, index: number, direction: "up" | "down") =>
+        moveQueueItem(index, direction),
+    );
+    ipcMain.handle(
+      "player:queueMoveTo",
+      (_event, index: number, target: number) => moveQueueItemTo(index, target),
+    );
+    ipcMain.handle("player:queueShuffle", () => shuffleQueue());
+    ipcMain.handle("player:repeat", (_event, mode: "off" | "one" | "all") =>
+      setRepeatMode(mode),
+    );
+    ipcMain.handle("player:queuePlay", (_event, index: number) =>
+      playQueueItem(index),
+    );
+    ipcMain.handle(
+      "player:loadMorePlaylist",
+      (_event, playlistUrl: string, playlistId: string) =>
+        loadMorePlaylist(playlistUrl, playlistId),
+    );
+    ipcMain.handle("player:savedQueue", () => getSavedQueue());
+    ipcMain.handle("player:restoreSavedQueue", () => restoreSavedQueue());
+    ipcMain.handle("player:discardSavedQueue", () => discardSavedQueue());
+    ipcMain.handle("player:queueClear", () => clearQueue());
+    ipcMain.handle("player:queueRemovePlaylist", (_event, playlistId: string) =>
+      removePlaylistFromQueue(playlistId),
+    );
+    ipcMain.handle("player:queueClearPlayed", (_event, playlistId?: string) =>
+      clearPlayedPlaylist(playlistId),
+    );
+    ipcMain.handle("player:clearError", () => clearPlaybackError());
     ipcMain.handle("downloads:list", () => listDownloads());
+    ipcMain.handle("downloads:recheck", () => {
+      invalidateSystemCache();
+      return listDownloads();
+    });
+    ipcMain.handle("downloads:info", () => getToolInfo());
+    ipcMain.handle("downloads:import", () => importTool());
+    ipcMain.handle("downloads:openFolder", () => openToolsFolder());
+    ipcMain.handle("downloads:reveal", (_event, path: string) =>
+      revealToolPath(path),
+    );
+    ipcMain.handle("downloads:cancel", (_event, id: string) =>
+      cancelDownload(id),
+    );
+    ipcMain.handle("downloads:autoUpdate", () => getAutoUpdateYtDlp());
+    ipcMain.handle("downloads:setAutoUpdate", (_event, enabled: boolean) => {
+      setAutoUpdateYtDlp(enabled === true);
+      return getAutoUpdateYtDlp();
+    });
     ipcMain.handle("downloads:start", async (_event, id) => {
       await startDownload(id);
       return listDownloads();
@@ -216,6 +308,7 @@ if (!gotTheLock) {
       return result.filePaths[0] ?? null;
     });
     ipcMain.handle("history:replay", (_event, url) => replayUrl(url));
+    ipcMain.handle("history:queue", (_event, url) => queueUrl(url));
     ipcMain.handle("window:openHistory", () => {
       if (win) {
         if (win.isMinimized()) win.restore();
@@ -276,6 +369,29 @@ if (!gotTheLock) {
     else win.show();
 
     createTray(win);
+
+    const runAutoUpdate = () => {
+      if (!getAutoUpdateYtDlp()) return;
+      void autoUpdateYtDlp().catch((err) => {
+        console.warn(
+          `[download] automatic yt-dlp update failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+    };
+    runAutoUpdate();
+    const autoUpdateTimer = setInterval(runAutoUpdate, 12 * 60 * 60 * 1000);
+    autoUpdateTimer.unref?.();
+
+    const checkUpdates = () => {
+      void checkAppUpdate().then((update) => {
+        if (update.updateAvailable && win) refreshTrayMenu(win);
+      });
+    };
+    checkUpdates();
+    const updateTimer = setInterval(checkUpdates, 12 * 60 * 60 * 1000);
+    updateTimer.unref?.();
 
     globalShortcut.register("CommandOrControl+Shift+M", () => {
       if (win) {

@@ -39,6 +39,9 @@ export async function getServerUrl(): Promise<string | null> {
 export interface SendResult {
   success: boolean;
   error?: string;
+  /** Number of entries added when queueing (a playlist may add many). */
+  queuedCount?: number;
+  playlistTitle?: string;
 }
 
 export interface ServerHealthInfo {
@@ -139,7 +142,9 @@ export async function sendUrl(
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ url, options: mpvArgs, title, queue }),
-      signal: AbortSignal.timeout(10000),
+      // Playlist URLs are resolved server-side with yt-dlp before the request
+      // completes, which can take longer than a single-video send.
+      signal: AbortSignal.timeout(30000),
     });
 
     if (res.status === 401) {
@@ -151,13 +156,38 @@ export async function sendUrl(
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      let detail = text;
+      try {
+        const parsed = JSON.parse(text) as { err?: unknown };
+        if (typeof parsed.err === "string") detail = parsed.err;
+      } catch {
+        /* keep the raw body */
+      }
       return {
         success: false,
-        error: `Server error: ${res.status}${text ? ` - ${text}` : ""}`,
+        error: detail || `Server error: ${res.status}`,
       };
     }
 
-    return { success: true };
+    const data: unknown = await res.json().catch(() => null);
+    const playlist =
+      data && typeof data === "object" && "playlist" in data
+        ? (data as {
+            playlist?: { count?: unknown; title?: unknown } | null;
+          }).playlist
+        : null;
+    const queuedCount =
+      queue === true
+        ? typeof playlist?.count === "number"
+          ? playlist.count
+          : 1
+        : undefined;
+    return {
+      success: true,
+      queuedCount,
+      playlistTitle:
+        typeof playlist?.title === "string" ? playlist.title : undefined,
+    };
   } catch (error) {
     // The cached server URL is stale — clear it so the next call re-discovers.
     cachedServerUrl = null;

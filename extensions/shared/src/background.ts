@@ -1,9 +1,15 @@
-import { getServerUrl, sendUrl } from "@shared/api";
+import { getServerUrl, sendUrl, type SendResult } from "@shared/api";
 import { EXPECTED_SERVER_API_VERSION } from "@shared/discovery";
 import { ext } from "@shared/ext";
 import { getSettings, migrateAuthToken } from "@shared/settings";
 
 const LOGO = chrome.runtime.getURL("play-logo.png");
+
+function successLabel(result: SendResult, queued: boolean): string {
+  if (!queued) return "Sent to player";
+  const count = result.queuedCount ?? 1;
+  return count > 1 ? `Queued ${count} videos` : "Queued in player";
+}
 
 // Move a legacy sync-stored API token into local storage as soon as the
 // background context starts, so it stops syncing across devices.
@@ -243,7 +249,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         if (msg.success) {
           setTemporaryBadge("✓", "#22c55e");
-          notify(msg.queued ? "Queued in player" : "Sent to player", thumb);
+          const count =
+            typeof msg.queuedCount === "number" ? msg.queuedCount : 1;
+          notify(
+            msg.queued
+              ? count > 1
+                ? `Queued ${count} videos`
+                : "Queued in player"
+              : "Sent to player",
+            thumb,
+          );
         } else {
           setTemporaryBadge("✗", "#ef4444");
           notify(msg.error ?? "Failed", thumb);
@@ -280,7 +295,7 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
   const result = await sendUrl(url, undefined, queue);
   if (result.success) {
     setTemporaryBadge("✓", "#22c55e");
-    notify(queue ? "Queued in player" : "Sent to player", thumb);
+    notify(successLabel(result, queue), thumb);
   } else {
     setTemporaryBadge("✗", "#ef4444");
     notify(result.error ?? "Failed", thumb);
@@ -304,7 +319,7 @@ chrome.commands.onCommand.addListener((command) => {
     const result = await sendUrl(url, undefined, queue);
     if (result.success) {
       setTemporaryBadge("✓", "#22c55e");
-      notify(queue ? "Queued in player" : "Sent to player", thumb);
+      notify(successLabel(result, queue), thumb);
     } else {
       setTemporaryBadge("✗", "#ef4444");
       notify(result.error ?? "Failed", thumb);

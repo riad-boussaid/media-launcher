@@ -128,9 +128,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const serverLabel = serverUrl
-    ? serverUrl.replace(/^https?:\/\//, "")
-    : "online";
+  const serverDetail = serverUrl ?? "localhost";
 
   return (
     <div className="h-screen flex flex-col bg-base">
@@ -166,7 +164,7 @@ export default function App() {
                 onClick={() => setTab(t.key)}
               >
                 <t.icon />
-                <span className="text-[10px] font-medium leading-none">
+                <span className="text-[10.5px] font-medium leading-none">
                   {t.label}
                 </span>
               </button>
@@ -174,27 +172,39 @@ export default function App() {
           })}
 
           <div
-            className="mt-auto flex flex-col items-center gap-1.5 pt-2"
+            className="mt-auto flex items-center justify-center pt-2"
             title={
               serverOnline === null
                 ? "Checking server…"
                 : serverOnline
-                  ? `Server running at ${serverUrl ?? "localhost"}`
+                  ? `Server running at ${serverDetail}`
                   : "Server not responding"
             }
           >
             <span
-              className={`status-dot ${
-                serverOnline === null ? "" : serverOnline ? "online" : "offline"
-              }`}
-              style={
-                serverOnline === null
-                  ? { background: "var(--color-muted)" }
-                  : undefined
-              }
-            />
-            <span className="text-[9px] text-muted leading-none">
-              {serverOnline ? serverLabel : "offline"}
+              className="flex items-center gap-1 h-6 px-1.5 rounded-full border border-border bg-card text-[10.5px] font-medium text-text-dim"
+              role="status"
+              aria-live="polite"
+            >
+              <span
+                className={`status-dot ${
+                  serverOnline === null
+                    ? ""
+                    : serverOnline
+                      ? "online"
+                      : "offline"
+                }`}
+                style={
+                  serverOnline === null
+                    ? { background: "var(--color-muted)" }
+                    : undefined
+                }
+              />
+              {serverOnline === null
+                ? "…"
+                : serverOnline
+                  ? "Online"
+                  : "Offline"}
             </span>
           </div>
         </nav>

@@ -1,5 +1,12 @@
 import { join } from "node:path";
-import { app, type BrowserWindow, Menu, nativeImage, Tray } from "electron";
+import {
+  app,
+  type BrowserWindow,
+  Menu,
+  nativeImage,
+  shell,
+  Tray,
+} from "electron";
 import {
   getPlayerStatus,
   getSettings,
@@ -8,6 +15,7 @@ import {
   skipTrack,
   togglePause,
 } from "./store";
+import { getAppUpdateState } from "./updates";
 
 let tray: Tray | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -55,6 +63,20 @@ async function buildMenu(
       },
     },
   ];
+
+  const update = getAppUpdateState();
+  if (update?.updateAvailable) {
+    items.push(
+      {
+        label: `Update available: v${update.latestVersion}`,
+        click: () => {
+          const url = update.downloadUrl ?? update.releaseUrl;
+          if (url) void shell.openExternal(url);
+        },
+      },
+      { type: "separator" },
+    );
+  }
 
   if (player.alive && player.url) {
     items.push(
@@ -118,20 +140,24 @@ export function createTray(win: BrowserWindow): void {
   const refresh = async () => {
     try {
       const player = await getPlayerStatus();
-      tray?.setToolTip(
-        player.alive
-          ? `media-launcher — ${truncate(
-              player.title || displayName(player.url ?? "", ""),
-            )}`
-          : "media-launcher",
-      );
-      // Rebuild the context menu only when playback state changed.
+      const updateSuffix = getAppUpdateState()?.updateAvailable
+        ? " — update available"
+        : "";
+      const tooltip = player.alive
+        ? `media-launcher — ${truncate(
+            player.title || displayName(player.url ?? "", ""),
+          )}`
+        : "media-launcher";
+      tray?.setToolTip(tooltip + updateSuffix);
+      // Rebuild the context menu only when playback or update state changed.
       const state = JSON.stringify([
         player.alive,
         player.ipcReady,
         player.paused,
         player.title,
         player.queue.length,
+        getAppUpdateState()?.latestVersion,
+        getAppUpdateState()?.updateAvailable,
       ]);
       if (state !== lastMenuState) {
         lastMenuState = state;

@@ -29,8 +29,44 @@ export interface Settings {
 }
 
 export interface PlayerQueueEntry {
+  index: number;
   url: string;
   title: string;
+  thumbnail: string;
+  source: "queue" | "playlist";
+  playlistId: string | null;
+  playlistTitle: string | null;
+  playlistUrl: string | null;
+  playlistTotal: number | null;
+  playlistTruncated: boolean;
+  playlistIndex: number | null;
+}
+
+export interface PlaybackError {
+  url: string;
+  title: string;
+  playlistTitle: string | null;
+  playlistIndex: number | null;
+  message: string;
+}
+
+export interface SavedQueueEntry {
+  url: string;
+  title: string;
+  thumbnail: string;
+  source: "queue" | "playlist";
+  playlistId: string | null;
+  playlistTitle: string | null;
+  playlistUrl: string | null;
+  playlistTotal: number | null;
+  playlistTruncated: boolean;
+  playlistIndex: number | null;
+}
+
+export interface SavedQueue {
+  savedAt: number;
+  current: SavedQueueEntry | null;
+  entries: SavedQueueEntry[];
 }
 
 export interface PlayerChapter {
@@ -44,15 +80,26 @@ export interface PlayerStatus {
   ipcReady: boolean;
   url: string | null;
   title: string;
+  thumbnail: string;
+  source: "queue" | "playlist" | null;
+  playlistId: string | null;
+  playlistTitle: string | null;
+  playlistUrl: string | null;
+  playlistTotal: number | null;
+  playlistTruncated: boolean;
+  playlistIndex: number | null;
+  error: PlaybackError | null;
   position: number;
   duration: number;
   paused: boolean;
   queue: PlayerQueueEntry[];
+  past: PlayerQueueEntry[];
   chapters: PlayerChapter[];
   chapter: number | null;
   volume: number;
   muted: boolean;
   speed: number;
+  repeat: "off" | "one" | "all";
 }
 
 function normalizeServerUrl(url: string): string {
@@ -80,13 +127,18 @@ function localConfigPath(): string {
   return join(app.getPath("userData"), "config.json");
 }
 
-function readLocalConfig(): { serverUrl: string; remoteEnabled: boolean } {
+function readLocalConfig(): {
+  serverUrl: string;
+  remoteEnabled: boolean;
+  autoUpdateYtDlp: boolean;
+} {
   const path = localConfigPath();
   if (existsSync(path)) {
     try {
       const parsed = JSON.parse(readFileSync(path, "utf-8")) as {
         serverUrl?: string;
         remoteEnabled?: boolean;
+        autoUpdateYtDlp?: boolean;
       };
       return {
         serverUrl: normalizeServerUrl(
@@ -97,17 +149,27 @@ function readLocalConfig(): { serverUrl: string; remoteEnabled: boolean } {
           ),
         ),
         remoteEnabled: parsed.remoteEnabled === true,
+        autoUpdateYtDlp: parsed.autoUpdateYtDlp !== false,
       };
     } catch {
-      return { serverUrl: getEmbeddedServerUrl(), remoteEnabled: false };
+      return {
+        serverUrl: getEmbeddedServerUrl(),
+        remoteEnabled: false,
+        autoUpdateYtDlp: true,
+      };
     }
   }
-  return { serverUrl: getEmbeddedServerUrl(), remoteEnabled: false };
+  return {
+    serverUrl: getEmbeddedServerUrl(),
+    remoteEnabled: false,
+    autoUpdateYtDlp: true,
+  };
 }
 
 function writeLocalConfig(patch: {
   serverUrl?: string;
   remoteEnabled?: boolean;
+  autoUpdateYtDlp?: boolean;
 }): void {
   const current = readLocalConfig();
   writeFileSync(
@@ -122,11 +184,23 @@ function writeLocalConfig(patch: {
           patch.remoteEnabled !== undefined
             ? patch.remoteEnabled
             : current.remoteEnabled,
+        autoUpdateYtDlp:
+          patch.autoUpdateYtDlp !== undefined
+            ? patch.autoUpdateYtDlp
+            : current.autoUpdateYtDlp,
       },
       null,
       2,
     ),
   );
+}
+
+export function getAutoUpdateYtDlp(): boolean {
+  return readLocalConfig().autoUpdateYtDlp;
+}
+
+export function setAutoUpdateYtDlp(enabled: boolean): void {
+  writeLocalConfig({ autoUpdateYtDlp: enabled });
 }
 
 function getServerUrl(): string {
@@ -267,15 +341,26 @@ export async function getPlayerStatus(): Promise<PlayerStatus> {
       ipcReady: false,
       url: null,
       title: "",
+      thumbnail: "",
+      source: null,
+      playlistId: null,
+      playlistTitle: null,
+      playlistUrl: null,
+      playlistTotal: null,
+      playlistTruncated: false,
+      playlistIndex: null,
+      error: null,
       position: 0,
       duration: 0,
       paused: false,
       queue: [],
+      past: [],
       chapters: [],
       chapter: null,
       volume: 0,
       muted: false,
       speed: 1,
+      repeat: "off",
     };
   }
 }
@@ -373,6 +458,178 @@ export async function stopPlayback(): Promise<boolean> {
   }
 }
 
+export async function removeQueueItem(index: number): Promise<boolean> {
+  try {
+    await api("/player/queue/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function moveQueueItem(
+  index: number,
+  direction: "up" | "down",
+): Promise<boolean> {
+  try {
+    await api("/player/queue/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index, direction }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function moveQueueItemTo(
+  index: number,
+  target: number,
+): Promise<boolean> {
+  try {
+    await api("/player/queue/move-to", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index, target }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function shuffleQueue(): Promise<boolean> {
+  try {
+    await api("/player/queue/shuffle", { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function setRepeatMode(
+  mode: "off" | "one" | "all",
+): Promise<boolean> {
+  try {
+    await api("/player/repeat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function playQueueItem(index: number): Promise<boolean> {
+  try {
+    await api("/player/queue/play", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function loadMorePlaylist(
+  playlistUrl: string,
+  playlistId: string,
+): Promise<boolean> {
+  try {
+    await api("/player/queue/load-playlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playlistUrl, playlistId }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function getSavedQueue(): Promise<SavedQueue | null> {
+  try {
+    return await api<SavedQueue | null>("/player/saved-queue");
+  } catch {
+    return null;
+  }
+}
+
+export async function restoreSavedQueue(): Promise<boolean> {
+  try {
+    await api("/player/queue/restore", { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function discardSavedQueue(): Promise<boolean> {
+  try {
+    await api("/player/saved-queue", { method: "DELETE" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function clearQueue(): Promise<boolean> {
+  try {
+    await api("/player/queue/clear", { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function removePlaylistFromQueue(
+  playlistId: string,
+): Promise<boolean> {
+  try {
+    await api("/player/queue/remove-playlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playlistId }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function clearPlayedPlaylist(
+  playlistId?: string,
+): Promise<boolean> {
+  try {
+    await api("/player/queue/clear-played", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(playlistId ? { playlistId } : {}),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function clearPlaybackError(): Promise<boolean> {
+  try {
+    await api("/player/clear-error", { method: "POST" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface RemoteSessionInfo {
   id: string;
   device: string;
@@ -400,8 +657,9 @@ export async function revokeAllRemoteSessions(): Promise<void> {
   await api("/remote/sessions", { method: "DELETE" });
 }
 
-export async function replayUrl(
+async function sendUrl(
   url: string,
+  queue: boolean,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const headers: Record<string, string> = {
@@ -412,7 +670,7 @@ export async function replayUrl(
     const res = await fetch(`${getServerUrl()}/`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, queue }),
     });
     if (!res.ok) {
       const data: unknown = await res.json().catch(() => null);
@@ -430,6 +688,31 @@ export async function replayUrl(
     const message = err instanceof Error ? err.message : String(err);
     return { success: false, error: message };
   }
+}
+
+export async function replayUrl(
+  url: string,
+): Promise<{ success: boolean; error?: string }> {
+  return sendUrl(url, false);
+}
+
+export async function queueUrl(
+  url: string,
+): Promise<{ success: boolean; error?: string }> {
+  // The server treats queue=true as "play" when no player is running. Refuse
+  // that here so queueing from history never unexpectedly starts playback.
+  try {
+    const status = await api<PlayerStatus>("/player");
+    if (!status.alive || !status.ipcReady) {
+      return {
+        success: false,
+        error: "Start a video before queueing another.",
+      };
+    }
+  } catch {
+    return { success: false, error: "Could not reach the player." };
+  }
+  return sendUrl(url, true);
 }
 
 export async function addHistory(

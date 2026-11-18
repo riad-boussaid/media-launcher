@@ -8,26 +8,39 @@ import {
   useState,
 } from "react";
 import type {
+  AppUpdateInfo,
   DownloadItem,
   ProbeResult,
   Settings,
+  ToolInfo,
   UpdateCheck,
 } from "../lib/api";
 import {
+  cancelDownload,
+  checkAppUpdate,
   checkPlayer,
   checkUpdate,
   deleteDownload,
+  getAppUpdateState,
+  getAutoUpdateYtDlp,
   getDownloads,
+  getPlatform,
   getRemoteSessions,
   getRemoteUrls,
   getSettings,
+  getToolInfo,
+  importTool,
   openExternal,
+  openToolsFolder,
   pickExecutable,
   probeServerUrl,
   type RemoteSessionInfo,
   type RemoteUrls,
+  recheckDownloads,
+  revealTool,
   revokeAllRemoteSessions,
   revokeRemoteSession,
+  setAutoUpdateYtDlp,
   setSettings,
   startDownload,
 } from "../lib/api";
@@ -48,6 +61,25 @@ const PLAYER_EXE: Record<string, (s: Settings) => string> = {
 };
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
+
+function formatBytes(bytes: number | null): string {
+  if (!bytes || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${
+    units[unit]
+  }`;
+}
+
+function versionLabel(id: string, version: string | null): string {
+  if (!version) return "";
+  return id === "yt-dlp" ? `v${version}` : version;
+}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -72,7 +104,7 @@ function Field({
       <label className="field-label">{label}</label>
       {children}
       {hint && (
-        <p className="text-[11px] text-muted mt-1.5 leading-snug">{hint}</p>
+        <p className="text-[12px] text-muted mt-1.5 leading-snug">{hint}</p>
       )}
     </div>
   );
@@ -101,11 +133,29 @@ function ToggleRow({
       </span>
       <span className="flex flex-col gap-0.5">
         <span className="text-sm text-text">{label}</span>
-        <span className="text-[11px] text-muted leading-snug">
+        <span className="text-[12px] text-muted leading-snug">
           {description}
         </span>
       </span>
     </label>
+  );
+}
+
+function SettingsSkeleton() {
+  return (
+    <div
+      className="flex flex-col gap-4"
+      role="status"
+      aria-label="Loading settings"
+    >
+      {[0, 1, 2].map((index) => (
+        <div key={index} className="card p-4 animate-pulse">
+          <div className="h-2.5 w-24 rounded bg-elevated mb-4" />
+          <div className="h-9 w-full rounded-lg bg-elevated/80 mb-2" />
+          <div className="h-9 w-2/3 rounded-lg bg-elevated/60" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -120,6 +170,13 @@ export default function SettingsPage() {
   >("unknown");
   const [checking, setChecking] = useState(false);
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
+  const [toolInfo, setToolInfo] = useState<ToolInfo[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [autoUpdateYtDlp, setAutoUpdateState] = useState(true);
+  const [checkingDownloads, setCheckingDownloads] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState(false);
+  const [appUpdate, setAppUpdate] = useState<AppUpdateInfo | null>(null);
+  const [checkingAppUpdate, setCheckingAppUpdate] = useState(false);
   const [token, setToken] = useState("");
   const [copied, setCopied] = useState(false);
   const [showToken, setShowToken] = useState(false);
@@ -133,10 +190,12 @@ export default function SettingsPage() {
   const [copiedTransport, setCopiedTransport] = useState<
     "lan" | "tailscale" | null
   >(null);
-  const [copiedCodeTransport, setCopiedCodeTransport] = useState<
-    "lan" | "tailscale" | null
-  >(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [pairTransport, setPairTransport] = useState<"lan" | "tailscale">(
+    "lan",
+  );
   const [nowTs, setNowTs] = useState(() => Date.now());
+  const [settingsError, setSettingsError] = useState(false);
   const { theme, setTheme } = useTheme();
 
   const loadedRef = useRef(false);
@@ -223,17 +282,46 @@ export default function SettingsPage() {
     [flushSave],
   );
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
+  const loadSettings = useCallback(() => {
+    setSettingsError(false);
+    getSettings()
+      .then((s) => {
+        settingsRef.current = s;
+        setLocal(s);
+        loadedRef.current = true;
+        verifyPlayer(s);
+      })
+      .catch(() => setSettingsError(true));
+    void getDownloads()
+      .then(setDownloads)
+      .catch(() => {});
+  }, [verifyPlayer]);
+
+  const refreshToolInfo = useCallback(async () => {
+    try {
+      setToolInfo(await getToolInfo());
+    } catch {
+      /* leave the last known versions */
+    }
+  }, []);
+
   useEffect(() => {
-    getSettings().then((s) => {
-      settingsRef.current = s;
-      setLocal(s);
-      loadedRef.current = true;
-      verifyPlayer(s);
-    });
-    void getDownloads().then(setDownloads);
+    loadSettings();
+    void refreshToolInfo();
+    void getAutoUpdateYtDlp()
+      .then(setAutoUpdateState)
+      .catch(() => {});
     void checkUpdate("yt-dlp")
       .then(setUpdateCheck)
+      .catch(() => {});
+    void getAppUpdateState()
+      .then((info) => {
+        setAppUpdate(info);
+        if (!info) {
+          return checkAppUpdate().then(setAppUpdate);
+        }
+        return undefined;
+      })
       .catch(() => {});
     // Flush a pending debounced save when leaving the page.
     return () => {
@@ -245,7 +333,7 @@ export default function SettingsPage() {
         }
       }
     };
-  }, []);
+  }, [loadSettings, refreshToolInfo]);
 
   const refreshDownloads = useCallback(async () => {
     setDownloads(await getDownloads());
@@ -370,13 +458,13 @@ export default function SettingsPage() {
           />
         )}
         <div className="min-w-0 flex-1 basis-64">
-          <p className="text-[11px] text-text font-medium leading-snug m-0">
+          <p className="text-[12px] text-text font-medium leading-snug m-0">
             {label}
           </p>
-          <p className="text-[10px] text-muted leading-snug m-0">{hint}</p>
+          <p className="text-[11px] text-muted leading-snug m-0">{hint}</p>
           {pairingCode && (
             <div className="mt-2">
-              <div className="text-[9px] text-muted uppercase tracking-[0.06em] font-semibold mb-1">
+              <div className="text-[10px] text-muted uppercase tracking-[0.06em] font-semibold mb-1">
                 One-time code
               </div>
               <div className="flex items-center gap-2 rounded-md border border-border bg-background/40 px-2 py-1">
@@ -389,14 +477,14 @@ export default function SettingsPage() {
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(pairingCode);
-                      setCopiedCodeTransport(transport);
-                      setTimeout(() => setCopiedCodeTransport(null), 2000);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2000);
                     } catch {
                       showToast("Copy failed — select the code manually");
                     }
                   }}
                 >
-                  {copiedCodeTransport === transport ? "Copied" : "Copy code"}
+                  {copiedCode ? "Copied" : "Copy code"}
                 </button>
               </div>
             </div>
@@ -417,7 +505,7 @@ export default function SettingsPage() {
             >
               {copiedTransport === transport ? "Copied" : "Copy link"}
             </button>
-            <span className="min-w-0 truncate text-[10px] text-muted">
+            <span className="min-w-0 truncate text-[11px] text-muted">
               {remotePage}
             </span>
           </div>
@@ -429,6 +517,7 @@ export default function SettingsPage() {
   const handleDownload = async (id: string) => {
     try {
       setDownloads(await startDownload(id));
+      void refreshToolInfo();
       // Refresh the update badge (a fresh install may close the gap).
       void checkUpdate("yt-dlp")
         .then(setUpdateCheck)
@@ -440,12 +529,429 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteDownload(id);
-    void refreshDownloads();
+  const handleCancel = async (id: string) => {
+    try {
+      const cancelled = await cancelDownload(id);
+      if (!cancelled) {
+        showToast("Download is finishing up and can't be cancelled");
+      }
+      await refreshDownloads();
+    } catch (err: unknown) {
+      showToast(
+        `Could not cancel: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   };
 
-  if (!settings) return null;
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteDownload(id);
+      setConfirmDelete(null);
+      void refreshDownloads();
+      void refreshToolInfo();
+    } catch (err: unknown) {
+      showToast(
+        `Could not remove tool: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  };
+
+  const handleRecheck = async () => {
+    try {
+      setDownloads(await recheckDownloads());
+      await refreshToolInfo();
+      showToast("Rechecked installed tools", "toast-success");
+    } catch (err: unknown) {
+      showToast(
+        `Recheck failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  const handleImport = async () => {
+    try {
+      const id = await importTool();
+      if (!id) return;
+      await refreshDownloads();
+      await refreshToolInfo();
+      showToast(`${id} imported`, "toast-success");
+    } catch (err: unknown) {
+      showToast(
+        `Import failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  const handleOpenFolder = async () => {
+    try {
+      await openToolsFolder();
+    } catch (err: unknown) {
+      showToast(
+        `Could not open the tools folder: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  };
+
+  const handleReveal = async (path: string) => {
+    if (!(await revealTool(path))) {
+      showToast("That tool file no longer exists");
+    }
+  };
+
+  const handleCheckUpdates = async () => {
+    setCheckingDownloads(true);
+    try {
+      const result = await checkUpdate("yt-dlp");
+      setUpdateCheck(result);
+      showToast(
+        !result.installedVersion
+          ? "No portable yt-dlp to update — system copies are managed externally"
+          : result.updateAvailable
+            ? `yt-dlp update available: ${result.installedVersion} → ${result.latestVersion}`
+            : "yt-dlp is up to date",
+        "toast-success",
+      );
+    } catch {
+      showToast("Could not check for updates");
+    } finally {
+      setCheckingDownloads(false);
+    }
+  };
+
+  const handleUpdateAll = async () => {
+    if (updateCheck?.updateAvailable) {
+      await handleDownload("yt-dlp");
+      return;
+    }
+    await handleCheckUpdates();
+  };
+
+  const handleAutoUpdate = async (enabled: boolean) => {
+    setAutoUpdateState(enabled);
+    try {
+      setAutoUpdateState(await setAutoUpdateYtDlp(enabled));
+    } catch {
+      showToast("Could not save the auto-update setting");
+    }
+  };
+
+  const handleCheckAppUpdate = async () => {
+    setCheckingAppUpdate(true);
+    try {
+      const info = await checkAppUpdate();
+      setAppUpdate(info);
+      if (info.error) {
+        showToast(`Update check failed: ${info.error}`);
+      } else if (info.updateAvailable) {
+        showToast(
+          `Version ${info.latestVersion} is available`,
+          "toast-success",
+        );
+      } else {
+        showToast("media-launcher is up to date", "toast-success");
+      }
+    } catch {
+      showToast("Could not check for updates");
+    } finally {
+      setCheckingAppUpdate(false);
+    }
+  };
+
+  const copyInstallCommand = async (command: string) => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedCommand(true);
+      setTimeout(() => setCopiedCommand(false), 1800);
+    } catch {
+      showToast("Copy failed — select the command manually");
+    }
+  };
+
+  const platform = getPlatform();
+  const infoById = new Map(toolInfo.map((info) => [info.id, info]));
+  const downloadById = new Map(downloads.map((item) => [item.id, item]));
+  const isReady = (item: DownloadItem) =>
+    item.installed || item.systemAvailable;
+  const pick = (ids: string[]) =>
+    ids
+      .map((id) => downloadById.get(id))
+      .filter((item): item is DownloadItem => Boolean(item));
+
+  const engine = pick(["mpv", "yt-dlp", "ffmpeg"]);
+  const missingManual = engine.filter(
+    (item) =>
+      !isReady(item) &&
+      !item.canDownload &&
+      (item.id === "mpv" || item.id === "ffmpeg"),
+  );
+  const visibleEngine = engine.filter(
+    (item) => !missingManual.some((missing) => missing.id === item.id),
+  );
+  const extras = pick(["sponsorblock"]);
+  const otherPlayers = pick(["iina", "potplayer"]).filter(
+    (item) => item.platform !== null || isReady(item),
+  );
+  const installCommand =
+    missingManual.length > 0
+      ? `${
+          platform === "darwin" ? "brew install" : "sudo apt install"
+        } ${missingManual.map((item) => item.id).join(" ")}`
+      : "";
+  const portableBytes = toolInfo
+    .filter((info) => info.source === "portable")
+    .reduce((sum, info) => sum + (info.sizeBytes ?? 0), 0);
+  const portableSize = formatBytes(portableBytes);
+
+  const renderDownload = (d: DownloadItem) => {
+    const info = infoById.get(d.id);
+    const version = versionLabel(d.id, info?.version ?? null);
+    const source =
+      info?.source === "portable"
+        ? "Portable"
+        : info?.source === "system"
+          ? "System"
+          : null;
+    const size = formatBytes(info?.sizeBytes ?? null) || d.size;
+    const inUse =
+      info?.source !== null &&
+      info?.source !== undefined &&
+      ((d.id === "mpv" && settings?.player === "mpv") ||
+        (d.id === "iina" && settings?.player === "iina") ||
+        (d.id === "potplayer" && settings?.player === "potplayer") ||
+        d.id === "yt-dlp" ||
+        d.id === "ffmpeg");
+    const hasUpdate = d.id === "yt-dlp" && updateCheck?.updateAvailable;
+    const toolPath = info?.path ?? null;
+    const verifiedAt = info?.verifiedAt ?? null;
+    const imported = info?.imported ?? false;
+    return (
+      <div
+        key={d.id}
+        className="flex justify-between items-center bg-surface border border-border rounded-lg p-3 mb-2 last:mb-0 gap-3"
+      >
+        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <strong className="text-[13px]">{d.name}</strong>
+            {version && (
+              <span className="rounded bg-elevated px-1.5 py-0.5 text-[10px] text-text-dim">
+                {version}
+              </span>
+            )}
+            {source && (
+              <span className="text-[10px] uppercase tracking-[0.05em] text-muted">
+                {source}
+              </span>
+            )}
+            {verifiedAt && (
+              <span
+                className="text-[10px] font-medium text-success"
+                title={`Checksum verified ${new Date(
+                  verifiedAt,
+                ).toLocaleDateString()}`}
+              >
+                Verified
+              </span>
+            )}
+            {imported && (
+              <span className="text-[10px] text-muted">Imported</span>
+            )}
+            {inUse && (
+              <span className="text-[10px] font-medium text-accent">
+                In use
+              </span>
+            )}
+          </div>
+          <span className="text-[12px] text-muted leading-snug">
+            {d.description}
+          </span>
+          <span className="text-[11px] text-muted/80">
+            {size}
+            {!d.platform && !isReady(d) ? " · install separately" : ""}
+          </span>
+          {hasUpdate && (
+            <span className="text-[11px] text-warning mt-0.5">
+              Update available: v{updateCheck?.installedVersion} → v
+              {updateCheck?.latestVersion}
+            </span>
+          )}
+          {d.status === "downloading" && (
+            <div className="flex items-center gap-2 mt-1">
+              <div
+                className="progress-track flex-1"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={
+                  d.progress !== null && d.progress >= 0
+                    ? Math.round(d.progress * 100)
+                    : undefined
+                }
+                aria-valuetext={
+                  d.progress !== null && d.progress >= 0
+                    ? `${Math.round(d.progress * 100)}%`
+                    : "Downloading"
+                }
+              >
+                <div
+                  className={`progress-fill ${
+                    d.progress === null || d.progress < 0 ? "indeterminate" : ""
+                  }`}
+                  style={
+                    d.progress !== null && d.progress >= 0
+                      ? { width: `${Math.round(d.progress * 100)}%` }
+                      : undefined
+                  }
+                />
+              </div>
+              <span className="text-[11px] text-accent whitespace-nowrap">
+                {d.progress !== null && d.progress >= 0
+                  ? `${Math.round(d.progress * 100)}%`
+                  : "…"}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {toolPath && (
+            <button
+              type="button"
+              className="flex h-6 w-6 items-center justify-center rounded border-none bg-transparent text-muted cursor-pointer transition-colors hover:bg-elevated hover:text-text"
+              title="Show in folder"
+              aria-label={`Show ${d.name} in folder`}
+              onClick={() => void handleReveal(toolPath)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="13"
+                height="13"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              </svg>
+            </button>
+          )}
+          {d.status === "downloading" ? (
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => void handleCancel(d.id)}
+            >
+              Cancel
+            </button>
+          ) : d.systemAvailable && !d.installed ? (
+            <span className="text-[12px] text-success whitespace-nowrap">
+              On system
+            </span>
+          ) : d.canDownload ? (
+            !d.installed ? (
+              <button
+                type="button"
+                className="btn-primary btn-sm"
+                onClick={() => void handleDownload(d.id)}
+              >
+                {d.status === "error" ? "Retry" : "Download"}
+              </button>
+            ) : confirmDelete === d.id ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="text-[11px] font-medium text-danger cursor-pointer hover:underline"
+                  onClick={() => void handleDelete(d.id)}
+                >
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  className="text-[11px] text-muted cursor-pointer hover:text-text"
+                  onClick={() => setConfirmDelete(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                {hasUpdate && (
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm"
+                    onClick={() => void handleDownload(d.id)}
+                  >
+                    Update
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => setConfirmDelete(d.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            )
+          ) : d.url ? (
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => {
+                if (d.url) void openExternal(d.url);
+              }}
+            >
+              Website
+            </button>
+          ) : d.installed ? (
+            <span className="text-[12px] text-success whitespace-nowrap">
+              Installed
+            </span>
+          ) : (
+            <span className="text-xs text-muted">Install separately</span>
+          )}
+          {d.status === "error" && d.error && (
+            <span className="text-[12px] text-danger" title={d.error}>
+              Error
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  if (!settings) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-text m-0">Settings</h2>
+        </div>
+        {settingsError ? (
+          <div className="card p-6 text-center">
+            <p className="text-sm font-medium text-text m-0">
+              Couldn't load settings
+            </p>
+            <p className="text-xs text-muted mt-1.5 mb-0">
+              The local server may still be starting.
+            </p>
+            <button
+              type="button"
+              className="btn-primary mt-4"
+              onClick={loadSettings}
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <SettingsSkeleton />
+        )}
+      </div>
+    );
+  }
 
   const isHttpUrl = (value: string) => {
     try {
@@ -468,6 +974,18 @@ export default function SettingsPage() {
             Math.floor((codeRemainingMs % 60000) / 1000),
           ).padStart(2, "0")}`
         : "Expired";
+
+  const lanPairReady = Boolean(remoteUrls?.lan && qrLan);
+  const tailscalePairReady = Boolean(remoteUrls?.tailscale && qrTailscale);
+  const activePairTransport: "lan" | "tailscale" =
+    pairTransport === "tailscale" && tailscalePairReady
+      ? "tailscale"
+      : lanPairReady
+        ? "lan"
+        : "tailscale";
+  const activePairUrl =
+    activePairTransport === "lan" ? remoteUrls?.lan : remoteUrls?.tailscale;
+  const activePairQr = activePairTransport === "lan" ? qrLan : qrTailscale;
 
   const handleProbe = async () => {
     setProbing(true);
@@ -532,7 +1050,7 @@ export default function SettingsPage() {
         <h2 className="text-base font-semibold text-text m-0">Settings</h2>
         {saveState !== "idle" && (
           <span
-            className={`flex items-center gap-1.5 text-[11px] ${
+            className={`flex items-center gap-1.5 text-[12px] ${
               saveState === "error" ? "text-danger" : "text-muted"
             }`}
           >
@@ -550,6 +1068,512 @@ export default function SettingsPage() {
           </span>
         )}
       </div>
+
+      <Section title="Playback">
+        <Field
+          label="Media player"
+          hint={
+            statusText ? (
+              <span
+                className={
+                  playerStatus === "missing" ? "text-warning" : "text-muted"
+                }
+              >
+                {statusDot}
+                {PLAYERS.find((p) => p.value === settings.player)?.label ||
+                  settings.player}{" "}
+                {statusText}
+                {playerStatus === "missing" &&
+                  settings.player === "mpv" &&
+                  " — you can download a portable copy in Downloads below"}
+              </span>
+            ) : undefined
+          }
+        >
+          <select
+            className="input select"
+            value={settings.player}
+            onChange={(e) => update({ player: e.target.value })}
+          >
+            {PLAYERS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {playerStatus === "missing" && (
+          <div className="flex items-center justify-between gap-3 mb-3 -mt-1">
+            <p className="text-[12px] text-warning leading-snug m-0">
+              Player executable not found in PATH. Install it, download it
+              below, or locate it manually.
+            </p>
+            {settings.player !== "custom" && (
+              <button
+                type="button"
+                className="btn-ghost flex-shrink-0"
+                onClick={() => void handleBrowsePlayer()}
+              >
+                Browse…
+              </button>
+            )}
+          </div>
+        )}
+
+        {settings.player !== "custom" && (
+          <Field
+            label={`Extra arguments for ${
+              PLAYERS.find((p) => p.value === settings.player)?.label ||
+              settings.player
+            }`}
+          >
+            <input
+              type="text"
+              value={settings.playerArgs[settings.player] || ""}
+              onChange={(e) =>
+                update({
+                  playerArgs: {
+                    ...settings.playerArgs,
+                    [settings.player]: e.target.value,
+                  },
+                })
+              }
+              placeholder="e.g. --volume=50 --ytdl-format=best"
+              className="input"
+              spellCheck={false}
+            />
+          </Field>
+        )}
+
+        {settings.player === "custom" && (
+          <>
+            <Field label="Player executable path">
+              <input
+                type="text"
+                value={settings.customPlayerPath}
+                onChange={(e) => update({ customPlayerPath: e.target.value })}
+                placeholder="e.g. C:\Players\myplayer.exe"
+                className="input"
+                spellCheck={false}
+              />
+            </Field>
+            <Field
+              label="Command arguments"
+              hint={
+                <>
+                  Use <code className="text-accent">{`{url}`}</code> as a
+                  placeholder for the video URL
+                </>
+              }
+            >
+              <input
+                type="text"
+                value={settings.customPlayerArgs}
+                onChange={(e) => update({ customPlayerArgs: e.target.value })}
+                placeholder="use {url} as placeholder, e.g. --play {url}"
+                className="input"
+                spellCheck={false}
+              />
+            </Field>
+          </>
+        )}
+
+        <ToggleRow
+          label="Resume where you left off"
+          description="Continue partially watched videos from their last position."
+          checked={settings.resumePlayback}
+          onChange={(checked) => update({ resumePlayback: checked })}
+        />
+      </Section>
+
+      <Section title="Remote control">
+        <ToggleRow
+          label="Allow devices on this network"
+          description="Serve a mobile remote page on your LAN so phones can send URLs and control playback."
+          checked={settings.remoteEnabled}
+          onChange={(checked) => update({ remoteEnabled: checked })}
+        />
+        {settings.remoteEnabled && (
+          <p className="text-[11px] text-muted leading-snug mt-2 mb-0">
+            Use this on a trusted LAN or over Tailscale. The LAN page is plain
+            HTTP; Tailscale encrypts the connection.
+          </p>
+        )}
+        {settings.remoteEnabled && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[10px] uppercase tracking-[0.06em] font-semibold text-muted">
+              One-time pairing
+            </span>
+            <div className="flex items-center gap-2">
+              {codeRemainingLabel && (
+                <span
+                  className={`text-[11px] ${
+                    codeRemainingMs === 0 ? "text-danger" : "text-muted"
+                  }`}
+                >
+                  {codeRemainingMs === 0
+                    ? "Expired — click New code"
+                    : `Expires in ${codeRemainingLabel}`}
+                </span>
+              )}
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => void loadRemoteUrls(true)}
+              >
+                New code
+              </button>
+            </div>
+          </div>
+        )}
+        {settings.remoteEnabled &&
+          (remoteUrls && (remoteUrls.lan || remoteUrls.tailscale) ? (
+            <>
+              {lanPairReady && tailscalePairReady && (
+                <div
+                  className="seg mt-3"
+                  role="radiogroup"
+                  aria-label="Pairing connection"
+                >
+                  <button
+                    type="button"
+                    className={`seg-btn ${
+                      activePairTransport === "lan" ? "active" : ""
+                    }`}
+                    onClick={() => {
+                      setPairTransport("lan");
+                      setCopiedCode(false);
+                    }}
+                  >
+                    LAN
+                  </button>
+                  <button
+                    type="button"
+                    className={`seg-btn ${
+                      activePairTransport === "tailscale" ? "active" : ""
+                    }`}
+                    onClick={() => {
+                      setPairTransport("tailscale");
+                      setCopiedCode(false);
+                    }}
+                  >
+                    Tailscale
+                  </button>
+                </div>
+              )}
+              {activePairUrl &&
+                activePairQr &&
+                pairBlock(
+                  activePairTransport === "lan"
+                    ? "On this network"
+                    : "Via Tailscale — works anywhere",
+                  activePairTransport === "lan"
+                    ? "Scan while your phone is on the same Wi-Fi, or enter the code."
+                    : "Scan while signed in to Tailscale on the phone, or enter the code.",
+                  activePairUrl,
+                  activePairQr,
+                  activePairTransport,
+                )}
+              {sessions.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-[11px] text-muted uppercase tracking-[0.06em] font-semibold">
+                      Paired devices
+                    </div>
+                    <button
+                      type="button"
+                      className="text-[11px] text-danger hover:underline"
+                      onClick={() => void handleRevokeAllSessions()}
+                    >
+                      Unpair all
+                    </button>
+                  </div>
+                  {sessions.map((s) => (
+                    <div key={s.id} className="flex items-center gap-2 py-1">
+                      <span className="text-xs text-text flex-1 truncate">
+                        {s.device}
+                      </span>
+                      <span className="text-[11px] text-muted flex-shrink-0">
+                        seen{" "}
+                        {new Date(s.lastSeen).toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-[11px] text-danger hover:underline flex-shrink-0"
+                        onClick={() => void handleRevokeSession(s.id)}
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-muted leading-snug mt-2 mb-0">
+                Can't scan? Copy the link to your phone, or open the remote page
+                and enter the pairing code. The QR refreshes automatically when
+                its one-time code is about to expire; codes last five minutes.
+              </p>
+            </>
+          ) : (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <p className="min-w-0 flex-1 text-[12px] text-warning leading-snug m-0">
+                No pairing link yet — check that the server is running and that
+                Wi-Fi/Ethernet or Tailscale is connected.
+              </p>
+              <button
+                type="button"
+                className="btn-ghost btn-sm flex-shrink-0"
+                onClick={() => void loadRemoteUrls(false)}
+              >
+                Retry
+              </button>
+            </div>
+          ))}
+      </Section>
+
+      <Section title="Startup">
+        <ToggleRow
+          label="Start on boot"
+          description="Launch Media Launcher when you sign in to Windows."
+          checked={settings.autoStart}
+          onChange={(checked) => update({ autoStart: checked })}
+        />
+        <ToggleRow
+          label="Start minimized to tray"
+          description="Open silently in the tray instead of showing the window."
+          checked={settings.startMinimized}
+          onChange={(checked) => update({ startMinimized: checked })}
+        />
+      </Section>
+
+      <Section title="Downloads">
+        <p className="text-[12px] text-muted -mt-1 mb-3 leading-snug">
+          Portable binaries and scripts saved to the app's data directory — no
+          admin rights needed. Downloaded copies are used automatically over
+          system-installed ones.
+          {portableSize ? ` Portable tools use ${portableSize}.` : ""}
+        </p>
+
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-label">
+            Playback engine
+          </span>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <button
+              type="button"
+              className="p-0 text-[11px] text-muted cursor-pointer transition-colors hover:text-text"
+              onClick={() => void handleImport()}
+            >
+              Import binary
+            </button>
+            <button
+              type="button"
+              className="p-0 text-[11px] text-muted cursor-pointer transition-colors hover:text-text"
+              onClick={() => void handleOpenFolder()}
+            >
+              Open folder
+            </button>
+            {updateCheck?.updateAvailable && (
+              <span className="text-[10.5px] font-medium text-warning">
+                yt-dlp update
+              </span>
+            )}
+            <button
+              type="button"
+              className="p-0 text-[11px] text-muted cursor-pointer transition-colors hover:text-text disabled:opacity-50"
+              disabled={checkingDownloads}
+              onClick={() => void handleCheckUpdates()}
+            >
+              {checkingDownloads ? "Checking…" : "Check updates"}
+            </button>
+            {updateCheck?.updateAvailable && (
+              <button
+                type="button"
+                className="p-0 text-[11px] font-medium text-accent cursor-pointer transition-colors hover:text-accent-hover"
+                onClick={() => void handleUpdateAll()}
+              >
+                Update all
+              </button>
+            )}
+          </div>
+        </div>
+
+        {visibleEngine.map(renderDownload)}
+
+        {installCommand && (
+          <div className="mt-2 rounded-lg border border-border bg-surface p-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">
+              {platform === "darwin"
+                ? "Install with Homebrew"
+                : "Install with your package manager"}
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-[11.5px] text-text-dim">
+                {installCommand}
+              </code>
+              <button
+                type="button"
+                className="shrink-0 rounded border border-border px-2 py-1 text-[10.5px] text-muted transition-colors hover:border-border-strong hover:text-text"
+                onClick={() => void copyInstallCommand(installCommand)}
+              >
+                {copiedCommand ? "Copied" : "Copy"}
+              </button>
+            </div>
+            {platform === "linux" && (
+              <p className="mt-1 mb-0 text-[10.5px] leading-snug text-muted">
+                Debian/Ubuntu example — use your distribution's package manager.
+              </p>
+            )}
+            <button
+              type="button"
+              className="mt-2 p-0 text-[11px] text-accent cursor-pointer hover:underline"
+              onClick={() => void openExternal("https://mpv.io/installation/")}
+            >
+              Installation guide
+            </button>
+          </div>
+        )}
+
+        {extras.length > 0 && (
+          <>
+            <div className="mt-4 mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-label">
+              Extras
+            </div>
+            {extras.map(renderDownload)}
+          </>
+        )}
+
+        {otherPlayers.length > 0 && (
+          <>
+            <div className="mt-4 mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-label">
+              Other players
+            </div>
+            {otherPlayers.map(renderDownload)}
+          </>
+        )}
+
+        <div className="mt-3 border-t border-border pt-2">
+          <ToggleRow
+            label="Keep yt-dlp updated automatically"
+            description="Checks at startup and updates the app's portable yt-dlp copy. System installs and manually imported copies are left alone."
+            checked={autoUpdateYtDlp}
+            onChange={(checked) => void handleAutoUpdate(checked)}
+          />
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span className="text-[10.5px] text-muted">
+              Already installed a tool elsewhere?
+            </span>
+            <button
+              type="button"
+              className="p-0 text-[11px] text-muted cursor-pointer transition-colors hover:text-text"
+              onClick={() => void handleRecheck()}
+            >
+              Recheck tools
+            </button>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="About">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold text-text">
+              media-launcher
+            </div>
+            <div className="text-[11.5px] text-muted">
+              Version {appUpdate?.currentVersion ?? "…"}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-ghost btn-sm flex-shrink-0"
+            disabled={checkingAppUpdate}
+            onClick={() => void handleCheckAppUpdate()}
+          >
+            {checkingAppUpdate ? "Checking…" : "Check for updates"}
+          </button>
+        </div>
+
+        {appUpdate?.updateAvailable ? (
+          <div className="mt-3 rounded-lg border border-accent/30 bg-accent/5 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[12px] font-medium text-accent">
+                  Version {appUpdate.latestVersion} is available
+                </div>
+                {appUpdate.publishedAt && (
+                  <div className="text-[10.5px] text-muted">
+                    Released{" "}
+                    {new Date(appUpdate.publishedAt).toLocaleDateString()}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn-primary btn-sm flex-shrink-0"
+                onClick={() => {
+                  const url =
+                    appUpdate.downloadUrl ?? appUpdate.releaseUrl ?? null;
+                  if (url) void openExternal(url);
+                }}
+              >
+                Download update
+              </button>
+            </div>
+            {appUpdate.releaseUrl &&
+              appUpdate.releaseUrl !== appUpdate.downloadUrl && (
+                <button
+                  type="button"
+                  className="mt-2 p-0 text-[11px] text-accent cursor-pointer hover:underline"
+                  onClick={() => {
+                    if (appUpdate.releaseUrl) {
+                      void openExternal(appUpdate.releaseUrl);
+                    }
+                  }}
+                >
+                  Release page
+                </button>
+              )}
+            {appUpdate.notes && (
+              <details className="mt-2">
+                <summary className="text-[11px] text-muted cursor-pointer hover:text-text">
+                  Release notes
+                </summary>
+                <p className="mt-1 mb-0 max-h-40 overflow-y-auto whitespace-pre-wrap text-[11px] leading-snug text-muted">
+                  {appUpdate.notes}
+                </p>
+              </details>
+            )}
+          </div>
+        ) : (
+          <p className="mt-2 mb-0 text-[11.5px] leading-snug text-muted">
+            {checkingAppUpdate
+              ? "Checking for updates…"
+              : appUpdate?.error
+                ? "Could not check for updates."
+                : appUpdate
+                  ? "You're up to date."
+                  : "Update status not checked yet."}
+          </p>
+        )}
+
+        {appUpdate?.error && (
+          <p className="mt-1.5 mb-0 text-[11px] leading-snug text-danger">
+            {appUpdate.error}
+          </p>
+        )}
+        {appUpdate?.checkedAt && (
+          <p className="mt-2 mb-0 text-[10.5px] text-muted">
+            Last checked {new Date(appUpdate.checkedAt).toLocaleString()}
+          </p>
+        )}
+      </Section>
 
       <Section title="Appearance">
         <Field
@@ -571,7 +1595,10 @@ export default function SettingsPage() {
         </Field>
       </Section>
 
-      <Section title="Connection">
+      <Section title="Advanced">
+        <p className="text-[11.5px] text-muted leading-snug mb-3 -mt-1">
+          Server URL and extension token — usually leave these as they are.
+        </p>
         <Field
           label="Server URL"
           hint={
@@ -662,7 +1689,7 @@ export default function SettingsPage() {
                 onClick={() => void copyToken()}
               >
                 {copied ? (
-                  <span className="text-accent text-[11px] font-semibold">
+                  <span className="text-accent text-[12px] font-semibold">
                     Copied
                   </span>
                 ) : (
@@ -683,384 +1710,6 @@ export default function SettingsPage() {
             </div>
           </div>
         </Field>
-      </Section>
-
-      <Section title="Remote control">
-        <ToggleRow
-          label="Allow devices on this network"
-          description="Serve a mobile remote page on your LAN so phones can send URLs and control playback."
-          checked={settings.remoteEnabled}
-          onChange={(checked) => update({ remoteEnabled: checked })}
-        />
-        {settings.remoteEnabled && (
-          <p className="text-[10px] text-muted leading-snug mt-2 mb-0">
-            Use this on a trusted LAN or over Tailscale. The LAN page is plain
-            HTTP; Tailscale encrypts the connection.
-          </p>
-        )}
-        {settings.remoteEnabled && (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[9px] uppercase tracking-[0.06em] font-semibold text-muted">
-              One-time pairing
-            </span>
-            <div className="flex items-center gap-2">
-              {codeRemainingLabel && (
-                <span
-                  className={`text-[10px] ${
-                    codeRemainingMs === 0 ? "text-danger" : "text-muted"
-                  }`}
-                >
-                  {codeRemainingMs === 0
-                    ? "Expired — click New code"
-                    : `Expires in ${codeRemainingLabel}`}
-                </span>
-              )}
-              <button
-                type="button"
-                className="btn-ghost btn-sm"
-                onClick={() => void loadRemoteUrls(true)}
-              >
-                New code
-              </button>
-            </div>
-          </div>
-        )}
-        {settings.remoteEnabled &&
-          (remoteUrls && (remoteUrls.lan || remoteUrls.tailscale) ? (
-            <>
-              {remoteUrls.lan &&
-                qrLan &&
-                pairBlock(
-                  "On this network",
-                  "Scan while your phone is on the same Wi-Fi, or enter the code.",
-                  remoteUrls.lan,
-                  qrLan,
-                  "lan",
-                )}
-              {remoteUrls.tailscale &&
-                qrTailscale &&
-                pairBlock(
-                  "Via Tailscale — works anywhere",
-                  "Scan while signed in to Tailscale on the phone, or enter the code.",
-                  remoteUrls.tailscale,
-                  qrTailscale,
-                  "tailscale",
-                )}
-              {sessions.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-border">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="text-[10px] text-muted uppercase tracking-[0.06em] font-semibold">
-                      Paired devices
-                    </div>
-                    <button
-                      type="button"
-                      className="text-[10px] text-danger hover:underline"
-                      onClick={() => void handleRevokeAllSessions()}
-                    >
-                      Unpair all
-                    </button>
-                  </div>
-                  {sessions.map((s) => (
-                    <div key={s.id} className="flex items-center gap-2 py-1">
-                      <span className="text-xs text-text flex-1 truncate">
-                        {s.device}
-                      </span>
-                      <span className="text-[10px] text-muted flex-shrink-0">
-                        seen{" "}
-                        {new Date(s.lastSeen).toLocaleString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                      <button
-                        type="button"
-                        className="text-[10px] text-danger hover:underline flex-shrink-0"
-                        onClick={() => void handleRevokeSession(s.id)}
-                      >
-                        Revoke
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="text-[10px] text-muted leading-snug mt-2 mb-0">
-                Can't scan? Copy the link to your phone, or open the remote page
-                and enter the pairing code. The QR refreshes automatically when
-                its one-time code is about to expire; codes last five minutes.
-              </p>
-            </>
-          ) : (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <p className="min-w-0 flex-1 text-[11px] text-warning leading-snug m-0">
-                No pairing link yet — check that the server is running and that
-                Wi-Fi/Ethernet or Tailscale is connected.
-              </p>
-              <button
-                type="button"
-                className="btn-ghost btn-sm flex-shrink-0"
-                onClick={() => void loadRemoteUrls(false)}
-              >
-                Retry
-              </button>
-            </div>
-          ))}
-      </Section>
-
-      <Section title="Playback">
-        <Field
-          label="Media player"
-          hint={
-            statusText ? (
-              <span
-                className={
-                  playerStatus === "missing" ? "text-warning" : "text-muted"
-                }
-              >
-                {statusDot}
-                {PLAYERS.find((p) => p.value === settings.player)?.label ||
-                  settings.player}{" "}
-                {statusText}
-                {playerStatus === "missing" &&
-                  settings.player === "mpv" &&
-                  " — you can download a portable copy in Downloads below"}
-              </span>
-            ) : undefined
-          }
-        >
-          <select
-            className="input select"
-            value={settings.player}
-            onChange={(e) => update({ player: e.target.value })}
-          >
-            {PLAYERS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        {playerStatus === "missing" && (
-          <div className="flex items-center justify-between gap-3 mb-3 -mt-1">
-            <p className="text-[11px] text-warning leading-snug m-0">
-              Player executable not found in PATH. Install it, download it
-              below, or locate it manually.
-            </p>
-            {settings.player !== "custom" && (
-              <button
-                type="button"
-                className="btn-ghost flex-shrink-0"
-                onClick={() => void handleBrowsePlayer()}
-              >
-                Browse…
-              </button>
-            )}
-          </div>
-        )}
-
-        {settings.player !== "custom" && (
-          <Field
-            label={`Extra arguments for ${
-              PLAYERS.find((p) => p.value === settings.player)?.label ||
-              settings.player
-            }`}
-          >
-            <input
-              type="text"
-              value={settings.playerArgs[settings.player] || ""}
-              onChange={(e) =>
-                update({
-                  playerArgs: {
-                    ...settings.playerArgs,
-                    [settings.player]: e.target.value,
-                  },
-                })
-              }
-              placeholder="e.g. --volume=50 --ytdl-format=best"
-              className="input"
-              spellCheck={false}
-            />
-          </Field>
-        )}
-
-        {settings.player === "custom" && (
-          <>
-            <Field label="Player executable path">
-              <input
-                type="text"
-                value={settings.customPlayerPath}
-                onChange={(e) => update({ customPlayerPath: e.target.value })}
-                placeholder="e.g. C:\Players\myplayer.exe"
-                className="input"
-                spellCheck={false}
-              />
-            </Field>
-            <Field
-              label="Command arguments"
-              hint={
-                <>
-                  Use <code className="text-accent">{`{url}`}</code> as a
-                  placeholder for the video URL
-                </>
-              }
-            >
-              <input
-                type="text"
-                value={settings.customPlayerArgs}
-                onChange={(e) => update({ customPlayerArgs: e.target.value })}
-                placeholder="use {url} as placeholder, e.g. --play {url}"
-                className="input"
-                spellCheck={false}
-              />
-            </Field>
-          </>
-        )}
-
-        <ToggleRow
-          label="Resume where you left off"
-          description="Continue partially watched videos from their last position."
-          checked={settings.resumePlayback}
-          onChange={(checked) => update({ resumePlayback: checked })}
-        />
-      </Section>
-
-      <Section title="Startup">
-        <ToggleRow
-          label="Start on boot"
-          description="Launch Media Launcher when you sign in to Windows."
-          checked={settings.autoStart}
-          onChange={(checked) => update({ autoStart: checked })}
-        />
-        <ToggleRow
-          label="Start minimized to tray"
-          description="Open silently in the tray instead of showing the window."
-          checked={settings.startMinimized}
-          onChange={(checked) => update({ startMinimized: checked })}
-        />
-      </Section>
-
-      <Section title="Downloads">
-        <p className="text-[11px] text-muted -mt-1 mb-3 leading-snug">
-          Portable binaries and scripts saved to the app's data directory — no
-          admin rights needed. Downloaded copies are used automatically over
-          system-installed ones.
-        </p>
-        {downloads.map((d) => {
-          const hasUpdate = d.id === "yt-dlp" && updateCheck?.updateAvailable;
-          return (
-            <div
-              key={d.id}
-              className="flex justify-between items-center bg-surface border border-border rounded-lg p-3 mb-2 last:mb-0 gap-3"
-            >
-              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                <strong className="text-[13px]">{d.name}</strong>
-                <span className="text-[11px] text-muted leading-snug">
-                  {d.description}
-                </span>
-                <span className="text-[10px] text-muted/80">
-                  {d.size}
-                  {d.platform
-                    ? ` \u2022 ${d.platform}`
-                    : " \u2022 not available on this platform"}
-                </span>
-                {hasUpdate && (
-                  <span className="text-[10px] text-warning mt-0.5">
-                    Update available: v{updateCheck?.installedVersion} → v
-                    {updateCheck?.latestVersion}
-                  </span>
-                )}
-                {d.status === "downloading" && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className="progress-track flex-1">
-                      <div
-                        className={`progress-fill ${
-                          d.progress === null || d.progress < 0
-                            ? "indeterminate"
-                            : ""
-                        }`}
-                        style={
-                          d.progress !== null && d.progress >= 0
-                            ? { width: `${Math.round(d.progress * 100)}%` }
-                            : undefined
-                        }
-                      />
-                    </div>
-                    <span className="text-[10px] text-accent whitespace-nowrap">
-                      {d.progress !== null && d.progress >= 0
-                        ? `${Math.round(d.progress * 100)}%`
-                        : "…"}
-                    </span>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {d.platform ? (
-                  d.systemAvailable ? (
-                    <span className="text-[11px] text-success whitespace-nowrap">
-                      On system
-                    </span>
-                  ) : d.canDownload ? (
-                    d.status === "downloading" ? (
-                      <span className="text-xs text-accent">Downloading…</span>
-                    ) : !d.installed ? (
-                      <button
-                        type="button"
-                        className="btn-primary btn-sm"
-                        onClick={() => void handleDownload(d.id)}
-                      >
-                        Download
-                      </button>
-                    ) : hasUpdate ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="btn-ghost"
-                          onClick={() => void handleDelete(d.id)}
-                        >
-                          Remove
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-primary btn-sm"
-                          onClick={() => void handleDownload(d.id)}
-                        >
-                          Update
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={() => void handleDelete(d.id)}
-                      >
-                        Remove
-                      </button>
-                    )
-                  ) : d.url ? (
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={() => {
-                        if (d.url) void openExternal(d.url);
-                      }}
-                    >
-                      Website
-                    </button>
-                  ) : null
-                ) : (
-                  <span className="text-xs text-muted">N/A</span>
-                )}
-                {d.status === "error" && d.error && (
-                  <span className="text-[11px] text-danger" title={d.error}>
-                    Error
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
       </Section>
 
       {toast && <div className={`toast ${toast.variant}`}>{toast.msg}</div>}

@@ -15,6 +15,8 @@ const PAGE_SITE = siteForHost(location.hostname);
 interface SendResult {
   success: boolean;
   error?: string;
+  queuedCount?: number;
+  playlistTitle?: string;
 }
 
 // MV3 content scripts inherit the page's CORS, so a direct fetch to the
@@ -182,6 +184,7 @@ function injectButton(): void {
             success: result.success,
             error: result.error,
             queued: queue,
+            queuedCount: result.queuedCount,
             videoId: videoId ?? undefined,
             thumbnailUrl: thumb ?? undefined,
           })
@@ -320,6 +323,7 @@ function attachThumbnailButton(a: HTMLAnchorElement): void {
           success: result.success,
           error: result.error,
           queued: queue,
+          queuedCount: result.queuedCount,
           videoId: videoId ?? undefined,
         })
         .catch(() => {});
@@ -518,6 +522,7 @@ function injectPlaylistBadge(): void {
         success: result.success,
         error: result.error,
         queued: queue,
+        queuedCount: result.queuedCount,
       })
       .catch(() => {});
   });

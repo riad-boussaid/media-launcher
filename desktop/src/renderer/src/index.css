@@ -104,6 +104,16 @@ html.light {
   }
 }
 
+@keyframes eqPulse {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
 @layer base {
   html,
   body {
@@ -121,6 +131,11 @@ html.light {
   input,
   textarea {
     user-select: text;
+  }
+  /* Consistent keyboard focus across buttons, rows, links, and controls. */
+  :focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--color-accent) 55%, transparent);
+    outline-offset: 2px;
   }
   /* Theme-matched checkboxes (history multi-select etc.) */
   input[type="checkbox"] {
@@ -199,7 +214,7 @@ html.light {
 
   .field-label {
     display: block;
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -264,7 +279,9 @@ html.light {
     background: var(--color-accent-hover);
   }
   .btn-primary:disabled {
-    opacity: 0.4;
+    opacity: 1;
+    background: var(--color-elevated);
+    color: var(--color-muted);
     cursor: not-allowed;
   }
   .btn-sm {
@@ -291,9 +308,13 @@ html.light {
       color 0.15s,
       border-color 0.15s;
   }
-  .btn-ghost:hover {
+  .btn-ghost:hover:not(:disabled) {
     background: var(--color-elevated);
     color: var(--color-text);
+  }
+  .btn-ghost:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .btn-danger {
@@ -405,6 +426,250 @@ html.light {
     animation: var(--animate-slide-indeterminate);
   }
 
+  /* Now-playing panel */
+  .player-card {
+    position: relative;
+    border: 1px solid var(--color-border);
+    border-radius: 16px;
+    background:
+      radial-gradient(
+        130% 100% at 0% 0%,
+        color-mix(in oklab, var(--color-accent) 8%, transparent),
+        transparent 58%
+      ),
+      var(--color-card);
+  }
+
+  .player-eq {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 12px;
+  }
+  .player-eq span {
+    width: 2.5px;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--color-accent);
+    transform-origin: bottom;
+    animation: eqPulse 1.05s ease-in-out infinite;
+  }
+  .player-eq span:nth-child(1) {
+    height: 55%;
+    animation-delay: -0.2s;
+  }
+  .player-eq span:nth-child(2) {
+    height: 100%;
+    animation-delay: -0.55s;
+  }
+  .player-eq span:nth-child(3) {
+    height: 70%;
+    animation-delay: -0.85s;
+  }
+  .player-eq span:nth-child(4) {
+    height: 90%;
+    animation-delay: -0.35s;
+  }
+  .player-eq.paused {
+    opacity: 0.55;
+  }
+  .player-eq.paused span {
+    animation: none;
+    transform: scaleY(0.45);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .player-eq span {
+      animation: none;
+    }
+  }
+
+  /* Seek bar */
+  .seek {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 20px;
+    cursor: pointer;
+    outline: none;
+    touch-action: none;
+  }
+  .seek[aria-disabled="true"] {
+    cursor: default;
+    opacity: 0.5;
+  }
+  .seek-track {
+    position: relative;
+    width: 100%;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--progress-track);
+  }
+  .seek-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1;
+    border-radius: 999px;
+    background: var(--color-accent);
+  }
+  .seek-tick {
+    position: absolute;
+    top: 50%;
+    width: 1.5px;
+    height: 9px;
+    margin-left: -0.75px;
+    border-radius: 1px;
+    background: color-mix(in oklab, var(--color-text) 30%, var(--color-base));
+    opacity: 0.7;
+    transform: translateY(-50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .seek-knob {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    width: 11px;
+    height: 11px;
+    border-radius: 999px;
+    background: var(--color-accent);
+    box-shadow: 0 0 0 4px
+      color-mix(in oklab, var(--color-accent) 18%, transparent);
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.14s ease;
+    pointer-events: none;
+  }
+  .seek:hover .seek-knob,
+  .seek:focus-visible .seek-knob,
+  .seek[data-scrubbing="true"] .seek-knob {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .seek:focus-visible .seek-track {
+    box-shadow: 0 0 0 3px
+      color-mix(in oklab, var(--color-accent) 16%, transparent);
+  }
+
+  /* Volume slider */
+  .range {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 16px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+    outline: none;
+  }
+  .range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--color-accent) var(--range-fill, 50%),
+      var(--progress-track) var(--range-fill, 50%)
+    );
+  }
+  .range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    margin-top: -3px;
+    border: none;
+    border-radius: 999px;
+    background: var(--color-text);
+    box-shadow: 0 0 0 3px
+      color-mix(in oklab, var(--color-accent) 20%, transparent);
+    transition: transform 0.15s ease;
+  }
+  .range:hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+  }
+  .range:focus-visible::-webkit-slider-runnable-track {
+    box-shadow: 0 0 0 3px
+      color-mix(in oklab, var(--color-accent) 16%, transparent);
+  }
+  .range:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  /* Player transport controls */
+  .player-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text-dim);
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s,
+      opacity 0.15s;
+  }
+  .player-btn:hover:not(:disabled) {
+    background: var(--color-elevated);
+    color: var(--color-text);
+  }
+  .player-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
+  .player-btn-sm {
+    width: 28px;
+    height: 28px;
+  }
+  .player-btn-primary {
+    width: 44px;
+    height: 44px;
+    background: var(--color-accent);
+    color: var(--on-accent);
+    box-shadow: 0 6px 18px
+      color-mix(in oklab, var(--color-accent) 22%, transparent);
+  }
+  .player-btn-primary:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+    color: var(--on-accent);
+  }
+
+  .player-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-dim);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .player-chip:hover:not(:disabled) {
+    background: var(--color-elevated);
+    border-color: var(--color-border-strong);
+    color: var(--color-text);
+  }
+  .player-chip:focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--color-accent) 45%, transparent);
+    outline-offset: 2px;
+  }
+  .player-chip:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
   .spinner {
     width: 13px;
     height: 13px;
@@ -464,6 +729,16 @@ html.light {
 }
 .action-btn.replay:hover {
   color: var(--color-accent);
+}
+.action-btn.queue:hover {
+  color: var(--color-accent);
+}
+.action-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.action-btn:disabled:hover {
+  background: transparent;
 }
 .action-btn.copy:hover {
   color: var(--copy-hover);

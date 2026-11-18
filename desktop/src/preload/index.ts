@@ -1,12 +1,17 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 const api = {
+  platform: process.platform,
   server: {
     getToken: () => ipcRenderer.invoke("server:token"),
     status: () => ipcRenderer.invoke("server:status"),
     probe: (url: string) => ipcRenderer.invoke("server:probe", url),
     remoteUrls: (fresh?: boolean) =>
       ipcRenderer.invoke("server:remoteUrls", fresh === true),
+  },
+  updates: {
+    state: () => ipcRenderer.invoke("updates:state"),
+    check: () => ipcRenderer.invoke("updates:check"),
   },
   remote: {
     sessions: () => ipcRenderer.invoke("remote:sessions"),
@@ -24,6 +29,7 @@ const api = {
     delete: (id: string) => ipcRenderer.invoke("history:delete", id),
     clear: () => ipcRenderer.invoke("history:clear"),
     replay: (url: string) => ipcRenderer.invoke("history:replay", url),
+    queue: (url: string) => ipcRenderer.invoke("history:queue", url),
   },
   player: {
     check: (exe: string) => ipcRenderer.invoke("player:check", exe),
@@ -37,9 +43,39 @@ const api = {
     mute: () => ipcRenderer.invoke("player:mute"),
     speed: (value: number) => ipcRenderer.invoke("player:speed", value),
     stop: () => ipcRenderer.invoke("player:stop"),
+    queueRemove: (index: number) =>
+      ipcRenderer.invoke("player:queueRemove", index),
+    queueMove: (index: number, direction: "up" | "down") =>
+      ipcRenderer.invoke("player:queueMove", index, direction),
+    queueMoveTo: (index: number, target: number) =>
+      ipcRenderer.invoke("player:queueMoveTo", index, target),
+    queueShuffle: () => ipcRenderer.invoke("player:queueShuffle"),
+    setRepeat: (mode: "off" | "one" | "all") =>
+      ipcRenderer.invoke("player:repeat", mode),
+    queuePlay: (index: number) => ipcRenderer.invoke("player:queuePlay", index),
+    queueClear: () => ipcRenderer.invoke("player:queueClear"),
+    loadMorePlaylist: (playlistUrl: string, playlistId: string) =>
+      ipcRenderer.invoke("player:loadMorePlaylist", playlistUrl, playlistId),
+    savedQueue: () => ipcRenderer.invoke("player:savedQueue"),
+    restoreSavedQueue: () => ipcRenderer.invoke("player:restoreSavedQueue"),
+    discardSavedQueue: () => ipcRenderer.invoke("player:discardSavedQueue"),
+    queueRemovePlaylist: (playlistId: string) =>
+      ipcRenderer.invoke("player:queueRemovePlaylist", playlistId),
+    queueClearPlayed: (playlistId?: string) =>
+      ipcRenderer.invoke("player:queueClearPlayed", playlistId),
+    clearError: () => ipcRenderer.invoke("player:clearError"),
   },
   downloads: {
     list: () => ipcRenderer.invoke("downloads:list"),
+    recheck: () => ipcRenderer.invoke("downloads:recheck"),
+    info: () => ipcRenderer.invoke("downloads:info"),
+    import: () => ipcRenderer.invoke("downloads:import"),
+    openFolder: () => ipcRenderer.invoke("downloads:openFolder"),
+    reveal: (path: string) => ipcRenderer.invoke("downloads:reveal", path),
+    cancel: (id: string) => ipcRenderer.invoke("downloads:cancel", id),
+    getAutoUpdate: () => ipcRenderer.invoke("downloads:autoUpdate"),
+    setAutoUpdate: (enabled: boolean) =>
+      ipcRenderer.invoke("downloads:setAutoUpdate", enabled),
     start: (id: string) => ipcRenderer.invoke("downloads:start", id),
     delete: (id: string) => ipcRenderer.invoke("downloads:delete", id),
     updateCheck: (id: string) =>

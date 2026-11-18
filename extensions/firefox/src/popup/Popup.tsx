@@ -262,8 +262,17 @@ export default function Popup({
     setStatus(null);
     try {
       const result = await sendUrl(tabUrl, tabTitle, true);
+      const queuedCount = result.queuedCount ?? 1;
       setStatus(
-        result.success ? { success: true, message: "Added to queue" } : result,
+        result.success
+          ? {
+              success: true,
+              message:
+                queuedCount > 1
+                  ? `Queued ${queuedCount} videos`
+                  : "Added to queue",
+            }
+          : result,
       );
       if (result.success) {
         void getRecent().then(setHistory);

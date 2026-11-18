@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { getDataDir, getSettings } from "./db.js";
 
 // Split a user-supplied command-line string into argv tokens. Shell-like
@@ -110,10 +110,11 @@ export interface LaunchResult {
 function spawnPlayer(
   exe: string,
   args: string[],
+  env: NodeJS.ProcessEnv,
   timeoutMs = 10000,
 ): Promise<LaunchResult> {
   return new Promise((resolve) => {
-    const proc = spawn(exe, args, { stdio: "ignore" });
+    const proc = spawn(exe, args, { stdio: "ignore", env });
     const timer = setTimeout(() => {
       proc.kill();
       resolve({ success: false, error: `Timed out launching ${exe}` });
@@ -151,6 +152,7 @@ function makeIpcPipePath(): string {
 export async function launchPlayer(
   url: string,
   extensionOptions: string[] = [],
+  playlistUrls: string[] = [],
 ): Promise<LaunchResult> {
   const settings = getSettings();
   const key = settings.player || "mpv";
@@ -173,7 +175,10 @@ export async function launchPlayer(
         ? [`--script=${sponsorblockPath}`]
         : [];
       args = [
-        "--keep-open=yes",
+        // Exit when the last playlist entry ends, so a finished video does not
+        // sit paused on its final frame forever. Queued entries still advance
+        // normally; user args can override this.
+        "--keep-open=no",
         "--no-resume-playback",
         // Start playing immediately, even if the user's mpv.conf says pause.
         // User args come last and can still override.
@@ -184,6 +189,9 @@ export async function launchPlayer(
         ...userArgs,
         "--",
         url,
+        // A resolved playlist can be passed as extra command-line entries,
+        // which avoids racing mpv's initial URL load with IPC appends.
+        ...playlistUrls,
       ];
       break;
     }
@@ -206,6 +214,34 @@ export async function launchPlayer(
     }
   }
 
-  const result = await spawnPlayer(exe, args);
+  const result = await spawnPlayer(exe, args, playerEnv(settings.binDir));
   return { ...result, pipePath: result.success ? pipePath : undefined };
+}
+
+// mpv's ytdl_hook and yt-dlp itself resolve helpers through PATH. Prepend the
+// app's portable bin directory so downloaded copies take precedence over
+// system installs (and make ffmpeg visible to yt-dlp).
+function playerEnv(binDir: string): NodeJS.ProcessEnv {
+  const pathKey =
+    Object.keys(process.env).find((key) => key.toLowerCase() === "path") ??
+    "PATH";
+  const bin = getBinDir(binDir);
+  // Finder-launched apps may not see Homebrew's bins, and yt-dlp/ffmpeg live
+  // there on macOS.
+  const common =
+    process.platform === "darwin"
+      ? ["/opt/homebrew/bin", "/usr/local/bin"]
+      : process.platform === "linux"
+        ? ["/usr/local/bin", "/usr/bin"]
+        : [];
+  return {
+    ...process.env,
+    [pathKey]: [
+      bin,
+      ...common.filter((dir) => existsSync(dir)),
+      process.env[pathKey],
+    ]
+      .filter(Boolean)
+      .join(delimiter),
+  };
 }

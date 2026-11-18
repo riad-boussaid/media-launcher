@@ -4,7 +4,9 @@ import {
   clearHistory,
   deleteHistory,
   getHistory,
+  getPlayerStatus,
   openExternal,
+  queueUrl,
   replayUrl,
 } from "../lib/api";
 
@@ -63,6 +65,10 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
   );
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [canQueue, setCanQueue] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -74,7 +80,9 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (selectMode) {
+      if (confirmingClear) {
+        setConfirmingClear(false);
+      } else if (selectMode) {
         setSelected(new Set());
         setSelectMode(false);
       } else if (search) {
@@ -83,19 +91,51 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectMode, search]);
+  }, [confirmingClear, selectMode, search]);
 
   const load = useCallback(async () => {
     try {
       setItems(await getHistory());
+      setLoadError(false);
     } catch {
-      // server unreachable — keep current items
+      // Server unreachable — keep current items, but show an offline state
+      // when there is nothing to display yet.
+      setLoadError(true);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
+  const retry = () => {
+    setLoading(true);
+    setLoadError(false);
+    void load();
+  };
+
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
+
+  // Queueing only makes sense while mpv is running; otherwise the server would
+  // start a new playback instead of appending to a queue.
+  useEffect(() => {
+    let cancelled = false;
+    const refreshQueueState = () => {
+      void getPlayerStatus()
+        .then((status) => {
+          if (!cancelled) setCanQueue(status.alive && status.ipcReady);
+        })
+        .catch(() => {
+          if (!cancelled) setCanQueue(false);
+        });
+    };
+    refreshQueueState();
+    const timer = setInterval(refreshQueueState, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const hasPending = items.some((e) => !e.title && !e.thumbnail);
@@ -143,13 +183,22 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
   }, [filtered]);
 
   const handleDelete = async (id: string) => {
-    setItems(await deleteHistory(id));
+    try {
+      setItems(await deleteHistory(id));
+    } catch {
+      showToast("Could not remove that entry", "toast-error");
+    }
   };
 
   const handleClear = async () => {
-    await clearHistory();
-    setItems([]);
-    showToast("History cleared");
+    try {
+      await clearHistory();
+      setItems([]);
+      setConfirmingClear(false);
+      showToast("History cleared");
+    } catch {
+      showToast("Could not clear history", "toast-error");
+    }
   };
 
   const handlePlayUrl = async (url: string) => {
@@ -163,6 +212,23 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
   };
 
   const handleReplay = handlePlayUrl;
+
+  const handleQueue = async (url: string) => {
+    if (!canQueue) {
+      showToast("Start a video before queueing", "toast-error");
+      return;
+    }
+    const res = await queueUrl(url);
+    if (!res.success) {
+      showToast(`Error: ${res.error ?? "Could not queue URL"}`, "toast-error");
+      return;
+    }
+    showToast("Added to queue");
+    // Queueing refreshes the history entry's timestamp.
+    void getHistory()
+      .then(setItems)
+      .catch(() => {});
+  };
 
   const handleCopy = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -231,12 +297,12 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
             </button>
           )}
         </div>
-        {items.length > 0 && !selectMode && (
+        {items.length > 0 && !selectMode && !confirmingClear && (
           <>
             <button
               type="button"
               className="btn-danger flex-shrink-0"
-              onClick={handleClear}
+              onClick={() => setConfirmingClear(true)}
             >
               Clear all
             </button>
@@ -282,13 +348,40 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
         )}
       </div>
 
-      {items.length > 0 && !search && (
-        <div className="text-[11px] text-muted mb-2 uppercase tracking-[0.5px]">
+      {confirmingClear && (
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg border border-danger/30 bg-danger/10">
+          <span className="flex-1 text-xs text-text-dim leading-snug">
+            Clear all {items.length} {items.length === 1 ? "entry" : "entries"}?
+            This can't be undone.
+          </span>
+          <button
+            type="button"
+            className="btn-ghost btn-sm flex-shrink-0"
+            onClick={() => setConfirmingClear(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-danger btn-sm flex-shrink-0"
+            onClick={() => void handleClear()}
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+
+      {items.length > 0 && !search && !loading && (
+        <div className="text-[11.5px] text-muted mb-2 uppercase tracking-[0.5px]">
           {items.length} {items.length === 1 ? "entry" : "entries"}
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {loading && items.length === 0 ? (
+        <HistorySkeleton />
+      ) : loadError && items.length === 0 ? (
+        <HistoryOffline onRetry={retry} />
+      ) : filtered.length === 0 ? (
         <div className="text-center py-10 px-5 text-muted">
           {search ? (
             <>
@@ -313,7 +406,7 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
       ) : (
         grouped.map((group) => (
           <div key={group.label}>
-            <div className="text-[11px] text-muted uppercase tracking-[1px] pt-3 pb-1.5 px-1 font-semibold">
+            <div className="text-[11.5px] text-muted uppercase tracking-[1px] pt-3 pb-1.5 px-1 font-semibold">
               {group.label}
             </div>
             {group.entries.map((item) => {
@@ -321,7 +414,7 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
               return (
                 <div
                   key={item.id}
-                  className={`flex items-stretch mb-1 rounded-lg overflow-hidden transition-colors min-h-[56px] hover:bg-card group ${selectMode ? "cursor-default" : ""}`}
+                  className={`relative flex items-stretch mb-1 rounded-lg overflow-hidden transition-colors min-h-[56px] hover:bg-card group ${selectMode ? "cursor-default" : ""}`}
                 >
                   {selectMode && (
                     // biome-ignore lint/a11y/noStaticElementInteractions: checkbox wrapper layout
@@ -341,7 +434,11 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
                   {/* biome-ignore lint/a11y/useKeyWithClickEvents: thumbnail clickable area */}
                   <div
                     className="w-20 flex-shrink-0 bg-black/40 bg-cover bg-center cursor-pointer flex items-center justify-center rounded-l-lg overflow-hidden"
-                    onClick={() => !selectMode && handleReplay(item.url)}
+                    onClick={() =>
+                      selectMode
+                        ? toggleSelect(item.id)
+                        : handleReplay(item.url)
+                    }
                     style={
                       item.thumbnail
                         ? {
@@ -363,11 +460,19 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
                       </svg>
                     )}
                   </div>
-                  {/* biome-ignore lint/a11y/noStaticElementInteractions: row content clickable area */}
-                  {/* biome-ignore lint/a11y/useKeyWithClickEvents: row content clickable area */}
-                  <div
-                    className="flex-1 flex items-center gap-2 px-2.5 py-2 cursor-pointer min-w-0"
-                    onClick={() => !selectMode && handleReplay(item.url)}
+                  <button
+                    type="button"
+                    className="flex-1 flex items-center gap-2 px-2.5 py-2 cursor-pointer min-w-0 border-none bg-transparent text-left"
+                    aria-label={
+                      selectMode
+                        ? `Select ${item.title || item.url}`
+                        : `Play ${item.title || item.url}`
+                    }
+                    onClick={() =>
+                      selectMode
+                        ? toggleSelect(item.id)
+                        : handleReplay(item.url)
+                    }
                   >
                     <div className="flex-1 min-w-0" title={item.url}>
                       {item.title ? (
@@ -389,14 +494,41 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
                       </div>
                     </div>
                     <div
-                      className="text-[11px] text-muted whitespace-nowrap flex-shrink-0"
+                      className="text-[11.5px] text-muted whitespace-nowrap flex-shrink-0"
                       title={timeLabel(item.timestamp)}
                     >
                       {relativeTime(item.timestamp)}
                     </div>
-                  </div>
+                  </button>
                   {!selectMode && (
-                    <div className="hidden group-hover:flex items-center gap-0.5 pr-1.5">
+                    <div className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-lg border border-border bg-card/95 px-1 py-0.5 opacity-0 shadow-sm backdrop-blur transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                      <button
+                        type="button"
+                        className="action-btn queue"
+                        title={
+                          canQueue
+                            ? "Add to queue"
+                            : "Start a video before queueing"
+                        }
+                        aria-label="Add to queue"
+                        disabled={!canQueue}
+                        onClick={() => void handleQueue(item.url)}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          width="14"
+                          height="14"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M3 6h12M3 12h9M3 18h9" />
+                          <path d="M18 12v8M14 16h8" />
+                        </svg>
+                      </button>
                       <button
                         type="button"
                         className="action-btn replay"
@@ -488,6 +620,61 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
       )}
 
       {toast && <div className={`toast ${toast.variant}`}>{toast.msg}</div>}
+    </div>
+  );
+}
+
+function HistorySkeleton() {
+  const widths = ["w-4/5", "w-3/5", "w-2/3", "w-1/2", "w-3/4"];
+  return (
+    <div
+      className="pt-2 flex flex-col gap-2"
+      role="status"
+      aria-label="Loading history"
+    >
+      {widths.map((width) => (
+        <div key={width} className="flex items-stretch gap-2 animate-pulse">
+          <div className="w-20 h-14 flex-shrink-0 rounded-lg bg-elevated" />
+          <div className="flex-1 py-2 flex flex-col justify-center gap-2">
+            <div className={`h-3 rounded bg-elevated ${width}`} />
+            <div className="h-2.5 w-1/3 rounded bg-elevated/70" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HistoryOffline({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="text-center py-10 px-5">
+      <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-danger/10 text-danger flex items-center justify-center">
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+          <path d="M12 9v4" />
+          <path d="M12 17h.01" />
+        </svg>
+      </div>
+      <p className="text-sm font-medium text-text m-0">
+        Can't reach the server
+      </p>
+      <p className="text-xs text-muted mt-1.5 mb-0 max-w-xs mx-auto">
+        The local server may still be starting. Your history is stored on this
+        machine.
+      </p>
+      <button type="button" className="btn-primary mt-4" onClick={onRetry}>
+        Retry
+      </button>
     </div>
   );
 }

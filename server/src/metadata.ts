@@ -8,11 +8,23 @@ export interface VideoMetadata {
   thumbnail: string;
 }
 
-function findYtDlp(binDir: string): string {
+// Packaged apps launched from Finder inherit a minimal PATH, so Homebrew
+// locations need to be checked explicitly.
+const YT_DLP_COMMON =
+  process.platform === "darwin"
+    ? ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"]
+    : process.platform === "linux"
+      ? ["/usr/bin/yt-dlp", "/usr/local/bin/yt-dlp"]
+      : [];
+
+export function findYtDlp(binDir: string): string {
   const name = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
   if (binDir) {
     const local = join(binDir, name);
     if (existsSync(local)) return local;
+  }
+  for (const candidate of YT_DLP_COMMON) {
+    if (existsSync(candidate)) return candidate;
   }
   return name;
 }

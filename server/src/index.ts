@@ -6,6 +6,11 @@ import { cors } from "hono/cors";
 import { initAuthToken, requireToken } from "./auth.js";
 import { getDataDir, getSettings, initDatabase } from "./db.js";
 import { remotePageHtml } from "./remote.js";
+import {
+  REMOTE_ICON_192_PNG,
+  REMOTE_ICON_512_PNG,
+  REMOTE_SERVICE_WORKER,
+} from "./remote-assets.js";
 import routes from "./routes.js";
 
 function parsePort(raw: string | undefined): number {
@@ -121,7 +126,11 @@ app.use("*", async (c, next) => {
   if (
     c.req.path === "/api/health" ||
     c.req.path === "/remote" ||
-    c.req.path === "/remote/pair"
+    c.req.path === "/remote/pair" ||
+    c.req.path === "/remote/manifest.webmanifest" ||
+    c.req.path === "/remote/icon-192.png" ||
+    c.req.path === "/remote/icon-512.png" ||
+    c.req.path === "/remote-sw.js"
   ) {
     return next();
   }
@@ -138,12 +147,69 @@ app.get("/remote", (c) => {
       `script-src 'nonce-${nonce}'`,
       `style-src 'nonce-${nonce}'`,
       "connect-src 'self'",
-      "img-src 'self' data:",
+      "img-src 'self' data: blob:",
+      "manifest-src 'self'",
+      "worker-src 'self'",
       "base-uri 'none'",
       "form-action 'none'",
     ].join("; "),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
+  });
+});
+
+app.get("/remote/manifest.webmanifest", (c) => {
+  return c.body(
+    JSON.stringify({
+      name: "media-launcher remote",
+      short_name: "media-launcher",
+      description: "Control media-launcher from your phone",
+      start_url: "/remote",
+      scope: "/remote",
+      display: "standalone",
+      background_color: "#0e1013",
+      theme_color: "#0e1013",
+      icons: [
+        {
+          src: "/remote/icon-192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any",
+        },
+        {
+          src: "/remote/icon-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any maskable",
+        },
+      ],
+    }),
+    200,
+    {
+      "Content-Type": "application/manifest+json",
+      "Cache-Control": "public, max-age=3600",
+    },
+  );
+});
+
+app.get("/remote/icon-192.png", (c) => {
+  return c.body(Buffer.from(REMOTE_ICON_192_PNG, "base64"), 200, {
+    "Content-Type": "image/png",
+    "Cache-Control": "public, max-age=86400",
+  });
+});
+
+app.get("/remote/icon-512.png", (c) => {
+  return c.body(Buffer.from(REMOTE_ICON_512_PNG, "base64"), 200, {
+    "Content-Type": "image/png",
+    "Cache-Control": "public, max-age=86400",
+  });
+});
+
+app.get("/remote-sw.js", (c) => {
+  return c.body(REMOTE_SERVICE_WORKER, 200, {
+    "Content-Type": "application/javascript; charset=utf-8",
+    "Cache-Control": "no-cache",
   });
 });
 
