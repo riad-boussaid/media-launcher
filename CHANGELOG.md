@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-20
+
 ### Added
 
 - Watch Later: save the current page from the extension popup or sidebar, the
@@ -54,6 +56,20 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
   playback progress; imports restore them into Watch Later and History.
 - Watched videos are grouped into a collapsible section in the desktop Later
   tab, and the Continue filter is remembered on desktop and the remote.
+
+### Changed
+
+- The desktop History tab now has a Continue Watching shelf, date-grouped
+  rows, search and filter controls, multi-select, and undoable clear and
+  removal actions.
+- The desktop Later tab now shows saved and in-progress counts, filters,
+  inline progress, a collapsible Watched section, and multi-select play,
+  queue, and remove actions.
+- Settings now uses grouped sections with a sticky section index, and Play
+  centers the URL composer with a live player-status header, saved-queue
+  recovery, and a compact recent list.
+- Desktop navigation shortcuts now match the rail order (Ctrl 1–4), and focus
+  rings, selection bars, and toolbar controls are consistent across tabs.
 
 ### Fixed
 
@@ -229,6 +245,7 @@ First public release.
 - The remote page uses a nonce-based Content Security Policy.
 - QR pairing uses single-use random codes with a five-minute TTL.
 
-[Unreleased]: https://github.com/riad-boussaid/media-launcher/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/riad-boussaid/media-launcher/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/riad-boussaid/media-launcher/releases/tag/v1.2.0
 [1.1.0]: https://github.com/riad-boussaid/media-launcher/releases/tag/v1.1.0
 [1.0.0]: https://github.com/riad-boussaid/media-launcher/releases/tag/v1.0.0
