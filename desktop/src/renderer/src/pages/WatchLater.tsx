@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type JSX,
+  type MouseEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { isLiveLike, LiveBadge } from "../components/LiveBadge";
 import { ShortBadge } from "../components/ShortBadge";
 import { Thumbnail } from "../components/Thumbnail";
@@ -19,19 +28,103 @@ import {
   replayUrl,
   resetWatchLaterProgress,
 } from "../lib/api";
-import { displayUrl, formatTime, relativeTime } from "../lib/format";
+import { formatTime, hostOf, relativeTime } from "../lib/format";
 
 type SortMode = "newest" | "oldest" | "title" | "custom";
+type Filter = "all" | "progress" | "short";
+type RowAction =
+  | "play"
+  | "queue"
+  | "copy"
+  | "open"
+  | "refresh"
+  | "reset"
+  | "moveUp"
+  | "moveDown"
+  | "remove";
+type ToastState = { msg: string; variant: string; undo?: () => void };
 
 const SORT_KEY = "ml-later-sort";
 const CONTINUE_KEY = "ml-later-continue";
 const HIDE_SHORTS_KEY = "ml-later-hide-shorts";
 
-function statusLabel(item: WatchLaterEntry): string {
-  if (isLiveLike(item.liveStatus)) return "";
+const DELETE_UNDO_MS = 5000;
+const TOAST_UNDO_MS = 4800;
+const MENU_UP_THRESHOLD = 340;
+
+function timeLabel(ts: number): string {
+  return new Date(ts).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function groupLabel(ts: number): string {
+  const now = new Date();
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const yesterday = today - 86400000;
+  const weekStart = today - now.getDay() * 86400000;
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  if (ts >= today) return "Today";
+  if (ts >= yesterday) return "Yesterday";
+  if (ts >= weekStart) return "Earlier this week";
+  if (ts >= monthStart) return "This month";
+  return "Older";
+}
+
+function rowTime(ts: number): string {
+  const date = new Date(ts);
+  const group = groupLabel(ts);
+  if (group === "Today" || group === "Yesterday") {
+    return date.toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  if (group === "Earlier this week") {
+    return date.toLocaleDateString(undefined, { weekday: "short" });
+  }
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function isInProgress(item: WatchLaterEntry): boolean {
+  return !isLiveLike(item.liveStatus) && !item.completed && (item.position ?? 0) > 0;
+}
+
+function progressPercent(item: WatchLaterEntry): number {
+  const duration = item.duration ?? 0;
+  const position = item.position ?? 0;
+  if (duration <= 0 || position <= 0) return 0;
+  return Math.min(99, Math.max(1, Math.round((position / duration) * 100)));
+}
+
+function remainingSeconds(item: WatchLaterEntry): number {
+  return Math.max(0, (item.duration ?? 0) - (item.position ?? 0));
+}
+
+function stateLabel(item: WatchLaterEntry): string {
+  if (item.liveStatus === "live") return "Streaming now";
+  if (item.liveStatus === "upcoming") return "Starts soon";
+  if (item.liveStatus === "post_live" || item.liveStatus === "was_live") {
+    return "Live ended";
+  }
   if (item.completed) return "Watched";
-  if ((item.position ?? 0) > 60) {
-    return `Resume ${formatTime(item.position ?? 0)}`;
+  if ((item.position ?? 0) > 0) {
+    if ((item.duration ?? 0) > 0) {
+      return `${progressPercent(item)}% watched · ${formatTime(
+        remainingSeconds(item),
+      )} left`;
+    }
+    return "Resume";
   }
   return `Saved ${relativeTime(item.addedAt)}`;
 }
@@ -43,122 +136,160 @@ export default function WatchLater({
 }) {
   const [items, setItems] = useState<WatchLaterEntry[]>([]);
   const [search, setSearch] = useState("");
-  const [toast, setToast] = useState<{ msg: string; variant: string } | null>(
-    null,
+  const [filter, setFilter] = useState<Filter>(() =>
+    localStorage.getItem(CONTINUE_KEY) === "1" ? "progress" : "all",
   );
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-  const [confirmingClear, setConfirmingClear] = useState(false);
-  const [canQueue, setCanQueue] = useState(false);
-  const [selectMode, setSelectMode] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<SortMode>(() => {
     const stored = localStorage.getItem(SORT_KEY);
     return stored === "oldest" || stored === "title" || stored === "custom"
       ? stored
       : "newest";
   });
-  const [continueOnly, setContinueOnly] = useState(
-    () => localStorage.getItem(CONTINUE_KEY) === "1",
-  );
   const [hideShorts, setHideShorts] = useState(
     () => localStorage.getItem(HIDE_SHORTS_KEY) === "1",
   );
   const [watchedOpen, setWatchedOpen] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [canQueue, setCanQueue] = useState(false);
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [menuUp, setMenuUp] = useState(false);
+  const [pageMenuOpen, setPageMenuOpen] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
-  const showToast = (msg: string, variant = "toast-success") => {
-    setToast({ msg, variant });
-    setTimeout(() => setToast(null), 2200);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Row and bulk removals commit after a short undo window; pending ids stay
+  // hidden from refreshes until the delayed delete finishes.
+  const pendingRef = useRef<{
+    ids: string[];
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const pendingIdsRef = useRef<Set<string>>(new Set());
+  const searchRef = useRef<HTMLInputElement>(null);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const lastFocusRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  const showToast = (
+    msg: string,
+    variant = "toast-success",
+    undo?: () => void,
+  ) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ msg, variant, undo });
+    toastTimerRef.current = setTimeout(
+      () => {
+        toastTimerRef.current = null;
+        setToast(null);
+      },
+      undo ? TOAST_UNDO_MS : 2200,
+    );
   };
+
+  const hideToast = () => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToast(null);
+  };
+
+  const applyList = useCallback((list: WatchLaterEntry[]) => {
+    setItems(list.filter((entry) => !pendingIdsRef.current.has(entry.id)));
+  }, []);
 
   const load = useCallback(async () => {
     try {
-      setItems(await getWatchLater());
+      const list = await getWatchLater();
+      if (!mountedRef.current) return;
+      applyList(list);
       setLoadError(false);
     } catch {
-      setLoadError(true);
+      if (mountedRef.current) setLoadError(true);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [applyList]);
 
-  useEffect(() => {
+  const commitDelete = async (ids: string[]) => {
+    const results = await Promise.allSettled(
+      ids.map((id) => deleteWatchLater(id)),
+    );
+    const failed = results.some((result) => result.status === "rejected");
+    ids.forEach((id) => {
+      pendingIdsRef.current.delete(id);
+    });
+    if (!mountedRef.current) return;
+    if (failed) showToast("Could not remove some videos", "toast-error");
     void load();
-  }, [load]);
+  };
 
-  // App bumps focusSignal (Ctrl+4) to jump here and focus the search.
-  useEffect(() => {
-    if (focusSignal > 0) searchRef.current?.focus();
-  }, [focusSignal]);
+  const flushPending = () => {
+    const pending = pendingRef.current;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingRef.current = null;
+    void commitDelete(pending.ids);
+  };
 
-  // yt-dlp enrichment can lag behind the save; keep polling while an entry
-  // lacks metadata or a recent entry's live status is still unknown.
-  useEffect(() => {
-    if (
-      !items.some(
-        (e) =>
-          (!e.title && !e.thumbnail) ||
-          (!e.liveStatus && Date.now() - e.addedAt < 60_000),
-      )
-    )
-      return;
-    const t = setInterval(() => void load(), 3000);
-    return () => clearInterval(t);
-  }, [items, load]);
-
-  useEffect(() => {
-    const poll = () => {
-      void getPlayerStatus()
-        .then((status) => setCanQueue(Boolean(status.alive && status.ipcReady)))
-        .catch(() => setCanQueue(false));
-    };
-    poll();
-    const t = setInterval(poll, 5000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (confirmingClear) {
-        setConfirmingClear(false);
-      } else if (selectMode) {
-        setSelected(new Set());
-        setSelectMode(false);
-      } else if (search) {
-        setSearch("");
+  const scheduleDelete = (ids: string[], message: string) => {
+    if (ids.length === 0) return;
+    flushPending();
+    const unique = [...new Set(ids)];
+    unique.forEach((id) => {
+      pendingIdsRef.current.add(id);
+    });
+    const timer = setTimeout(() => {
+      pendingRef.current = null;
+      void commitDelete(unique);
+    }, DELETE_UNDO_MS);
+    pendingRef.current = { ids: unique, timer };
+    showToast(message, "toast-success", () => {
+      if (pendingRef.current?.timer === timer) {
+        clearTimeout(timer);
+        pendingRef.current = null;
       }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [confirmingClear, search, selectMode]);
+      unique.forEach((id) => {
+        pendingIdsRef.current.delete(id);
+      });
+      void load();
+    });
+  };
 
-  const searched = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          item.url.toLowerCase().includes(search.toLowerCase()) ||
-          item.title.toLowerCase().includes(search.toLowerCase()),
-      ),
-    [items, search],
+  const baseItems = useMemo(
+    () => (hideShorts ? items.filter((item) => !item.isShort) : items),
+    [items, hideShorts],
   );
-
+  const progressCount = useMemo(
+    () => baseItems.filter(isInProgress).length,
+    [baseItems],
+  );
+  const shortCount = useMemo(
+    () => items.filter((item) => item.isShort).length,
+    [items],
+  );
+  const searched = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return items.filter(
+      (item) =>
+        !query ||
+        item.url.toLowerCase().includes(query) ||
+        item.title.toLowerCase().includes(query),
+    );
+  }, [items, search]);
   const visible = useMemo(() => {
     let list = searched;
-    if (hideShorts) {
-      list = list.filter((item) => !item.isShort);
-    }
-    if (continueOnly) {
-      list = list.filter(
-        (item) =>
-          !isLiveLike(item.liveStatus) &&
-          !item.completed &&
-          (item.position ?? 0) > 0,
-      );
+    if (filter === "short") {
+      list = list.filter((item) => item.isShort);
+    } else {
+      if (hideShorts) list = list.filter((item) => !item.isShort);
+      if (filter === "progress") list = list.filter(isInProgress);
     }
     if (sort === "newest") {
       return [...list].sort((a, b) => b.addedAt - a.addedAt);
@@ -175,20 +306,17 @@ export default function WatchLater({
     }
     // "custom" keeps the server's manual order.
     return list;
-  }, [searched, continueOnly, sort, hideShorts]);
+  }, [searched, filter, hideShorts, sort]);
 
   const activeRows = visible.filter((item) => !item.completed);
   const watchedRows = visible.filter((item) => item.completed);
   const groupWatched = sort !== "custom";
-  // Selection applies to what is actually shown; the collapsed watched section
-  // is not selectable until it is expanded.
   const selectableRows = groupWatched && !watchedOpen ? activeRows : visible;
   const selectedIds = selectableRows
     .filter((item) => selected.has(item.id))
     .map((item) => item.id);
   const allSelected =
     selectableRows.length > 0 && selectedIds.length === selectableRows.length;
-
   const rows: Array<
     | { kind: "item"; item: WatchLaterEntry }
     | { kind: "watched-header"; count: number }
@@ -206,20 +334,150 @@ export default function WatchLater({
       ]
     : visible.map((item) => ({ kind: "item" as const, item }));
 
-  const changeSort = (value: SortMode) => {
-    setSort(value);
-    localStorage.setItem(SORT_KEY, value);
-  };
+  const visibleProgressCount = visible.filter(isInProgress).length;
+  const reorderBlocked =
+    Boolean(search.trim()) || filter !== "all" || hideShorts;
+  const searchReady = items.length > 0;
+  const hiddenByShorts =
+    hideShorts &&
+    filter === "all" &&
+    search.trim().length === 0 &&
+    visible.length === 0 &&
+    items.length > 0;
+  const headerSub =
+    loading && items.length === 0
+      ? "Loading…"
+      : loadError && items.length === 0
+        ? "Can't reach the server"
+        : `${visible.length} saved · ${visibleProgressCount} in progress`;
+  const filterChips: { value: Filter; label: string; count: number }[] = [
+    { value: "all", label: "All", count: baseItems.length },
+    { value: "progress", label: "In progress", count: progressCount },
+    { value: "short", label: "Shorts", count: shortCount },
+  ];
 
-  const changeContinue = (value: boolean) => {
-    setContinueOnly(value);
-    localStorage.setItem(CONTINUE_KEY, value ? "1" : "0");
-  };
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+      const pending = pendingRef.current;
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingRef.current = null;
+        void Promise.allSettled(
+          pending.ids.map((id) => deleteWatchLater(id)),
+        );
+      }
+    };
+  }, []);
 
-  const changeHideShorts = (value: boolean) => {
-    setHideShorts(value);
-    localStorage.setItem(HIDE_SHORTS_KEY, value ? "1" : "0");
-  };
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (focusSignal <= lastFocusRef.current || !searchReady) return;
+    const input = searchRef.current;
+    if (!input) return;
+    lastFocusRef.current = focusSignal;
+    input.focus();
+  }, [focusSignal, searchReady]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (menuId || pageMenuOpen) {
+        setMenuId(null);
+        setPageMenuOpen(false);
+        return;
+      }
+      if (confirmingClear) {
+        setConfirmingClear(false);
+        return;
+      }
+      if (selectMode) {
+        setSelected(new Set());
+        setSelectMode(false);
+        return;
+      }
+      if (search) {
+        setSearch("");
+        setSelected(new Set());
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuId, pageMenuOpen, confirmingClear, selectMode, search]);
+
+  useEffect(() => {
+    if (!menuId && !pageMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (menuId && !target.closest(`[data-row-menu="${menuId}"]`)) {
+        setMenuId(null);
+      }
+      if (pageMenuOpen && !target.closest("[data-page-menu]")) {
+        setPageMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [menuId, pageMenuOpen]);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate =
+        selectedIds.length > 0 && !allSelected;
+    }
+  }, [selectedIds.length, allSelected]);
+
+  // yt-dlp enrichment can lag behind the save; keep polling while an entry
+  // lacks metadata or a recent entry's live status is still unknown.
+  useEffect(() => {
+    if (
+      !items.some(
+        (entry) =>
+          (!entry.title && !entry.thumbnail) ||
+          (!entry.liveStatus && Date.now() - entry.addedAt < 60_000),
+      )
+    ) {
+      return;
+    }
+    const timer = setInterval(() => void load(), 3000);
+    return () => clearInterval(timer);
+  }, [items, load]);
+
+  // Live statuses change while a stream is running; the server refreshes them
+  // on list reads, and this poll picks up the result.
+  useEffect(() => {
+    if (!items.some((entry) => isLiveLike(entry.liveStatus))) return;
+    const timer = setInterval(() => void load(), 60_000);
+    return () => clearInterval(timer);
+  }, [items, load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => {
+      void getPlayerStatus()
+        .then((status) => {
+          if (!cancelled) setCanQueue(Boolean(status.alive && status.ipcReady));
+        })
+        .catch(() => {
+          if (!cancelled) setCanQueue(false);
+        });
+    };
+    poll();
+    const timer = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   const retry = () => {
     setLoadError(false);
@@ -227,31 +485,77 @@ export default function WatchLater({
     void load();
   };
 
-  // Live statuses change while a stream is running; the server refreshes them
-  // on list reads, and this poll picks up the result.
-  useEffect(() => {
-    if (!items.some((e) => isLiveLike(e.liveStatus))) return;
-    const t = setInterval(() => void load(), 60_000);
-    return () => clearInterval(t);
-  }, [items, load]);
-
-  const handleDelete = async (id: string) => {
-    try {
-      setItems(await deleteWatchLater(id));
-    } catch {
-      showToast("Could not remove that video", "toast-error");
-    }
+  const changeSort = (value: SortMode) => {
+    setSort(value);
+    localStorage.setItem(SORT_KEY, value);
+    setSelected(new Set());
+    setMenuId(null);
+    setPageMenuOpen(false);
   };
 
-  const handleClear = async () => {
-    try {
-      await clearWatchLater();
-      setItems([]);
-      setConfirmingClear(false);
-      showToast("Watch Later cleared");
-    } catch {
-      showToast("Could not clear Watch Later", "toast-error");
+  const changeFilter = (next: Filter) => {
+    if (next === "short" && hideShorts) {
+      setHideShorts(false);
+      localStorage.setItem(HIDE_SHORTS_KEY, "0");
     }
+    setFilter(next);
+    localStorage.setItem(CONTINUE_KEY, next === "progress" ? "1" : "0");
+    setSelected(new Set());
+    setMenuId(null);
+    setPageMenuOpen(false);
+  };
+
+  const changeHideShorts = (value: boolean) => {
+    setHideShorts(value);
+    localStorage.setItem(HIDE_SHORTS_KEY, value ? "1" : "0");
+    if (value && filter === "short") {
+      setFilter("all");
+      localStorage.setItem(CONTINUE_KEY, "0");
+    }
+    setSelected(new Set());
+    setPageMenuOpen(false);
+  };
+
+  const changeSearch = (value: string) => {
+    setSearch(value);
+    setSelected(new Set());
+  };
+
+  const resetFilters = () => {
+    setSearch("");
+    setFilter("all");
+    localStorage.setItem(CONTINUE_KEY, "0");
+    setSelected(new Set());
+  };
+
+  const enterSelectMode = () => {
+    setConfirmingClear(false);
+    setMenuId(null);
+    setPageMenuOpen(false);
+    setSelected(new Set());
+    setSelectMode(true);
+  };
+
+  const exitSelectMode = () => {
+    setSelected(new Set());
+    setSelectMode(false);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelected(
+      allSelected
+        ? new Set()
+        : new Set(selectableRows.map((item) => item.id)),
+    );
   };
 
   const handlePlay = async (url: string) => {
@@ -276,29 +580,19 @@ export default function WatchLater({
     showToast("Added to queue");
   };
 
-  const handleCopy = (url: string) => {
-    navigator.clipboard.writeText(url);
-    showToast("Copied");
+  const handleCopy = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Copied");
+    } catch {
+      showToast("Could not copy URL", "toast-error");
+    }
   };
 
-  const toggleSelect = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+  const handleOpen = (url: string) => {
+    void openExternal(url).catch(() => {
+      showToast("Could not open browser", "toast-error");
     });
-  };
-
-  const toggleSelectAll = () => {
-    setSelected(
-      allSelected ? new Set() : new Set(selectableRows.map((item) => item.id)),
-    );
-  };
-
-  const exitSelectMode = () => {
-    setSelected(new Set());
-    setSelectMode(false);
   };
 
   const handlePlayMany = async (ids: string[]) => {
@@ -342,37 +636,63 @@ export default function WatchLater({
     showToast(`Queued ${count} ${count === 1 ? "video" : "videos"}`);
   };
 
-  const handleDeleteSelected = async () => {
+  const handleRemove = (item: WatchLaterEntry) => {
+    setItems((prev) => prev.filter((entry) => entry.id !== item.id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.delete(item.id);
+      return next;
+    });
+    scheduleDelete([item.id], "Removed from Watch Later");
+  };
+
+  const handleDeleteSelected = () => {
     if (selectedIds.length === 0) return;
     const ids = [...selectedIds];
-    const results = await Promise.allSettled(
-      ids.map((id) => deleteWatchLater(id)),
-    );
-    const failed = results.some((result) => result.status === "rejected");
-    exitSelectMode();
-    await load();
-    showToast(
-      failed
-        ? `Removed some of ${ids.length} videos`
-        : `Removed ${ids.length} ${ids.length === 1 ? "video" : "videos"}`,
-      failed ? "toast-error" : "toast-success",
+    const idSet = new Set(ids);
+    setItems((prev) => prev.filter((entry) => !idSet.has(entry.id)));
+    setSelected(new Set());
+    setSelectMode(false);
+    scheduleDelete(
+      ids,
+      ids.length === 1
+        ? "1 video removed"
+        : `${ids.length} videos removed`,
     );
   };
 
-  const handleResetProgress = async (id: string) => {
+  const handleClear = async () => {
+    setConfirmingClear(false);
     try {
-      setItems(await resetWatchLaterProgress(id));
-      showToast("Marked unwatched");
+      await clearWatchLater();
     } catch {
-      showToast("Could not reset progress", "toast-error");
+      showToast("Could not clear Watch Later", "toast-error");
+      return;
     }
+    setItems([]);
+    setSelected(new Set());
+    setSelectMode(false);
+    setSearch("");
+    setFilter("all");
+    setWatchedOpen(false);
+    localStorage.setItem(CONTINUE_KEY, "0");
+    showToast("Watch Later cleared");
+  };
+
+  const openClearConfirm = () => {
+    setPageMenuOpen(false);
+    setMenuId(null);
+    setSelectMode(false);
+    setSelected(new Set());
+    setConfirmingClear(true);
   };
 
   const handleRefresh = async (id: string) => {
     if (refreshingId) return;
     setRefreshingId(id);
+    showToast("Refreshing metadata…");
     try {
-      setItems(await refreshWatchLater(id));
+      applyList(await refreshWatchLater(id));
       showToast("Metadata refreshed");
     } catch {
       showToast("Could not refresh metadata", "toast-error");
@@ -381,9 +701,18 @@ export default function WatchLater({
     }
   };
 
+  const handleResetProgress = async (id: string) => {
+    try {
+      applyList(await resetWatchLaterProgress(id));
+      showToast("Marked unwatched");
+    } catch {
+      showToast("Could not reset progress", "toast-error");
+    }
+  };
+
   const persistOrder = async (ids: string[]) => {
     try {
-      setItems(await reorderWatchLater(ids));
+      applyList(await reorderWatchLater(ids));
       showToast("Order updated");
     } catch {
       showToast("Could not reorder Watch Later", "toast-error");
@@ -391,11 +720,7 @@ export default function WatchLater({
   };
 
   const handleMove = async (id: string, direction: -1 | 1) => {
-    if (sort !== "custom") return;
-    if (search || continueOnly) {
-      showToast("Clear search and Continue to reorder", "toast-error");
-      return;
-    }
+    if (sort !== "custom" || reorderBlocked) return;
     const ids = items.map((item) => item.id);
     const index = ids.indexOf(id);
     const target = index + direction;
@@ -409,11 +734,7 @@ export default function WatchLater({
     setDragId(null);
     setDragOverId(null);
     if (!sourceId || sourceId === targetId) return;
-    if (sort !== "custom") return;
-    if (search || continueOnly) {
-      showToast("Clear search and Continue to reorder", "toast-error");
-      return;
-    }
+    if (sort !== "custom" || reorderBlocked) return;
     const ids = items.map((item) => item.id);
     const from = ids.indexOf(sourceId);
     const to = ids.indexOf(targetId);
@@ -460,191 +781,252 @@ export default function WatchLater({
     }
   };
 
+  const toggleRowMenu = (
+    item: WatchLaterEntry,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => {
+    if (menuId === item.id) {
+      setMenuId(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMenuUp(window.innerHeight - rect.bottom < MENU_UP_THRESHOLD);
+    setPageMenuOpen(false);
+    setMenuId(item.id);
+  };
+
+  const runRowAction = (action: RowAction, item: WatchLaterEntry) => {
+    setMenuId(null);
+    if (action === "play") {
+      void handlePlay(item.url);
+      return;
+    }
+    if (action === "queue") {
+      void handleQueue(item.url);
+      return;
+    }
+    if (action === "copy") {
+      void handleCopy(item.url);
+      return;
+    }
+    if (action === "open") {
+      handleOpen(item.url);
+      return;
+    }
+    if (action === "refresh") {
+      void handleRefresh(item.id);
+      return;
+    }
+    if (action === "reset") {
+      void handleResetProgress(item.id);
+      return;
+    }
+    if (action === "moveUp") {
+      void handleMove(item.id, -1);
+      return;
+    }
+    if (action === "moveDown") {
+      void handleMove(item.id, 1);
+      return;
+    }
+    handleRemove(item);
+  };
+
+  const handleUndo = () => {
+    const undo = toast?.undo;
+    hideToast();
+    undo?.();
+  };
+
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <div className="flex-1 relative flex items-center">
-          <svg
-            className="absolute left-2.5 w-4 h-4 text-muted pointer-events-none"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden="true"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-          <input
-            ref={searchRef}
-            className="w-full py-2 pl-8 pr-8 bg-surface border border-border rounded-lg text-text text-sm outline-none focus:border-accent transition-colors placeholder:text-muted"
-            type="text"
-            placeholder="Search Watch Later… (Ctrl+4)"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              type="button"
-              className="absolute right-1.5 bg-none border-none text-muted text-lg cursor-pointer px-1.5 py-0.5 rounded hover:text-text hover:bg-elevated"
-              onClick={() => setSearch("")}
-            >
-              ×
-            </button>
-          )}
+    <div className="pb-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[20px] font-semibold leading-tight tracking-[-0.01em] text-text">
+            Watch Later
+          </h1>
+          <p className="mt-0.5 text-xs tabular-nums text-muted">{headerSub}</p>
         </div>
-        {items.length > 0 && !confirmingClear && (
+        {!selectMode && activeRows.length > 0 && (
           <button
             type="button"
-            className="btn-danger flex-shrink-0"
-            onClick={() => setConfirmingClear(true)}
+            className="btn-primary btn-sm flex-shrink-0"
+            title="Play every unwatched video currently listed"
+            onClick={() =>
+              void handlePlayMany(activeRows.map((item) => item.id))
+            }
           >
-            Clear all
+            <PlayIcon className="h-3.5 w-3.5" />
+            Play all
           </button>
         )}
       </div>
 
-      {items.length > 0 && !confirmingClear && (
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          {!selectMode ? (
-            <>
+      {items.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[160px] flex-1 basis-[190px]">
+            <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted">
+              <SearchIcon className="h-[15px] w-[15px]" />
+            </span>
+            <input
+              ref={searchRef}
+              type="text"
+              value={search}
+              onChange={(event) => changeSearch(event.target.value)}
+              placeholder="Search Watch Later"
+              aria-label="Search Watch Later"
+              className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-16 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-accent"
+            />
+            {search ? (
               <button
                 type="button"
-                className="btn-primary btn-sm"
-                disabled={activeRows.length === 0}
-                title="Play every unwatched video currently listed"
-                onClick={() =>
-                  void handlePlayMany(activeRows.map((item) => item.id))
-                }
+                className="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-text"
+                aria-label="Clear search"
+                onClick={() => changeSearch("")}
               >
-                Play all
+                <XIcon className="h-3.5 w-3.5" />
               </button>
+            ) : (
+              <span className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-elevated px-1.5 py-0.5 text-[10.5px] font-medium text-muted min-[480px]:inline-flex">
+                Ctrl 4
+              </span>
+            )}
+          </div>
+
+          <fieldset className="order-3 m-0 flex w-full min-w-0 flex-none gap-0.5 rounded-[9px] border border-border bg-surface p-0.5 max-[420px]:gap-0 min-[620px]:order-none min-[620px]:w-auto">
+            <legend className="sr-only">Filter Watch Later</legend>
+            {filterChips.map((chip) => (
               <button
+                key={chip.value}
                 type="button"
-                className="btn-ghost btn-sm"
-                disabled={!canQueue || activeRows.length === 0}
-                title={
-                  canQueue
-                    ? "Queue every unwatched video currently listed"
-                    : "Start a video before queueing"
-                }
-                onClick={() =>
-                  void handleQueueMany(activeRows.map((item) => item.id))
-                }
+                aria-pressed={filter === chip.value}
+                className={`inline-flex h-[26px] flex-1 items-center justify-center gap-1 rounded-md px-2.5 text-[11.5px] font-medium transition-colors max-[420px]:px-1 max-[420px]:text-[10.5px] min-[620px]:flex-none ${
+                  filter === chip.value
+                    ? "bg-elevated text-text"
+                    : "text-muted hover:text-text"
+                }`}
+                onClick={() => changeFilter(chip.value)}
               >
-                Queue all
-              </button>
-              <button
-                type="button"
-                className="btn-ghost btn-sm"
-                onClick={() => {
-                  setSelected(new Set());
-                  setSelectMode(true);
-                }}
-              >
-                Select
-              </button>
-              <button
-                type="button"
-                className="btn-ghost btn-sm"
-                title="Export every saved video to a JSON file"
-                onClick={() => void handleExport()}
-              >
-                Export
-              </button>
-              <button
-                type="button"
-                className="btn-ghost btn-sm"
-                title="Import videos from a JSON file"
-                onClick={() => void handleImport()}
-              >
-                Import
-              </button>
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <label className="text-xs text-muted flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={continueOnly}
-                    onChange={(e) => changeContinue(e.target.checked)}
-                  />
-                  Continue
-                </label>
-                <label className="text-xs text-muted flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hideShorts}
-                    onChange={(e) => changeHideShorts(e.target.checked)}
-                  />
-                  Hide Shorts &amp; Reels
-                </label>
-                <select
-                  className="h-8 px-2 bg-surface border border-border rounded-lg text-xs text-text outline-none focus:border-accent cursor-pointer"
-                  value={sort}
-                  onChange={(e) => changeSort(e.target.value as SortMode)}
-                  aria-label="Sort Watch Later"
+                {chip.label}
+                <span
+                  className={`text-[11px] tabular-nums max-[420px]:hidden ${
+                    filter === chip.value ? "text-text-dim" : "text-muted"
+                  }`}
                 >
-                  <option value="newest">Newest saved</option>
-                  <option value="oldest">Oldest saved</option>
-                  <option value="title">Title A–Z</option>
-                  <option value="custom">Custom order</option>
-                </select>
-                {sort === "custom" && (
-                  <span className="text-[10px] text-muted whitespace-nowrap">
-                    Drag or use ↑↓ to reorder
-                  </span>
+                  {chip.count}
+                </span>
+              </button>
+            ))}
+          </fieldset>
+
+          <select
+            className="h-9 flex-none cursor-pointer rounded-lg border border-border bg-surface px-2.5 text-[12px] text-text outline-none transition-colors focus:border-accent"
+            value={sort}
+            onChange={(event) => changeSort(event.target.value as SortMode)}
+            aria-label="Sort Watch Later"
+          >
+            <option value="newest">Newest saved</option>
+            <option value="oldest">Oldest saved</option>
+            <option value="title">Title A–Z</option>
+            <option value="custom">Custom order</option>
+          </select>
+
+          <button
+            type="button"
+            className="btn-ghost flex-shrink-0"
+            onClick={enterSelectMode}
+          >
+            <SelectIcon />
+            Select
+          </button>
+
+          <div className="relative flex-none" data-page-menu>
+            <button
+              type="button"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-text"
+              aria-label="More options"
+              aria-haspopup="menu"
+              aria-expanded={pageMenuOpen}
+              onClick={() => {
+                setPageMenuOpen((open) => !open);
+                setMenuId(null);
+              }}
+            >
+              <MoreIcon className="h-4 w-4" />
+            </button>
+            {pageMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Watch Later actions"
+                className="absolute right-0 z-40 mt-1 w-[200px] rounded-[10px] border border-border-strong bg-card p-1 shadow-xl"
+              >
+                {!selectMode && (
+                  <MenuItem
+                    icon={<QueueIcon />}
+                    label="Queue all"
+                    disabled={!canQueue || activeRows.length === 0}
+                    hint={
+                      canQueue
+                        ? "Queue every unwatched video currently listed"
+                        : "Start a video before queueing"
+                    }
+                    onClick={() => {
+                      setPageMenuOpen(false);
+                      void handleQueueMany(activeRows.map((item) => item.id));
+                    }}
+                  />
                 )}
-              </div>
-            </>
-          ) : (
-            <>
-              <label className="text-xs text-muted flex items-center gap-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleSelectAll}
+                <MenuItem
+                  icon={<ShortsIcon />}
+                  label="Hide Shorts & Reels"
+                  checked={hideShorts}
+                  onClick={() => changeHideShorts(!hideShorts)}
                 />
-                All
-              </label>
-              <button
-                type="button"
-                className="btn-primary btn-sm"
-                disabled={selectedIds.length === 0}
-                onClick={() => void handlePlayMany(selectedIds)}
-              >
-                Play selected
-              </button>
-              <button
-                type="button"
-                className="btn-ghost btn-sm"
-                disabled={!canQueue || selectedIds.length === 0}
-                onClick={() => void handleQueueMany(selectedIds)}
-              >
-                Queue selected
-              </button>
-              {selectedIds.length > 0 && (
-                <button
-                  type="button"
-                  className="btn-danger btn-sm"
-                  onClick={() => void handleDeleteSelected()}
-                >
-                  Remove ({selectedIds.length})
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn-ghost btn-sm ml-auto"
-                onClick={exitSelectMode}
-              >
-                Cancel
-              </button>
-            </>
-          )}
+                <div className="my-1 h-px bg-border" />
+                <MenuItem
+                  icon={<UploadIcon />}
+                  label="Import from JSON"
+                  onClick={() => {
+                    setPageMenuOpen(false);
+                    void handleImport();
+                  }}
+                />
+                <MenuItem
+                  icon={<DownloadIcon />}
+                  label="Export to JSON"
+                  onClick={() => {
+                    setPageMenuOpen(false);
+                    void handleExport();
+                  }}
+                />
+                <div className="my-1 h-px bg-border" />
+                <MenuItem
+                  icon={<TrashIcon />}
+                  label="Clear Watch Later"
+                  danger
+                  disabled={items.length === 0}
+                  onClick={openClearConfirm}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {sort === "custom" && items.length > 0 && (
+        <div className="mb-2 mt-1 px-1 text-[11px] text-muted">
+          {reorderBlocked
+            ? "Clear search and filters to reorder."
+            : "Custom order — drag rows or use ↑/↓ to reorder."}
         </div>
       )}
 
       {confirmingClear && (
-        <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg border border-danger/30 bg-danger/10">
-          <span className="flex-1 text-xs text-text-dim leading-snug">
+        <div
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2"
+          role="alert"
+        >
+          <span className="flex-1 text-xs leading-snug text-text-dim">
             Clear all {items.length} saved{" "}
             {items.length === 1 ? "video" : "videos"}? This can't be undone.
           </span>
@@ -665,468 +1047,836 @@ export default function WatchLater({
         </div>
       )}
 
-      {items.length > 0 && !search && !loading && (
-        <div className="text-[11.5px] text-muted mb-2 uppercase tracking-[0.5px]">
-          {selectMode
-            ? `${selectedIds.length} selected`
-            : continueOnly
-              ? `${visible.length} of ${items.length} in progress`
-              : hideShorts
-                ? `${visible.length} of ${items.length} (short-form hidden)`
-                : `${items.length} saved ${
-                    items.length === 1 ? "video" : "videos"
-                  }`}
+      {selectMode && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2">
+          <span className="text-xs font-medium text-text" aria-live="polite">
+            <span className="tabular-nums">{selectedIds.length}</span> selected
+          </span>
+          <span className="flex-1" />
+          <label className="flex cursor-pointer items-center gap-1.5 text-[11.5px] text-text-dim">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleSelectAll}
+            />
+            Select all
+          </label>
+          <button
+            type="button"
+            className="btn-primary btn-sm disabled:opacity-40"
+            disabled={selectedIds.length === 0}
+            onClick={() => void handlePlayMany(selectedIds)}
+          >
+            Play
+          </button>
+          <button
+            type="button"
+            className="btn-ghost btn-sm disabled:opacity-40"
+            disabled={!canQueue || selectedIds.length === 0}
+            onClick={() => void handleQueueMany(selectedIds)}
+          >
+            Queue
+          </button>
+          <button
+            type="button"
+            className="btn-danger btn-sm disabled:opacity-40"
+            disabled={selectedIds.length === 0}
+            onClick={handleDeleteSelected}
+          >
+            Remove
+          </button>
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            onClick={exitSelectMode}
+          >
+            Cancel
+          </button>
         </div>
       )}
 
       {loading && items.length === 0 ? (
-        <div className="space-y-2">
-          {["w-4/5", "w-3/5", "w-2/3", "w-1/2"].map((width) => (
-            <div
-              key={width}
-              className="flex items-center gap-2 px-3 py-3 rounded-lg border border-border animate-pulse"
-            >
-              <div className="w-20 h-11 rounded bg-elevated" />
-              <div className="flex-1 space-y-2">
-                <div className={`h-3 rounded bg-elevated ${width}`} />
-                <div className="h-2.5 w-1/3 rounded bg-elevated" />
-              </div>
-            </div>
-          ))}
-        </div>
+        <WatchLaterSkeleton />
       ) : loadError && items.length === 0 ? (
-        <div className="card text-center py-8 px-5">
-          <p className="text-sm text-text-dim mb-1">
-            Couldn't load Watch Later
-          </p>
-          <p className="text-xs text-muted mb-4">
-            The local server isn't responding.
-          </p>
-          <button type="button" className="btn-primary" onClick={retry}>
-            Retry
-          </button>
-        </div>
+        <WatchLaterOffline onRetry={retry} />
       ) : rows.length === 0 ? (
-        <div className="text-center py-10 px-5 text-muted">
-          {search ? (
-            <>
-              <p>No results for "{search}"</p>
-              <button
-                type="button"
-                className="btn-primary mt-3"
-                onClick={() => setSearch("")}
-              >
-                Clear search
-              </button>
-            </>
+        <div className="flex flex-col items-center justify-center px-5 py-12 text-center">
+          <span className="mb-2.5 grid h-10 w-10 place-items-center rounded-full border border-border bg-surface text-muted">
+            <BookmarkIcon className="h-[18px] w-[18px]" />
+          </span>
+          <p className="text-[13px] font-medium text-text">
+            {search
+              ? "No matches"
+              : items.length === 0
+                ? "Nothing saved yet"
+                : hiddenByShorts
+                  ? "Shorts and Reels are hidden"
+                  : filter === "progress"
+                    ? "Nothing in progress"
+                    : "No matches"}
+          </p>
+          <p className="mt-1 max-w-[300px] text-[11.5px] leading-relaxed text-muted">
+            {search
+              ? "Try a different search or filter."
+              : items.length === 0
+                ? "Save videos with the browser extension or from the Play page."
+                : hiddenByShorts
+                  ? "Show short-form videos to see them in your saved list."
+                  : filter === "progress"
+                    ? "Saved videos you've started will appear here."
+                    : "Try a different search or filter."}
+          </p>
+          {search || filter !== "all" ? (
+            <button
+              type="button"
+              className="btn-ghost btn-sm mt-3"
+              onClick={
+                filter === "progress" && !search
+                  ? () => changeFilter("all")
+                  : resetFilters
+              }
+            >
+              {filter === "progress" && !search
+                ? "Show all videos"
+                : "Reset filters"}
+            </button>
           ) : items.length === 0 ? (
-            <>
-              <p>Nothing saved yet</p>
-              <p className="text-xs mt-2 text-muted/70">
-                Save videos with the browser extension or from the Play page
-              </p>
-              <button
-                type="button"
-                className="btn-ghost mt-3"
-                onClick={() => void handleImport()}
-              >
-                Import from JSON
-              </button>
-            </>
-          ) : hideShorts && visible.length === 0 ? (
-            <>
-              <p>Shorts and Reels are hidden</p>
-              <button
-                type="button"
-                className="btn-ghost mt-3"
-                onClick={() => changeHideShorts(false)}
-              >
-                Show Shorts &amp; Reels
-              </button>
-            </>
-          ) : (
-            <>
-              <p>Nothing in progress</p>
-              <button
-                type="button"
-                className="btn-ghost mt-3"
-                onClick={() => changeContinue(false)}
-              >
-                Show all videos
-              </button>
-            </>
-          )}
+            <button
+              type="button"
+              className="btn-ghost btn-sm mt-3"
+              onClick={() => void handleImport()}
+            >
+              Import from JSON
+            </button>
+          ) : hiddenByShorts ? (
+            <button
+              type="button"
+              className="btn-ghost btn-sm mt-3"
+              onClick={() => changeHideShorts(false)}
+            >
+              Show Shorts & Reels
+            </button>
+          ) : null}
         </div>
       ) : (
-        rows.map((row) => {
-          if (row.kind === "watched-header") {
-            return (
-              <button
-                key="watched-header"
-                type="button"
-                aria-expanded={watchedOpen}
-                className="mt-4 mb-1 flex w-full items-center gap-1.5 px-1 py-1 text-[11.5px] text-muted uppercase tracking-[1px] font-semibold hover:text-text"
-                onClick={() => setWatchedOpen((open) => !open)}
-              >
-                <svg
-                  className={`w-3 h-3 transition-transform ${
-                    watchedOpen ? "" : "-rotate-90"
-                  }`}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
+        <div>
+          {rows.map((row) => {
+            if (row.kind === "watched-header") {
+              return (
+                <button
+                  key="watched-header"
+                  type="button"
+                  aria-expanded={watchedOpen}
+                  className="mb-1 mt-3 flex w-full items-center gap-2 px-1 text-xs font-semibold text-text-dim transition-colors hover:text-text"
+                  onClick={() => setWatchedOpen((open) => !open)}
                 >
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-                Watched ({row.count})
-              </button>
-            );
-          }
-          const item = row.item;
-          const { host, path } = displayUrl(item.url);
-          const progress = isLiveLike(item.liveStatus)
-            ? 0
-            : item.completed
-              ? 100
-              : (item.duration ?? 0) > 0
-                ? Math.min(
-                    100,
-                    Math.round(
-                      ((item.position ?? 0) / (item.duration ?? 1)) * 100,
-                    ),
-                  )
-                : 0;
-          const status = statusLabel(item);
-          const reorderBlocked = Boolean(search) || continueOnly;
-          return (
-            // biome-ignore lint/a11y/noStaticElementInteractions: the row is a drop target; the handle button provides keyboard reordering
-            <div
-              key={item.id}
-              className={`relative flex items-stretch mb-1 rounded-lg overflow-hidden transition-colors min-h-[56px] hover:bg-card group ${
-                selectMode && selected.has(item.id) ? "bg-card" : ""
-              } ${
-                dragOverId === item.id && dragId !== item.id
-                  ? "ring-2 ring-inset ring-accent/60"
-                  : ""
-              }`}
-              onDragOver={(e) => {
-                if (sort !== "custom" || selectMode || reorderBlocked) return;
-                e.preventDefault();
-                if (dragId && dragId !== item.id) setDragOverId(item.id);
-              }}
-              onDrop={(e) => {
-                if (sort !== "custom" || selectMode) return;
-                e.preventDefault();
-                void handleDrop(item.id, e.dataTransfer.getData("text/plain"));
-              }}
-            >
-              {selectMode && (
-                <label className="flex items-center pl-2 pr-1 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(item.id)}
-                    onChange={() => toggleSelect(item.id)}
-                  />
-                </label>
-              )}
-              {sort === "custom" && !selectMode && (
-                <div className="flex items-center pl-1 pr-0.5">
-                  <button
-                    type="button"
-                    draggable={!reorderBlocked}
-                    className="action-btn cursor-grab active:cursor-grabbing"
-                    title={
-                      reorderBlocked
-                        ? "Clear search and Continue to reorder"
-                        : "Drag to reorder (or press ↑/↓)"
-                    }
-                    aria-label={`Reorder ${item.title || item.url}`}
-                    disabled={reorderBlocked}
-                    onDragStart={(e) => {
-                      if (reorderBlocked) {
-                        e.preventDefault();
-                        return;
-                      }
-                      setDragId(item.id);
-                      e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData("text/plain", item.id);
-                    }}
-                    onDragEnd={() => {
-                      setDragId(null);
-                      setDragOverId(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "ArrowUp") {
-                        e.preventDefault();
-                        void handleMove(item.id, -1);
-                      } else if (e.key === "ArrowDown") {
-                        e.preventDefault();
-                        void handleMove(item.id, 1);
-                      }
-                    }}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      width="14"
-                      height="14"
-                      fill="currentColor"
-                      aria-hidden="true"
-                    >
-                      <circle cx="9" cy="6" r="1.4" />
-                      <circle cx="15" cy="6" r="1.4" />
-                      <circle cx="9" cy="12" r="1.4" />
-                      <circle cx="15" cy="12" r="1.4" />
-                      <circle cx="9" cy="18" r="1.4" />
-                      <circle cx="15" cy="18" r="1.4" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-              <button
-                type="button"
-                className="relative w-20 flex-shrink-0 bg-black/40 cursor-pointer flex items-center justify-center rounded-l-lg overflow-hidden border-none"
-                onClick={() =>
-                  selectMode ? toggleSelect(item.id) : void handlePlay(item.url)
-                }
-                aria-label={
-                  selectMode
-                    ? `Select ${item.title || item.url}`
-                    : `Play ${item.title || item.url}`
-                }
-              >
-                <Thumbnail
-                  src={item.thumbnail}
-                  className="absolute inset-0 h-full w-full object-cover"
-                  fallback={
-                    <svg
-                      className="w-5 h-5 text-white/15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      aria-hidden="true"
-                    >
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                  }
-                />
-              </button>
-              <button
-                type="button"
-                className="flex-1 flex items-center gap-2 px-2.5 py-2 cursor-pointer min-w-0 border-none bg-transparent text-left"
-                aria-label={
-                  selectMode
-                    ? `Select ${item.title || item.url}`
-                    : `Play ${item.title || item.url}`
-                }
-                onClick={() =>
-                  selectMode ? toggleSelect(item.id) : void handlePlay(item.url)
-                }
-              >
-                <div className="flex-1 min-w-0" title={item.url}>
-                  <div className="flex items-center gap-1.5 mb-0.5 min-w-0">
-                    <span className="text-sm font-medium text-text overflow-hidden text-ellipsis whitespace-nowrap">
-                      {item.title || host}
-                    </span>
-                    <LiveBadge status={item.liveStatus} />
-                    <ShortBadge isShort={item.isShort} url={item.url} />
-                  </div>
-                  <div className="text-xs overflow-hidden text-ellipsis whitespace-nowrap">
-                    <span className="text-accent">{host}</span>
-                    <span className="text-muted">{path}</span>
-                  </div>
-                </div>
-                {status && (
-                  <div
-                    className={`text-[11.5px] whitespace-nowrap flex-shrink-0 ${
-                      item.completed ? "text-success" : "text-muted"
+                  <ChevronDownIcon
+                    className={`h-3.5 w-3.5 transition-transform ${
+                      watchedOpen ? "" : "-rotate-90"
                     }`}
-                  >
-                    {status}
-                  </div>
+                  />
+                  <span>Watched</span>
+                  <span className="text-[11px] font-normal tabular-nums text-muted">
+                    {row.count}
+                  </span>
+                  <span className="h-px flex-1 bg-border" />
+                </button>
+              );
+            }
+            const item = row.item;
+            const progress = progressPercent(item);
+            const inProgress = isInProgress(item);
+            const completed = Boolean(item.completed);
+            const liveLabel =
+              item.liveStatus === "live"
+                ? "LIVE"
+                : item.liveStatus === "upcoming"
+                  ? "SOON"
+                  : "";
+            const resetLabel = completed
+              ? "Mark unwatched"
+              : (item.position ?? 0) > 0
+                ? "Reset progress"
+                : null;
+            const customIndex =
+              sort === "custom"
+                ? items.findIndex((entry) => entry.id === item.id)
+                : -1;
+            return (
+              // biome-ignore lint/a11y/noStaticElementInteractions: the row is a drop target; the drag handle provides keyboard reordering
+              <div
+                key={item.id}
+                className={`group relative mb-0.5 flex min-h-[72px] items-center gap-2.5 rounded-[10px] px-2 py-1.5 transition-colors hover:bg-card min-[560px]:gap-3 ${
+                  selectMode && selected.has(item.id) ? "bg-card" : ""
+                } ${
+                  dragOverId === item.id && dragId !== item.id
+                    ? "ring-2 ring-inset ring-accent/60"
+                    : ""
+                }`}
+                onDragOver={(event) => {
+                  if (sort !== "custom" || selectMode || reorderBlocked) {
+                    return;
+                  }
+                  event.preventDefault();
+                  if (dragId && dragId !== item.id) setDragOverId(item.id);
+                }}
+                onDrop={(event) => {
+                  if (sort !== "custom" || selectMode) return;
+                  event.preventDefault();
+                  void handleDrop(
+                    item.id,
+                    event.dataTransfer.getData("text/plain"),
+                  );
+                }}
+              >
+                {selectMode && (
+                  <label className="flex flex-none cursor-pointer items-center pl-0.5">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(item.id)}
+                      onChange={() => toggleSelect(item.id)}
+                      aria-label={`Select ${item.title || item.url}`}
+                    />
+                  </label>
                 )}
-              </button>
-              {!selectMode && (
-                <div className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-lg border border-border bg-card/95 px-1 py-0.5 opacity-0 shadow-sm backdrop-blur transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
-                  <button
-                    type="button"
-                    className="action-btn queue"
-                    title={
-                      canQueue
-                        ? "Add to queue"
-                        : "Start a video before queueing"
-                    }
-                    aria-label="Add to queue"
-                    disabled={!canQueue}
-                    onClick={() => void handleQueue(item.url)}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      width="14"
-                      height="14"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M3 6h12M3 12h9M3 18h9" />
-                      <path d="M18 12v8M14 16h8" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="action-btn replay"
-                    title="Play"
-                    aria-label="Play"
-                    onClick={() => void handlePlay(item.url)}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      width="14"
-                      height="14"
-                      aria-hidden="true"
-                    >
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="action-btn copy"
-                    title="Copy URL"
-                    aria-label="Copy URL"
-                    onClick={() => handleCopy(item.url)}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      width="14"
-                      height="14"
-                      aria-hidden="true"
-                    >
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="action-btn open"
-                    title="Open in browser"
-                    aria-label="Open in browser"
-                    onClick={() => void openExternal(item.url)}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      width="14"
-                      height="14"
-                      aria-hidden="true"
-                    >
-                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="action-btn"
-                    title="Refresh metadata"
-                    aria-label="Refresh metadata"
-                    disabled={refreshingId === item.id}
-                    onClick={() => void handleRefresh(item.id)}
-                  >
-                    <svg
-                      className={refreshingId === item.id ? "animate-spin" : ""}
-                      viewBox="0 0 24 24"
-                      width="14"
-                      height="14"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" />
-                      <path d="M21 3v5h-5" />
-                    </svg>
-                  </button>
-                  {(item.completed || (item.position ?? 0) > 0) && (
+
+                {sort === "custom" && !selectMode && (
+                  <div className="flex flex-none items-center">
                     <button
                       type="button"
-                      className="action-btn later"
+                      draggable={!reorderBlocked}
+                      className={`flex h-[30px] w-[22px] items-center justify-center rounded-md text-muted transition-colors ${
+                        reorderBlocked
+                          ? "cursor-default opacity-40"
+                          : "cursor-grab hover:bg-elevated hover:text-text active:cursor-grabbing"
+                      }`}
                       title={
-                        item.completed ? "Mark unwatched" : "Reset progress"
+                        reorderBlocked
+                          ? "Clear search and filters to reorder"
+                          : "Drag to reorder (or press ↑/↓)"
                       }
-                      aria-label={
-                        item.completed ? "Mark unwatched" : "Reset progress"
-                      }
-                      onClick={() => void handleResetProgress(item.id)}
+                      aria-label={`Reorder ${item.title || item.url}`}
+                      disabled={reorderBlocked}
+                      onDragStart={(event) => {
+                        if (reorderBlocked) {
+                          event.preventDefault();
+                          return;
+                        }
+                        setDragId(item.id);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", item.id);
+                      }}
+                      onDragEnd={() => {
+                        setDragId(null);
+                        setDragOverId(null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "ArrowUp") {
+                          event.preventDefault();
+                          void handleMove(item.id, -1);
+                        } else if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          void handleMove(item.id, 1);
+                        }
+                      }}
                     >
-                      <svg
-                        viewBox="0 0 24 24"
-                        width="14"
-                        height="14"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                        <path d="M3 3v5h5" />
-                      </svg>
+                      <GripIcon />
                     </button>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="relative aspect-video w-[88px] flex-none overflow-hidden rounded-lg bg-black min-[560px]:w-[104px]"
+                  aria-label={
+                    selectMode
+                      ? `Select ${item.title || item.url}`
+                      : `${inProgress ? "Resume" : "Play"} ${
+                          item.title || item.url
+                        }`
+                  }
+                  onClick={() =>
+                    selectMode
+                      ? toggleSelect(item.id)
+                      : void handlePlay(item.url)
+                  }
+                >
+                  <Thumbnail
+                    src={item.thumbnail}
+                    className={`absolute inset-0 h-full w-full object-cover ${
+                      completed ? "opacity-60 saturate-50" : ""
+                    }`}
+                    fallback={
+                      <span className="grid h-full w-full place-items-center text-white/15">
+                        <PlayIcon className="h-5 w-5" />
+                      </span>
+                    }
+                  />
+                  {completed && (
+                    <span className="absolute left-1.5 top-1.5 z-[2] grid h-5 w-5 place-items-center rounded-full bg-black/60 text-accent">
+                      <CheckIcon className="h-3 w-3" />
+                    </span>
                   )}
-                  <button
-                    type="button"
-                    className="action-btn delete"
-                    title="Remove"
-                    aria-label="Remove from Watch Later"
-                    onClick={() => void handleDelete(item.id)}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      width="14"
-                      height="14"
+                  {!selectMode && (
+                    <span className="absolute inset-0 grid place-items-center bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
+                      <span className="grid h-8 w-8 place-items-center rounded-full bg-white/90 text-black shadow-lg">
+                        <PlayFillIcon className="ml-0.5 h-3.5 w-3.5" />
+                      </span>
+                    </span>
+                  )}
+                  {liveLabel ? (
+                    <span
+                      className={`absolute bottom-1.5 right-1.5 z-[2] rounded px-1 py-0.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-white ${
+                        item.liveStatus === "live"
+                          ? "bg-red-500"
+                          : "bg-amber-500"
+                      }`}
+                    >
+                      {liveLabel}
+                    </span>
+                  ) : (item.duration ?? 0) > 0 ? (
+                    <span className="absolute bottom-1.5 right-1.5 z-[2] rounded bg-black/70 px-1 py-0.5 text-[11px] tabular-nums text-white">
+                      {formatTime(item.duration ?? 0)}
+                    </span>
+                  ) : null}
+                  {inProgress && (
+                    <span
+                      className="absolute bottom-0 left-0 right-0 z-[2] h-[3px] bg-white/25"
                       aria-hidden="true"
                     >
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                    </svg>
+                      <span
+                        className="block h-full bg-accent"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </span>
+                  )}
+                </button>
+
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <button
+                    type="button"
+                    className={`block max-w-full truncate text-left text-[13.5px] font-medium leading-[1.3] ${
+                      completed ? "text-text-dim" : "text-text"
+                    } hover:text-accent`}
+                    title={item.title || item.url}
+                    onClick={() =>
+                      selectMode
+                        ? toggleSelect(item.id)
+                        : void handlePlay(item.url)
+                    }
+                  >
+                    {item.title || item.url}
                   </button>
+                  <div className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11.5px] text-muted">
+                    {item.isShort && <ShortBadge isShort url={item.url} />}
+                    {item.liveStatus && item.liveStatus !== "none" && (
+                      <LiveBadge status={item.liveStatus} />
+                    )}
+                    <span className="truncate text-accent">
+                      {hostOf(item.url)}
+                    </span>
+                    <span className="flex-none text-muted/50">·</span>
+                    <span className="truncate">{stateLabel(item)}</span>
+                  </div>
                 </div>
-              )}
-              {progress > 0 && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-border">
-                  <div
-                    className={`h-full ${
-                      item.completed ? "bg-success" : "bg-accent"
-                    }`}
-                    style={{ width: `${progress}%` }}
-                  />
+
+                <div className="flex flex-none items-center gap-0.5">
+                  <span
+                    className="hidden w-[52px] text-right text-[11px] tabular-nums text-muted min-[780px]:block"
+                    title={timeLabel(item.addedAt)}
+                  >
+                    {rowTime(item.addedAt)}
+                  </span>
+                  {!selectMode && (
+                    <div
+                      className="relative flex-none"
+                      data-row-menu={item.id}
+                    >
+                      <button
+                        type="button"
+                        className="flex h-[30px] w-[30px] items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-text"
+                        aria-label="More options"
+                        aria-haspopup="menu"
+                        aria-expanded={menuId === item.id}
+                        onClick={(event) => toggleRowMenu(item, event)}
+                      >
+                        <MoreIcon className="h-[15px] w-[15px]" />
+                      </button>
+                      {menuId === item.id && (
+                        <RowMenu
+                          canQueue={canQueue}
+                          refreshing={refreshingId === item.id}
+                          resetLabel={resetLabel}
+                          customSort={sort === "custom"}
+                          reorderBlocked={reorderBlocked}
+                          canMoveUp={customIndex > 0}
+                          canMoveDown={
+                            customIndex >= 0 && customIndex < items.length - 1
+                          }
+                          up={menuUp}
+                          onAction={(action) =>
+                            runRowAction(action, item)
+                          }
+                        />
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })
+              </div>
+            );
+          })}
+        </div>
       )}
 
-      {toast && <div className={`toast ${toast.variant}`}>{toast.msg}</div>}
+      {toast && (
+        <div
+          className={`toast ${toast.variant} flex items-center gap-3`}
+          role="status"
+          aria-live="polite"
+        >
+          <span>{toast.msg}</span>
+          {toast.undo && (
+            <button
+              type="button"
+              className="flex-none font-semibold text-accent hover:underline"
+              onClick={handleUndo}
+            >
+              Undo
+            </button>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function RowMenu({
+  canQueue,
+  refreshing,
+  resetLabel,
+  customSort,
+  reorderBlocked,
+  canMoveUp,
+  canMoveDown,
+  up,
+  onAction,
+}: {
+  canQueue: boolean;
+  refreshing: boolean;
+  resetLabel: string | null;
+  customSort: boolean;
+  reorderBlocked: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  up: boolean;
+  onAction: (action: RowAction) => void;
+}): JSX.Element {
+  return (
+    <div
+      role="menu"
+      aria-label="Saved video actions"
+      className={`absolute right-0 z-40 w-[200px] rounded-[10px] border border-border-strong bg-card p-1 shadow-xl ${
+        up ? "bottom-full mb-1" : "top-full mt-1"
+      }`}
+    >
+      <MenuItem
+        icon={<PlayIcon />}
+        label="Play now"
+        onClick={() => onAction("play")}
+      />
+      <MenuItem
+        icon={<QueueIcon />}
+        label="Add to queue"
+        disabled={!canQueue}
+        hint={canQueue ? undefined : "Start a video before queueing"}
+        onClick={() => onAction("queue")}
+      />
+      <MenuItem
+        icon={<CopyIcon />}
+        label="Copy URL"
+        onClick={() => onAction("copy")}
+      />
+      <MenuItem
+        icon={<ExternalIcon />}
+        label="Open in browser"
+        onClick={() => onAction("open")}
+      />
+      <MenuItem
+        icon={<RefreshIcon />}
+        label={refreshing ? "Refreshing…" : "Refresh metadata"}
+        disabled={refreshing}
+        onClick={() => onAction("refresh")}
+      />
+      {resetLabel && (
+        <MenuItem
+          icon={<RotateIcon />}
+          label={resetLabel}
+          onClick={() => onAction("reset")}
+        />
+      )}
+      {customSort && (
+        <>
+          <div className="my-1 h-px bg-border" />
+          <MenuItem
+            icon={<ArrowUpIcon />}
+            label="Move up"
+            disabled={reorderBlocked || !canMoveUp}
+            hint={
+              reorderBlocked
+                ? "Clear search and filters to reorder"
+                : canMoveUp
+                  ? undefined
+                  : "Already at the top"
+            }
+            onClick={() => onAction("moveUp")}
+          />
+          <MenuItem
+            icon={<ArrowDownIcon />}
+            label="Move down"
+            disabled={reorderBlocked || !canMoveDown}
+            hint={
+              reorderBlocked
+                ? "Clear search and filters to reorder"
+                : canMoveDown
+                  ? undefined
+                  : "Already at the bottom"
+            }
+            onClick={() => onAction("moveDown")}
+          />
+        </>
+      )}
+      <div className="my-1 h-px bg-border" />
+      <MenuItem
+        icon={<TrashIcon />}
+        label="Remove from Watch Later"
+        danger
+        onClick={() => onAction("remove")}
+      />
+    </div>
+  );
+}
+
+function MenuItem({
+  icon,
+  label,
+  onClick,
+  disabled,
+  danger,
+  hint,
+  checked,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  hint?: string;
+  checked?: boolean;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      role={checked === undefined ? "menuitem" : "menuitemcheckbox"}
+      {...(checked === undefined ? {} : { "aria-checked": checked })}
+      disabled={disabled}
+      title={hint}
+      onClick={onClick}
+      className={`flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-xs transition-colors disabled:cursor-default disabled:opacity-40 ${
+        danger
+          ? "text-danger hover:bg-danger/10"
+          : "text-text-dim hover:bg-elevated hover:text-text"
+      }`}
+    >
+      <span
+        className={`flex h-4 w-4 flex-none items-center justify-center ${
+          danger ? "text-danger" : "text-muted"
+        }`}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {checked && (
+        <span className="flex h-4 w-4 flex-none items-center justify-center text-accent">
+          <CheckIcon className="h-3.5 w-3.5" />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function WatchLaterSkeleton() {
+  const widths = ["w-4/5", "w-3/5", "w-2/3", "w-1/2", "w-3/4"];
+  return (
+    <div
+      className="flex flex-col gap-2 pt-2"
+      role="status"
+      aria-label="Loading Watch Later"
+    >
+      {widths.map((width) => (
+        <div key={width} className="flex items-stretch gap-2.5 px-2">
+          <div className="aspect-video w-[88px] flex-none animate-pulse rounded-lg bg-elevated min-[560px]:w-[104px]" />
+          <div className="flex flex-1 flex-col justify-center gap-2 py-2">
+            <div className={`h-3 rounded bg-elevated ${width}`} />
+            <div className="h-2.5 w-1/3 rounded bg-elevated/70" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function WatchLaterOffline({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="px-5 py-10 text-center">
+      <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-danger/10 text-danger">
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+          <path d="M12 9v4" />
+          <path d="M12 17h.01" />
+        </svg>
+      </div>
+      <p className="m-0 text-sm font-medium text-text">
+        Couldn't load Watch Later
+      </p>
+      <p className="mx-auto mb-0 mt-1.5 max-w-xs text-xs text-muted">
+        The local server isn't responding.
+      </p>
+      <button type="button" className="btn-primary mt-4" onClick={onRetry}>
+        Retry
+      </button>
+    </div>
+  );
+}
+
+function Icon({
+  className = "h-3.5 w-3.5",
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function SearchIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </Icon>
+  );
+}
+
+function XIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </Icon>
+  );
+}
+
+function SelectIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="m3 5 1.5 1.5L7 4" />
+      <path d="m3 11 1.5 1.5L7 10" />
+      <path d="m3 17 1.5 1.5L7 16" />
+      <path d="M11 5h10M11 11h10M11 17h10" />
+    </Icon>
+  );
+}
+
+function MoreIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth="2.5" />
+    </Icon>
+  );
+}
+
+function PlayIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <polygon points="6 3 20 12 6 21 6 3" />
+    </Icon>
+  );
+}
+
+function PlayFillIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <polygon
+        points="8 5 19 12 8 19 8 5"
+        fill="currentColor"
+        stroke="none"
+      />
+    </Icon>
+  );
+}
+
+function QueueIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="M3 6h12M3 12h9M3 18h9" />
+      <path d="M18 12v8M14 16h8" />
+    </Icon>
+  );
+}
+
+function CopyIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </Icon>
+  );
+}
+
+function ExternalIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </Icon>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </Icon>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="M20 6 9 17l-5-5" />
+    </Icon>
+  );
+}
+
+function ChevronDownIcon({
+  className,
+}: {
+  className?: string;
+}): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="m6 9 6 6 6-6" />
+    </Icon>
+  );
+}
+
+function ShortsIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <rect x="7" y="2" width="10" height="20" rx="2" />
+      <path d="m10.5 8 4.5 3-4.5 3z" />
+    </Icon>
+  );
+}
+
+function BookmarkIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </Icon>
+  );
+}
+
+function RefreshIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" />
+      <path d="M21 3v5h-5" />
+    </Icon>
+  );
+}
+
+function RotateIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </Icon>
+  );
+}
+
+function ArrowUpIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="m18 15-6-6-6 6" />
+    </Icon>
+  );
+}
+
+function ArrowDownIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="m6 9 6 6 6-6" />
+    </Icon>
+  );
+}
+
+function GripIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <g fill="currentColor" stroke="none">
+        <circle cx="9" cy="6" r="1.4" />
+        <circle cx="15" cy="6" r="1.4" />
+        <circle cx="9" cy="12" r="1.4" />
+        <circle cx="15" cy="12" r="1.4" />
+        <circle cx="9" cy="18" r="1.4" />
+        <circle cx="15" cy="18" r="1.4" />
+      </g>
+    </Icon>
+  );
+}
+
+function DownloadIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </Icon>
+  );
+}
+
+function UploadIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <Icon className={className}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </Icon>
   );
 }
