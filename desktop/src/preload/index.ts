@@ -28,6 +28,8 @@ const api = {
     get: () => ipcRenderer.invoke("history:get"),
     delete: (id: string) => ipcRenderer.invoke("history:delete", id),
     clear: () => ipcRenderer.invoke("history:clear"),
+    restore: (entries: unknown[]) =>
+      ipcRenderer.invoke("history:restore", entries),
     replay: (url: string) => ipcRenderer.invoke("history:replay", url),
     queue: (url: string) => ipcRenderer.invoke("history:queue", url),
   },

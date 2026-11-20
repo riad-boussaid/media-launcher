@@ -253,6 +253,12 @@ export async function clearHistory(): Promise<void> {
   return api.history.clear();
 }
 
+export async function restoreHistory(
+  entries: HistoryEntry[],
+): Promise<{ restored: number }> {
+  return api.history.restore(entries);
+}
+
 export async function getWatchLater(): Promise<WatchLaterEntry[]> {
   return api.watchLater.get();
 }

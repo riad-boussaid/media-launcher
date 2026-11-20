@@ -926,6 +926,16 @@ export async function clearHistory(): Promise<void> {
   await api("/history", { method: "DELETE" });
 }
 
+export async function restoreHistory(
+  entries: HistoryEntry[],
+): Promise<{ restored: number }> {
+  return api<{ restored: number }>("/history/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entries }),
+  });
+}
+
 export async function updateHistoryEntry(
   id: string,
   partial: Partial<Pick<HistoryEntry, "title" | "thumbnail">>,

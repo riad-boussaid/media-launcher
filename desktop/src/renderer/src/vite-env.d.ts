@@ -153,6 +153,20 @@ interface ElectronAPI {
       }[]
     >;
     clear: () => Promise<void>;
+    restore: (
+      entries: {
+        id: string;
+        url: string;
+        title: string;
+        thumbnail: string;
+        timestamp: number;
+        position: number;
+        duration?: number;
+        completed?: boolean;
+        liveStatus?: string;
+        isShort?: boolean;
+      }[],
+    ) => Promise<{ restored: number }>;
     replay: (url: string) => Promise<{ success: boolean; error?: string }>;
     queue: (url: string) => Promise<{ success: boolean; error?: string }>;
   };

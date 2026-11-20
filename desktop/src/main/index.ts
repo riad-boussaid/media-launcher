@@ -69,6 +69,7 @@ import {
   reorderWatchLater,
   replayUrl,
   resetWatchLaterProgress,
+  restoreHistory,
   restoreSavedQueue,
   revokeAllRemoteSessions,
   revokeRemoteSession,
@@ -217,6 +218,11 @@ if (!gotTheLock) {
     ipcMain.handle("history:get", () => getHistory());
     ipcMain.handle("history:delete", (_event, id) => deleteHistory(id));
     ipcMain.handle("history:clear", () => clearHistory());
+    ipcMain.handle(
+      "history:restore",
+      (_event, entries: Parameters<typeof restoreHistory>[0]) =>
+        restoreHistory(entries),
+    );
     ipcMain.handle("watchLater:get", () => getWatchLater());
     ipcMain.handle(
       "watchLater:add",

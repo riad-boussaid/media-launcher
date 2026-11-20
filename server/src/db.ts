@@ -517,7 +517,7 @@ export interface ImportedHistoryEntry {
   isShort: boolean;
 }
 
-/** Restores one history row from a Watch Later backup. */
+/** Restores one history row from a backup or clear-history undo snapshot. */
 export function importHistoryEntry(entry: ImportedHistoryEntry): HistoryEntry {
   const canonicalUrl = canonicalizeUrl(entry.url);
   const existing = db

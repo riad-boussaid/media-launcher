@@ -958,6 +958,42 @@ app.post("/history", async (c) => {
   }
 });
 
+// Restores a snapshot taken before "Clear history" so the desktop can offer
+// an undo without keeping a separate trash table.
+app.post("/history/restore", async (c) => {
+  try {
+    const body = await c.req.json<{ entries?: unknown }>();
+    if (!Array.isArray(body.entries)) {
+      return c.json({ err: "entries must be an array" }, 400);
+    }
+    if (body.entries.length > IMPORT_LIMIT) {
+      return c.json({ err: `entries must be at most ${IMPORT_LIMIT}` }, 400);
+    }
+    let restored = 0;
+    for (const raw of body.entries) {
+      if (!raw || typeof raw !== "object") continue;
+      const entry = raw as Record<string, unknown>;
+      if (!isUrl(entry.url)) continue;
+      importHistoryEntry({
+        url: entry.url,
+        title: typeof entry.title === "string" ? entry.title : "",
+        thumbnail: typeof entry.thumbnail === "string" ? entry.thumbnail : "",
+        timestamp: finitePositive(entry.timestamp) ?? Date.now(),
+        position: nonNegative(entry.position),
+        duration: nonNegative(entry.duration),
+        completed: entry.completed === true,
+        liveStatus: importLiveStatus(entry.liveStatus) ?? "",
+        isShort: entry.isShort === true,
+      });
+      restored += 1;
+    }
+    return c.json({ restored });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ err: message }, 400);
+  }
+});
+
 app.put("/history/:id", async (c) => {
   try {
     const id = c.req.param("id");
