@@ -505,6 +505,45 @@ export function addHistory(
   return entry;
 }
 
+export interface ImportedHistoryEntry {
+  url: string;
+  title: string;
+  thumbnail: string;
+  timestamp: number;
+  position: number;
+  duration: number;
+  completed: boolean;
+  liveStatus: string;
+  isShort: boolean;
+}
+
+/** Restores one history row from a Watch Later backup. */
+export function importHistoryEntry(entry: ImportedHistoryEntry): HistoryEntry {
+  const canonicalUrl = canonicalizeUrl(entry.url);
+  const existing = db
+    .select()
+    .from(schema.history)
+    .where(eq(schema.history.url, canonicalUrl))
+    .get();
+  if (existing) {
+    db.delete(schema.history).where(eq(schema.history.id, existing.id)).run();
+  }
+  const row: HistoryEntry = {
+    id: randomUUID(),
+    url: canonicalUrl,
+    title: entry.title || existing?.title || "",
+    thumbnail: entry.thumbnail || existing?.thumbnail || "",
+    timestamp: entry.timestamp || Date.now(),
+    position: Math.max(0, Math.floor(entry.position)),
+    duration: Math.max(0, Math.floor(entry.duration)),
+    completed: entry.completed,
+    liveStatus: entry.liveStatus,
+    isShort: entry.isShort || existing?.isShort || false,
+  };
+  db.insert(schema.history).values(row).run();
+  return row;
+}
+
 export function getHistoryPosition(url: string): number {
   // A live stream has no meaningful resume point, even if an older build
   // recorded one.
@@ -558,6 +597,8 @@ export function getHistoryLiveStatus(url: string): string {
 export interface HistoryMetadata {
   title: string;
   thumbnail: string;
+  liveStatus: string;
+  isShort: boolean;
 }
 
 export function getHistoryMetadata(
@@ -581,6 +622,8 @@ export function getHistoryMetadata(
       url: schema.history.url,
       title: schema.history.title,
       thumbnail: schema.history.thumbnail,
+      liveStatus: schema.history.liveStatus,
+      isShort: schema.history.isShort,
     })
     .from(schema.history)
     .where(inArray(schema.history.url, [...lookups]))
@@ -588,10 +631,12 @@ export function getHistoryMetadata(
   const byUrl = new Map(rows.map((row) => [row.url, row]));
   for (const url of unique) {
     const row = byUrl.get(url) ?? byUrl.get(canonicalFor.get(url) ?? "");
-    if (row && (row.title || row.thumbnail)) {
+    if (row && (row.title || row.thumbnail || row.liveStatus || row.isShort)) {
       metadata.set(url, {
         title: row.title,
         thumbnail: row.thumbnail,
+        liveStatus: row.liveStatus,
+        isShort: row.isShort,
       });
     }
   }

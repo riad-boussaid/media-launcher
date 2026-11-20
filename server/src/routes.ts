@@ -24,12 +24,14 @@ import {
   getRemoteSessions,
   getSettings,
   getWatchLater,
+  importHistoryEntry,
   resetHistoryProgress,
   setSettings,
   setWatchLaterOrder,
   updateHistoryEntry,
   updateWatchLaterEntry,
 } from "./db.js";
+import { isLiveLike } from "./live.js";
 import { fetchMetadata } from "./metadata.js";
 import { launchPlayer } from "./player.js";
 import {
@@ -165,6 +167,29 @@ function rememberWatchLaterEntries(entries: WatchLaterEntry[]): void {
       updateHistoryEntry(history.id, patch);
     }
   }
+}
+
+const IMPORT_LIMIT = 10_000;
+
+function importLiveStatus(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return ["", "live", "upcoming", "post_live", "was_live", "none"].includes(
+    value,
+  )
+    ? value
+    : "";
+}
+
+function finitePositive(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
+function nonNegative(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : 0;
 }
 
 app.get("/api/health", (c) => {
@@ -969,8 +994,21 @@ app.delete("/history", (_c) => {
   return _c.json({ data: "cleared" });
 });
 
+// Live statuses change while the stream is running; refresh them on list reads
+// at most once every two minutes per URL.
+const liveRefreshAt = new Map<string, number>();
+
 app.get("/watch-later", (c) => {
-  return c.json(getWatchLater());
+  const entries = getWatchLater();
+  const now = Date.now();
+  for (const entry of entries) {
+    if (!isLiveLike(entry.liveStatus)) continue;
+    const last = liveRefreshAt.get(entry.url) ?? 0;
+    if (now - last < 2 * 60_000) continue;
+    liveRefreshAt.set(entry.url, now);
+    enrichWatchLater(entry.id, entry.url);
+  }
+  return c.json(entries);
 });
 
 app.post("/watch-later", async (c) => {
@@ -999,6 +1037,90 @@ app.post("/watch-later", async (c) => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return c.json({ err: message }, 400);
+  }
+});
+
+app.post("/watch-later/import", async (c) => {
+  try {
+    const body = await c.req.json<{ entries?: unknown }>();
+    if (!Array.isArray(body.entries)) {
+      return c.json({ err: "entries must be an array" }, 400);
+    }
+    if (body.entries.length > IMPORT_LIMIT) {
+      return c.json({ err: `entries must be at most ${IMPORT_LIMIT}` }, 400);
+    }
+
+    const ids = new Set<string>();
+    let skipped = 0;
+    for (const raw of body.entries) {
+      if (!raw || typeof raw !== "object") {
+        skipped += 1;
+        continue;
+      }
+      const entry = raw as Record<string, unknown>;
+      const url = entry.url;
+      if (!isUrl(url)) {
+        skipped += 1;
+        continue;
+      }
+      const title = typeof entry.title === "string" ? entry.title : "";
+      const thumbnail =
+        typeof entry.thumbnail === "string" ? entry.thumbnail : "";
+      const liveStatus = importLiveStatus(entry.liveStatus);
+      const isShort = entry.isShort === true;
+      const saved = addWatchLater(
+        url,
+        title,
+        thumbnail,
+        finitePositive(entry.addedAt),
+      );
+      if (liveStatus !== undefined || isShort) {
+        updateWatchLaterEntry(saved.id, {
+          ...(liveStatus !== undefined ? { liveStatus } : {}),
+          ...(isShort ? { isShort: true } : {}),
+        });
+      }
+      const lastPlayedAt = finitePositive(entry.lastPlayedAt);
+      if (lastPlayedAt) {
+        importHistoryEntry({
+          url: saved.url,
+          title: title || saved.title,
+          thumbnail: thumbnail || saved.thumbnail,
+          timestamp: lastPlayedAt,
+          position: nonNegative(entry.position),
+          duration: nonNegative(entry.duration),
+          completed: entry.completed === true,
+          liveStatus: liveStatus ?? "",
+          isShort,
+        });
+      }
+      ids.add(saved.id);
+    }
+    if (ids.size > 0) {
+      setWatchLaterOrder([...ids]);
+    }
+    return c.json({ imported: ids.size, skipped });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ err: message }, 400);
+  }
+});
+
+app.post("/watch-later/:id/refresh", async (c) => {
+  try {
+    const entry = getWatchLater().find((item) => item.id === c.req.param("id"));
+    if (!entry) {
+      return c.json({ err: "No such Watch Later item" }, 404);
+    }
+    const meta = await fetchMetadata(entry.url);
+    if (meta.title || meta.thumbnail || meta.liveStatus || meta.isShort) {
+      updateWatchLaterEntry(entry.id, meta);
+    }
+    return c.json(getWatchLater());
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(message);
+    return c.json({ err: message }, 500);
   }
 });
 

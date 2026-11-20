@@ -241,6 +241,7 @@ ${remoteStyles()}
     <div class="later-head-right">
       <span class="count" id="later-count"></span>
       <button type="button" class="link-btn" id="later-continue" aria-pressed="false">Continue</button>
+      <button type="button" class="link-btn" id="later-no-shorts" aria-pressed="false">No Shorts</button>
     </div>
   </div>
   <ul id="later"></ul>

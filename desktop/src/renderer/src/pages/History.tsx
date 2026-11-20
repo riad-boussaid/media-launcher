@@ -15,6 +15,8 @@ import {
 } from "../lib/api";
 import { displayUrl, relativeTime } from "../lib/format";
 
+const HIDE_SHORTS_KEY = "ml-history-hide-shorts";
+
 function timeLabel(ts: number): string {
   return new Date(ts).toLocaleString(undefined, {
     month: "short",
@@ -53,8 +55,16 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
   const [loadError, setLoadError] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [canQueue, setCanQueue] = useState(false);
+  const [hideShorts, setHideShorts] = useState(
+    () => localStorage.getItem(HIDE_SHORTS_KEY) === "1",
+  );
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const changeHideShorts = (value: boolean) => {
+    setHideShorts(value);
+    localStorage.setItem(HIDE_SHORTS_KEY, value ? "1" : "0");
+  };
 
   // App bumps focusSignal (Ctrl+2 / Ctrl+F) to jump here and focus the search.
   useEffect(() => {
@@ -151,10 +161,11 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
     () =>
       items.filter(
         (item) =>
-          item.url.toLowerCase().includes(search.toLowerCase()) ||
-          item.title.toLowerCase().includes(search.toLowerCase()),
+          (!hideShorts || !item.isShort) &&
+          (item.url.toLowerCase().includes(search.toLowerCase()) ||
+            item.title.toLowerCase().includes(search.toLowerCase())),
       ),
-    [items, search],
+    [items, search, hideShorts],
   );
 
   const grouped = useMemo(() => {
@@ -296,6 +307,14 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
         </div>
         {items.length > 0 && !selectMode && !confirmingClear && (
           <>
+            <label className="text-xs text-muted flex items-center gap-1 cursor-pointer flex-shrink-0">
+              <input
+                type="checkbox"
+                checked={hideShorts}
+                onChange={(e) => changeHideShorts(e.target.checked)}
+              />
+              Hide Shorts &amp; Reels
+            </label>
             <button
               type="button"
               className="btn-danger flex-shrink-0"
@@ -370,7 +389,9 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
 
       {items.length > 0 && !search && !loading && (
         <div className="text-[11.5px] text-muted mb-2 uppercase tracking-[0.5px]">
-          {items.length} {items.length === 1 ? "entry" : "entries"}
+          {hideShorts
+            ? `${filtered.length} of ${items.length} entries (short-form hidden)`
+            : `${items.length} ${items.length === 1 ? "entry" : "entries"}`}
         </div>
       )}
 
@@ -389,6 +410,17 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
                 onClick={() => setSearch("")}
               >
                 Clear search
+              </button>
+            </>
+          ) : hideShorts && items.length > 0 ? (
+            <>
+              <p>Shorts and Reels are hidden</p>
+              <button
+                type="button"
+                className="btn-ghost mt-3"
+                onClick={() => changeHideShorts(false)}
+              >
+                Show Shorts &amp; Reels
               </button>
             </>
           ) : (

@@ -42,19 +42,20 @@ Send videos from your browser to an external media player (mpv) with one click.
   shows watched/resume status and can be played, queued, or removed. The desktop
   tab can play or queue the whole list, multi-select a subset, bulk-remove,
   filter to in-progress videos, sort or drag to reorder the list, import/export
-  JSON, and mark videos unwatched. Watched videos are grouped into a collapsible
-  section. Progress bars appear in History, Watch Later, and the extension popup
-  once a video's duration is known, and the Continue filter is remembered on
-  desktop and the remote. Share, embed, and tracking-parameter variants of the
-  same video collapse to one bookmark.
+  full JSON backups, refresh an item's metadata, and mark videos unwatched.
+  Watched videos are grouped into a collapsible section. Progress bars appear in
+  History, Watch Later, and the extension popup once a video's duration is known,
+  and the Continue filter is remembered on desktop and the remote. Share, embed,
+  and tracking-parameter variants of the same video collapse to one bookmark.
 - **Live streams**: live and upcoming broadcasts are detected from metadata and
   badged in History, Watch Later, the popup, and the remote. They never record a
   resume position or a "watched" state; finished broadcasts show **Was live** but
   behave like normal videos.
 - **Shorts & Reels**: YouTube Shorts, Facebook Reels, and Instagram Reels are
   detected from their URLs or vertical, short metadata. They show a SHORT/REEL
-  badge in History, Watch Later, the popup, and the remote; the desktop Later tab
-  can hide them with a persisted **Hide Shorts & Reels** filter.
+  badge in History, Watch Later, the popup, queue rows, and the remote; the
+  desktop Later and History tabs can hide them with a persisted **Hide Shorts &
+  Reels** filter, and the remote Watch Later card has its own toggle.
 - **Remote control from a phone**: LAN or Tailscale, with player status,
   seek/pause/skip, chapters, volume, mute, speed, repeat, artwork, recent-history
   thumbnails, a Watch Later list, full grouped queue management (move, remove,

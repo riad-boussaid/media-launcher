@@ -180,6 +180,7 @@ interface ElectronAPI {
     }>;
     reorder: (ids: string[]) => Promise<WatchLaterEntry[]>;
     unwatch: (id: string) => Promise<WatchLaterEntry[]>;
+    refresh: (id: string) => Promise<WatchLaterEntry[]>;
     exportFile: () => Promise<WatchLaterTransferResult>;
     importFile: () => Promise<WatchLaterTransferResult>;
   };
@@ -215,6 +216,8 @@ interface ElectronAPI {
         url: string;
         title: string;
         thumbnail: string;
+        liveStatus?: string;
+        isShort?: boolean;
         source: "queue" | "playlist";
         playlistId: string | null;
         playlistTitle: string | null;
@@ -228,6 +231,8 @@ interface ElectronAPI {
         url: string;
         title: string;
         thumbnail: string;
+        liveStatus?: string;
+        isShort?: boolean;
         source: "queue" | "playlist";
         playlistId: string | null;
         playlistTitle: string | null;

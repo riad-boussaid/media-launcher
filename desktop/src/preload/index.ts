@@ -41,6 +41,7 @@ const api = {
     queue: (ids?: string[]) => ipcRenderer.invoke("watchLater:queue", ids),
     reorder: (ids: string[]) => ipcRenderer.invoke("watchLater:reorder", ids),
     unwatch: (id: string) => ipcRenderer.invoke("watchLater:unwatch", id),
+    refresh: (id: string) => ipcRenderer.invoke("watchLater:refresh", id),
     exportFile: () => ipcRenderer.invoke("watchLater:export"),
     importFile: () => ipcRenderer.invoke("watchLater:import"),
   },

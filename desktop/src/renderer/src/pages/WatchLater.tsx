@@ -14,6 +14,7 @@ import {
   playWatchLater,
   queueUrl,
   queueWatchLater,
+  refreshWatchLater,
   reorderWatchLater,
   replayUrl,
   resetWatchLaterProgress,
@@ -64,6 +65,7 @@ export default function WatchLater({
     () => localStorage.getItem(HIDE_SHORTS_KEY) === "1",
   );
   const [watchedOpen, setWatchedOpen] = useState(false);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -225,6 +227,14 @@ export default function WatchLater({
     void load();
   };
 
+  // Live statuses change while a stream is running; the server refreshes them
+  // on list reads, and this poll picks up the result.
+  useEffect(() => {
+    if (!items.some((e) => isLiveLike(e.liveStatus))) return;
+    const t = setInterval(() => void load(), 60_000);
+    return () => clearInterval(t);
+  }, [items, load]);
+
   const handleDelete = async (id: string) => {
     try {
       setItems(await deleteWatchLater(id));
@@ -355,6 +365,19 @@ export default function WatchLater({
       showToast("Marked unwatched");
     } catch {
       showToast("Could not reset progress", "toast-error");
+    }
+  };
+
+  const handleRefresh = async (id: string) => {
+    if (refreshingId) return;
+    setRefreshingId(id);
+    try {
+      setItems(await refreshWatchLater(id));
+      showToast("Metadata refreshed");
+    } catch {
+      showToast("Could not refresh metadata", "toast-error");
+    } finally {
+      setRefreshingId(null);
     }
   };
 
@@ -1012,6 +1035,30 @@ export default function WatchLater({
                       <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
                       <polyline points="15 3 21 3 21 9" />
                       <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className="action-btn"
+                    title="Refresh metadata"
+                    aria-label="Refresh metadata"
+                    disabled={refreshingId === item.id}
+                    onClick={() => void handleRefresh(item.id)}
+                  >
+                    <svg
+                      className={refreshingId === item.id ? "animate-spin" : ""}
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" />
+                      <path d="M21 3v5h-5" />
                     </svg>
                   </button>
                   {(item.completed || (item.position ?? 0) > 0) && (

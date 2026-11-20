@@ -53,6 +53,7 @@ import {
   getSavedQueue,
   getSettings,
   getWatchLater,
+  importWatchLaterEntries,
   initDatabase,
   loadMorePlaylist,
   moveQueueItem,
@@ -61,6 +62,7 @@ import {
   playWatchLater,
   queueUrl,
   queueWatchLater,
+  refreshWatchLater,
   removePlaylistFromQueue,
   removeQueueItem,
   reorderWatchLater,
@@ -235,6 +237,9 @@ if (!gotTheLock) {
     ipcMain.handle("watchLater:unwatch", (_event, id: string) =>
       resetWatchLaterProgress(id),
     );
+    ipcMain.handle("watchLater:refresh", (_event, id: string) =>
+      refreshWatchLater(id),
+    );
     ipcMain.handle("watchLater:export", async () => {
       try {
         const entries = await getWatchLater();
@@ -253,13 +258,19 @@ if (!gotTheLock) {
           return { canceled: true };
         }
         const payload = {
-          version: 1,
+          version: 2,
           exportedAt: new Date().toISOString(),
           entries: entries.map((entry) => ({
             url: entry.url,
             title: entry.title,
             thumbnail: entry.thumbnail,
             addedAt: entry.addedAt,
+            liveStatus: entry.liveStatus ?? "",
+            isShort: entry.isShort ?? false,
+            position: entry.position ?? 0,
+            duration: entry.duration ?? 0,
+            completed: entry.completed ?? false,
+            lastPlayedAt: entry.lastPlayedAt ?? 0,
           })),
         };
         await writeFile(
@@ -304,36 +315,7 @@ if (!gotTheLock) {
           return { error: "Unrecognized Watch Later file" };
         }
 
-        let imported = 0;
-        let skipped = 0;
-        for (const item of list) {
-          if (!item || typeof item !== "object") {
-            skipped += 1;
-            continue;
-          }
-          const entry = item as {
-            url?: unknown;
-            title?: unknown;
-            thumbnail?: unknown;
-            addedAt?: unknown;
-          };
-          if (typeof entry.url !== "string" || entry.url.length === 0) {
-            skipped += 1;
-            continue;
-          }
-          try {
-            await addWatchLater(
-              entry.url,
-              typeof entry.title === "string" ? entry.title : "",
-              typeof entry.thumbnail === "string" ? entry.thumbnail : "",
-              typeof entry.addedAt === "number" ? entry.addedAt : undefined,
-            );
-            imported += 1;
-          } catch {
-            skipped += 1;
-          }
-        }
-        return { imported, skipped };
+        return await importWatchLaterEntries(list);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { error: message };

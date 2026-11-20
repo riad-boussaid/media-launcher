@@ -51,6 +51,8 @@ export interface PlayerQueueEntry {
   url: string;
   title: string;
   thumbnail: string;
+  liveStatus?: string;
+  isShort?: boolean;
   source: "queue" | "playlist";
   playlistId: string | null;
   playlistTitle: string | null;
@@ -379,6 +381,30 @@ export async function resetWatchLaterProgress(
     `/watch-later/${encodeURIComponent(id)}/unwatch`,
     { method: "POST" },
   );
+}
+
+export async function refreshWatchLater(
+  id: string,
+): Promise<WatchLaterEntry[]> {
+  return api<WatchLaterEntry[]>(
+    `/watch-later/${encodeURIComponent(id)}/refresh`,
+    { method: "POST" },
+  );
+}
+
+export interface WatchLaterImportResult {
+  imported: number;
+  skipped: number;
+}
+
+export async function importWatchLaterEntries(
+  entries: unknown[],
+): Promise<WatchLaterImportResult> {
+  return api<WatchLaterImportResult>("/watch-later/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entries }),
+  });
 }
 
 export async function deleteWatchLater(id: string): Promise<WatchLaterEntry[]> {

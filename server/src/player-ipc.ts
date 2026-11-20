@@ -28,6 +28,8 @@ export interface QueueEntry {
   url: string;
   title: string;
   thumbnail: string;
+  liveStatus: string;
+  isShort: boolean;
   source: "queue" | "playlist";
   playlistId: string | null;
   playlistTitle: string | null;
@@ -553,6 +555,8 @@ export function getPlayerStatus(): PlayerStatus {
       url: entry.filename,
       title: source?.title || entry.title || history?.title || "",
       thumbnail: source?.thumbnail || history?.thumbnail || "",
+      liveStatus: history?.liveStatus ?? "",
+      isShort: history?.isShort ?? false,
       source: source?.source ?? "queue",
       playlistId: source?.playlistId ?? null,
       playlistTitle: source?.playlistTitle ?? null,

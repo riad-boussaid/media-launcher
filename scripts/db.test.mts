@@ -305,3 +305,35 @@ test("stores the Shorts flag and joins it into Watch Later", () => {
   const unchanged = db.getWatchLater().find((item) => item.id === video.id);
   assert.equal(unchanged?.isShort, true);
 });
+
+test("restores backup progress and flags into history", () => {
+  db.clearHistory();
+  db.clearWatchLater();
+
+  db.addWatchLater(canonical, "Video");
+  const now = Date.now();
+  db.importHistoryEntry({
+    url: canonical,
+    title: "Video",
+    thumbnail: "thumb",
+    timestamp: now,
+    position: 120,
+    duration: 600,
+    completed: false,
+    liveStatus: "none",
+    isShort: true,
+  });
+
+  const history = db.getHistory()[0];
+  assert.equal(history.position, 120);
+  assert.equal(history.duration, 600);
+  assert.equal(history.thumbnail, "thumb");
+  assert.equal(history.isShort, true);
+  assert.equal(history.liveStatus, "none");
+
+  const entry = db.getWatchLater()[0];
+  assert.equal(entry.position, 120);
+  assert.equal(entry.duration, 600);
+  assert.equal(entry.isShort, true);
+  assert.equal(entry.lastPlayedAt, now);
+});

@@ -43,6 +43,8 @@ export interface PlayerQueueEntry {
   url: string;
   title: string;
   thumbnail: string;
+  liveStatus?: string;
+  isShort?: boolean;
   source: "queue" | "playlist";
   playlistId: string | null;
   playlistTitle: string | null;
@@ -273,6 +275,12 @@ export async function resetWatchLaterProgress(
   id: string,
 ): Promise<WatchLaterEntry[]> {
   return api.watchLater.unwatch(id);
+}
+
+export async function refreshWatchLater(
+  id: string,
+): Promise<WatchLaterEntry[]> {
+  return api.watchLater.refresh(id);
 }
 
 export interface WatchLaterTransferResult {

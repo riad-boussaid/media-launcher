@@ -79,14 +79,22 @@ export function remoteClientScript(): string {
   var laterList = document.getElementById("later");
   var laterCount = document.getElementById("later-count");
   var laterContinueBtn = document.getElementById("later-continue");
+  var laterNoShortsBtn = document.getElementById("later-no-shorts");
   var laterContinueOnly = false;
+  var laterNoShorts = false;
   try {
     laterContinueOnly =
       localStorage.getItem("ml-remote-later-continue") === "1";
+    laterNoShorts =
+      localStorage.getItem("ml-remote-later-no-shorts") === "1";
   } catch (e) {}
   laterContinueBtn.setAttribute(
     "aria-pressed",
     laterContinueOnly ? "true" : "false",
+  );
+  laterNoShortsBtn.setAttribute(
+    "aria-pressed",
+    laterNoShorts ? "true" : "false",
   );
 
   laterContinueBtn.addEventListener("click", function () {
@@ -99,6 +107,21 @@ export function remoteClientScript(): string {
       localStorage.setItem(
         "ml-remote-later-continue",
         laterContinueOnly ? "1" : "0",
+      );
+    } catch (e) {}
+    loadWatchLater();
+  });
+
+  laterNoShortsBtn.addEventListener("click", function () {
+    laterNoShorts = !laterNoShorts;
+    laterNoShortsBtn.setAttribute(
+      "aria-pressed",
+      laterNoShorts ? "true" : "false",
+    );
+    try {
+      localStorage.setItem(
+        "ml-remote-later-no-shorts",
+        laterNoShorts ? "1" : "0",
       );
     } catch (e) {}
     loadWatchLater();
@@ -136,6 +159,22 @@ export function remoteClientScript(): string {
       return "Track " + item.playlistIndex;
     }
     return hostOf(item.url);
+  }
+
+  function liveTagLabel(status) {
+    if (status === "live") return "Live";
+    if (status === "upcoming") return "Upcoming";
+    if (status === "post_live") return "Live ended";
+    if (status === "was_live") return "Was live";
+    return "";
+  }
+
+  function shortTagLabel(item) {
+    if (!item.isShort) return "";
+    return item.url.indexOf("/reel/") !== -1 ||
+      item.url.indexOf("/reels/") !== -1
+      ? "Reel"
+      : "Short";
   }
 
   function loadThumb(img, url, stillWanted) {
@@ -670,6 +709,31 @@ export function remoteClientScript(): string {
         t.textContent = trackLabel(item);
         main.appendChild(n);
         main.appendChild(t);
+        if (
+          item.liveStatus === "live" ||
+          item.liveStatus === "upcoming" ||
+          item.liveStatus === "post_live"
+        ) {
+          var liveTag = document.createElement("span");
+          liveTag.className = "q-tag live";
+          liveTag.textContent =
+            item.liveStatus === "upcoming"
+              ? "Upcoming"
+              : item.liveStatus === "post_live"
+                ? "Live ended"
+                : "Live";
+          main.appendChild(liveTag);
+        }
+        if (item.isShort) {
+          var shortTag = document.createElement("span");
+          shortTag.className = "q-tag short";
+          shortTag.textContent =
+            item.url.indexOf("/reel/") !== -1 ||
+            item.url.indexOf("/reels/") !== -1
+              ? "Reel"
+              : "Short";
+          main.appendChild(shortTag);
+        }
         (function (index) {
           main.addEventListener("click", function () {
             api("/player/queue/play", {
@@ -1253,6 +1317,11 @@ export function remoteClientScript(): string {
         try {
           localStorage.removeItem("ml-remote-later-continue");
         } catch (e) {}
+        laterNoShorts = false;
+        laterNoShortsBtn.setAttribute("aria-pressed", "false");
+        try {
+          localStorage.removeItem("ml-remote-later-no-shorts");
+        } catch (e) {}
         setStatus("unpaired");
       })
       .finally(function () { unpairBtn.disabled = false; });
@@ -1297,6 +1366,10 @@ export function remoteClientScript(): string {
         var meta = document.createElement("span");
         meta.className = "recent-meta";
         var bits = [hostOf(e.url)];
+        var live = liveTagLabel(e.liveStatus);
+        if (live) bits.push(live);
+        var short = shortTagLabel(e);
+        if (short) bits.push(short);
         if (e.timestamp) bits.push(timeAgo(e.timestamp));
         if (typeof e.position === "number" && e.position > 2) {
           bits.push("Resume " + fmt(e.position));
@@ -1327,7 +1400,7 @@ export function remoteClientScript(): string {
     if (!token) return;
     api("/watch-later").then(function (items) {
       laterList.innerHTML = "";
-      var shown = laterContinueOnly
+      var filtered = laterContinueOnly
         ? items.filter(function (e) {
             return (
               !e.completed &&
@@ -1336,16 +1409,25 @@ export function remoteClientScript(): string {
             );
           })
         : items;
+      var shown = laterNoShorts
+        ? filtered.filter(function (e) {
+            return !e.isShort;
+          })
+        : filtered;
       laterCard.hidden = items.length === 0;
       laterCount.textContent = laterContinueOnly
         ? shown.length + " in progress"
-        : items.length + " saved";
+        : laterNoShorts
+          ? shown.length + " shown"
+          : items.length + " saved";
       if (shown.length === 0) {
         var empty = document.createElement("li");
         empty.className = "later-empty";
         empty.textContent = laterContinueOnly
           ? "No videos in progress"
-          : "Nothing saved yet";
+          : laterNoShorts
+            ? "Shorts and Reels are hidden"
+            : "Nothing saved yet";
         laterList.appendChild(empty);
         return;
       }
@@ -1380,29 +1462,15 @@ export function remoteClientScript(): string {
         title.textContent = label;
         var meta = document.createElement("span");
         meta.className = "recent-meta";
-        var liveLabel =
-          e.liveStatus === "live"
-            ? "Live"
-            : e.liveStatus === "upcoming"
-              ? "Upcoming"
-              : e.liveStatus === "post_live"
-                ? "Live ended"
-                : e.liveStatus === "was_live"
-                  ? "Was live"
-                  : "";
+        var liveLabel = liveTagLabel(e.liveStatus);
         var liveLike =
           e.liveStatus === "live" ||
           e.liveStatus === "upcoming" ||
           e.liveStatus === "post_live";
         var bits = [hostOf(e.url)];
         if (liveLabel) bits.push(liveLabel);
-        if (e.isShort) {
-          var shortLabel =
-            e.url.indexOf("/reel/") !== -1 || e.url.indexOf("/reels/") !== -1
-              ? "Reel"
-              : "Short";
-          bits.push(shortLabel);
-        }
+        var shortLabel = shortTagLabel(e);
+        if (shortLabel) bits.push(shortLabel);
         if (!liveLike) {
           if (e.completed) {
             bits.push("Watched");

@@ -38,6 +38,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
   Watch Later, the popup, and the remote, and the desktop Later tab has a
   persisted "Hide Shorts & Reels" filter. Existing Reel rows are flagged on
   startup.
+- Watch Later metadata can be refreshed per item, and live statuses are refreshed
+  in the background on list reads and picked up by polling.
+- Queue rows, remote recent rows, and the remote Watch Later card show live and
+  Short/Reel labels. History has a persisted Hide Shorts & Reels filter, and the
+  remote Watch Later card has a No Shorts toggle.
+- Watch Later JSON backups now include live/Short flags, custom order, and
+  playback progress; imports restore them into Watch Later and History.
 - Watched videos are grouped into a collapsible section in the desktop Later
   tab, and the Continue filter is remembered on desktop and the remote.
 

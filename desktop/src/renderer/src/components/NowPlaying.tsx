@@ -33,6 +33,7 @@ import {
 } from "../lib/api";
 import { formatTime, hostOf } from "../lib/format";
 import { LiveBadge } from "./LiveBadge";
+import { ShortBadge } from "./ShortBadge";
 import { Thumbnail } from "./Thumbnail";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -1352,7 +1353,11 @@ export default function NowPlaying({ player, onRefresh }: NowPlayingProps) {
                               className="w-9 h-5 rounded"
                               iconSize={10}
                             />
-                            <span className="truncate">{label}</span>
+                            <span className="min-w-0 flex-1 truncate">
+                              {label}
+                            </span>
+                            <LiveBadge status={item.liveStatus} />
+                            <ShortBadge isShort={item.isShort} url={item.url} />
                           </button>
                           {!played && (
                             <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">

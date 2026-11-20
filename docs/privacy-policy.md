@@ -133,6 +133,8 @@ directory:
   URL being played.
 - **Downloads** — tools you explicitly download through the app (for example
   yt-dlp) and any SponsorBlock script you install.
+- **Watch Later exports** — JSON files you explicitly save, containing saved
+  URLs, titles, thumbnails, flags, custom order, and playback progress.
 
 The desktop app does not include analytics, telemetry, crash reporting, or
 advertising SDKs.

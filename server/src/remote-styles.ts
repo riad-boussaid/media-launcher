@@ -374,6 +374,13 @@ export function remoteStyles(): string {
     color: var(--text-dim); font-size: 12px; line-height: 1.35; text-align: left;
   }
   .queue .q-main:active { color: var(--accent); }
+  .queue .q-tag {
+    flex: none; padding: 2px 4px; border-radius: 4px;
+    font-size: 8.5px; font-weight: 700; line-height: 1; text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .queue .q-tag.live { background: rgb(248 113 113 / 0.15); color: var(--danger); }
+  .queue .q-tag.short { background: rgb(232 121 249 / 0.15); color: #e879f9; }
   .queue .q-remove {
     width: 30px; height: 30px; flex: none; display: grid; place-items: center;
     padding: 0; border: none; background: transparent; color: var(--muted);
@@ -488,8 +495,10 @@ export function remoteStyles(): string {
   }
 
   .later-head-right { display: flex; align-items: center; gap: 8px; }
-  #later-continue { color: var(--muted); font-weight: 600; }
-  #later-continue[aria-pressed="true"] { color: var(--accent); }
+  #later-continue, #later-no-shorts { color: var(--muted); font-weight: 600; }
+  #later-continue[aria-pressed="true"], #later-no-shorts[aria-pressed="true"] {
+    color: var(--accent);
+  }
   .later-empty { padding: 10px 6px; font-size: 12px; color: var(--muted); }
 
   /* Pair + unpair */
