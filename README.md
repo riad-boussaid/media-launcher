@@ -149,9 +149,10 @@ Release artifacts are attached to every GitHub release.
    containing `manifest.json`.
 
 **Firefox** — install from
-[addons.mozilla.org](https://addons.mozilla.org/firefox/) once the listing is
-approved (AMO signing is free). Until then, download the XPI and load it
-temporarily through `about:debugging#/runtime/this-firefox`.
+[addons.mozilla.org](https://addons.mozilla.org/firefox/addon/media-launcher/).
+AMO signs the extension and updates it automatically. For a build newer than
+the store listing, download the release XPI and load it temporarily through
+`about:debugging#/runtime/this-firefox`.
 
 Manual update and troubleshooting steps are in
 [docs/installing.md](docs/installing.md#chrome-edge-and-brave-manual-install).

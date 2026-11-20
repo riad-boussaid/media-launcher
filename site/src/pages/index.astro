@@ -13,6 +13,7 @@ const issues = `${repo}/issues`;
 const installGuide = `${repo}/blob/main/docs/installing.md`;
 const chromeGuide = `${installGuide}#chrome-edge-and-brave-manual-install`;
 const firefoxGuide = `${installGuide}#firefox`;
+const amoListing = "https://addons.mozilla.org/firefox/addon/media-launcher/";
 const privacyPolicy = "https://riad-boussaid.github.io/media-launcher/privacy-policy.html";
 
 type FeatureIcon =
@@ -100,7 +101,7 @@ const faqs = [
   {
     question: "Why is the Chrome extension not in the Chrome Web Store?",
     answer:
-      "The Chrome Web Store charges a one-time developer registration fee. You can install the same ZIP manually in Chrome, Edge, or Brave for free; the install guide has the steps. The Firefox listing is free and is in review at addons.mozilla.org.",
+      "The Chrome Web Store charges a one-time developer registration fee. You can install the same ZIP manually in Chrome, Edge, or Brave for free; the install guide has the steps. The Firefox extension is available from addons.mozilla.org.",
   },
   {
     question: "Does it collect my browsing history?",
@@ -152,11 +153,12 @@ const browserCards = [
   },
   {
     title: "Firefox",
-    body: "The AMO listing is free and currently in review. Until it is live, load the release XPI temporarily.",
-    note: "Permanent installs require an AMO-signed XPI.",
+    body: "Install from addons.mozilla.org. AMO signs the extension and keeps it updated automatically.",
+    note: "For a build newer than the store listing, load the release XPI temporarily.",
     links: [
+      { label: "Install on AMO", href: amoListing },
       { label: "Firefox guide", href: firefoxGuide },
-      { label: "Download XPI", href: releases },
+      { label: "Latest XPI", href: releases },
     ],
   },
 ];

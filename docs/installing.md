@@ -3,7 +3,7 @@
 Media Launcher is MIT-licensed open source. Everything needed to install and
 use it is available for free from
 [GitHub Releases](https://github.com/riad-boussaid/media-launcher/releases/latest)
-and [addons.mozilla.org](https://addons.mozilla.org/firefox/).
+and [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/media-launcher/).
 
 Paying for the Chrome Web Store or a code-signing certificate is optional. This
 page covers the free paths and the warnings you will see on unsigned builds.
@@ -56,11 +56,12 @@ Edge and Brave too.
 
 ## Firefox
 
-AMO signing and listing are free.
+Install from the
+[AMO listing](https://addons.mozilla.org/firefox/addon/media-launcher/). AMO
+signs the extension, hosts it, and updates it automatically.
 
-- **Preferred:** install from the AMO listing once it is approved. It updates
-  automatically and is signed by Mozilla.
-- **Until the listing is live:** download the XPI, unzip it, and open
+- **Latest builds:** to run a GitHub release build before it reaches the store,
+  download the XPI, unzip it, and open
   `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → select
   `manifest.json`. Temporary add-ons disappear when Firefox restarts.
 - A release XPI is only permanently installable in release Firefox if it has
