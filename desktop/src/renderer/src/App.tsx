@@ -138,11 +138,11 @@ export default function App() {
         setSearchSignal((n) => n + 1);
       } else if (key === "3") {
         e.preventDefault();
-        setTab("settings");
-      } else if (key === "4") {
-        e.preventDefault();
         setTab("later");
         setSearchSignal((n) => n + 1);
+      } else if (key === "4") {
+        e.preventDefault();
+        setTab("settings");
       } else if (key === "f") {
         e.preventDefault();
         setTab("history");
@@ -174,13 +174,14 @@ export default function App() {
 
       <div className="flex flex-1 min-h-0">
         <nav className="w-[64px] flex-shrink-0 flex flex-col items-center gap-1 bg-surface border-r border-border py-3">
-          {TABS.map((t) => {
+          {TABS.map((t, index) => {
             const active = tab === t.key;
             return (
               <button
                 key={t.key}
                 type="button"
-                title={t.label}
+                title={`${t.label} (Ctrl ${index + 1})`}
+                aria-current={active ? "page" : undefined}
                 className={`w-[52px] py-2.5 flex flex-col items-center gap-1 rounded-lg border-none cursor-pointer transition-colors duration-150 ${
                   active
                     ? "bg-card text-accent"

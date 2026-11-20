@@ -875,7 +875,7 @@ export default function WatchLater({
               onChange={(event) => changeSearch(event.target.value)}
               placeholder="Search Watch Later"
               aria-label="Search Watch Later"
-              className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-16 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-accent"
+              className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-16 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-accent/50 focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-accent)_10%,transparent)]"
             />
             {search ? (
               <button
@@ -888,7 +888,7 @@ export default function WatchLater({
               </button>
             ) : (
               <span className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-elevated px-1.5 py-0.5 text-[10.5px] font-medium text-muted min-[480px]:inline-flex">
-                Ctrl 4
+                Ctrl 3
               </span>
             )}
           </div>
@@ -920,7 +920,7 @@ export default function WatchLater({
           </fieldset>
 
           <select
-            className="h-9 flex-none cursor-pointer rounded-lg border border-border bg-surface px-2.5 text-[12px] text-text outline-none transition-colors focus:border-accent"
+            className="select h-9 flex-none cursor-pointer rounded-lg border border-border bg-surface pl-2.5 pr-8 text-[12px] text-text outline-none transition-colors focus:border-accent/50 focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-accent)_10%,transparent)]"
             value={sort}
             onChange={(event) => changeSort(event.target.value as SortMode)}
             aria-label="Sort Watch Later"
@@ -931,14 +931,16 @@ export default function WatchLater({
             <option value="custom">Custom order</option>
           </select>
 
-          <button
-            type="button"
-            className="btn-ghost flex-shrink-0"
-            onClick={enterSelectMode}
-          >
-            <SelectIcon />
-            Select
-          </button>
+          {!selectMode && (
+            <button
+              type="button"
+              className="btn-ghost h-9 flex-shrink-0"
+              onClick={enterSelectMode}
+            >
+              <SelectIcon />
+              Select
+            </button>
+          )}
 
           <div className="relative flex-none" data-page-menu>
             <button

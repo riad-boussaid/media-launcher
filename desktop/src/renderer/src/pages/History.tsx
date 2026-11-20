@@ -711,7 +711,7 @@ export default function History({
               onChange={(event) => changeSearch(event.target.value)}
               placeholder="Search history"
               aria-label="Search history"
-              className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-16 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-accent"
+              className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-16 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-accent/50 focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-accent)_10%,transparent)]"
             />
             {search ? (
               <button
@@ -755,14 +755,16 @@ export default function History({
             ))}
           </fieldset>
 
-          <button
-            type="button"
-            className="btn-ghost flex-shrink-0"
-            onClick={enterSelectMode}
-          >
-            <SelectIcon />
-            Select
-          </button>
+          {!selectMode && (
+            <button
+              type="button"
+              className="btn-ghost h-9 flex-shrink-0"
+              onClick={enterSelectMode}
+            >
+              <SelectIcon />
+              Select
+            </button>
+          )}
 
           <div className="relative flex-none" data-page-menu>
             <button
@@ -851,18 +853,18 @@ export default function History({
           </label>
           <button
             type="button"
-            className="btn-ghost btn-sm"
-            onClick={exitSelectMode}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
             className="btn-danger btn-sm disabled:opacity-40"
             disabled={visibleSelectedCount === 0}
             onClick={handleDeleteSelected}
           >
             Remove
+          </button>
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            onClick={exitSelectMode}
+          >
+            Cancel
           </button>
         </div>
       )}

@@ -527,7 +527,7 @@ export default function Play() {
                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                           <button
                             type="button"
-                            className={`block max-w-full truncate text-left text-[13px] font-medium leading-[1.3] ${
+                            className={`block max-w-full truncate text-left text-[13.5px] font-medium leading-[1.3] ${
                               completed ? "text-text-dim" : "text-text"
                             } hover:text-accent`}
                             title={item.title || item.url}
@@ -535,7 +535,7 @@ export default function Play() {
                           >
                             {item.title || hostOf(item.url)}
                           </button>
-                          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] text-muted">
+                          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11.5px] text-muted">
                             {item.isShort && (
                               <ShortBadge isShort url={item.url} />
                             )}
