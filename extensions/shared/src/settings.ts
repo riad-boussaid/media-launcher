@@ -12,6 +12,7 @@ export interface Settings {
   subLang: string;
   loop: boolean;
   showPageButton: boolean;
+  showSaveButton: boolean;
   showThumbButtons: boolean;
   notifications: boolean;
 }
@@ -28,6 +29,7 @@ export const defaultSettings: Settings = {
   subLang: "",
   loop: false,
   showPageButton: true,
+  showSaveButton: true,
   showThumbButtons: true,
   notifications: true,
 };
@@ -46,6 +48,7 @@ const syncDefaults: Omit<Settings, "authToken"> = {
   subLang: defaultSettings.subLang,
   loop: defaultSettings.loop,
   showPageButton: defaultSettings.showPageButton,
+  showSaveButton: defaultSettings.showSaveButton,
   showThumbButtons: defaultSettings.showThumbButtons,
   notifications: defaultSettings.notifications,
 };

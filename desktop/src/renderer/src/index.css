@@ -733,6 +733,9 @@ html.light {
 .action-btn.queue:hover {
   color: var(--color-accent);
 }
+.action-btn.later:hover {
+  color: var(--color-accent);
+}
 .action-btn:disabled {
   opacity: 0.35;
   cursor: default;

@@ -13,6 +13,7 @@ import {
   clearPlaybackError,
   clearPlayedPlaylist,
   clearQueue,
+  getWatchLaterStatus,
   loadMorePlaylist,
   moveQueueItem,
   moveQueueItemTo,
@@ -30,8 +31,12 @@ import {
   stopPlayback,
   toggleMute,
   togglePause,
+  toggleWatchLater,
 } from "../lib/api";
 import { formatTime, hostOf } from "../lib/format";
+import { LiveBadge } from "./LiveBadge";
+import { ShortBadge } from "./ShortBadge";
+import { Thumbnail } from "./Thumbnail";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -78,6 +83,23 @@ function StopGlyph() {
       aria-hidden="true"
     >
       <rect x="5" y="5" width="14" height="14" rx="2" />
+    </svg>
+  );
+}
+
+function BookmarkGlyph({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4.8L5 21V4.5a1 1 0 0 1 1-1Z" />
     </svg>
   );
 }
@@ -223,18 +245,11 @@ function Artwork({
           <polygon points="7 4 21 12 7 20 7 4" />
         </svg>
       </span>
-      {src ? (
-        <img
-          src={src}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          className="absolute inset-0 h-full w-full object-cover"
-          onError={(event) => {
-            event.currentTarget.style.visibility = "hidden";
-          }}
-        />
-      ) : null}
+      <Thumbnail
+        src={src}
+        className="absolute inset-0 h-full w-full object-cover"
+        fallback={null}
+      />
     </span>
   );
 }
@@ -425,8 +440,12 @@ export default function NowPlaying({ player, onRefresh }: NowPlayingProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [savedToWatchLater, setSavedToWatchLater] = useState(false);
+  const [savingToWatchLater, setSavingToWatchLater] = useState(false);
   const seekRef = useRef<HTMLDivElement>(null);
   const speedRef = useRef<HTMLDivElement>(null);
+  const savedRequestRef = useRef(0);
+  const currentUrl = player.url ?? "";
 
   const duration = Number.isFinite(player.duration)
     ? Math.max(0, player.duration)
@@ -567,6 +586,46 @@ export default function NowPlaying({ player, onRefresh }: NowPlayingProps) {
     return () => clearTimeout(timer);
   }, [actionError]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const seq = ++savedRequestRef.current;
+    setSavedToWatchLater(false);
+    if (!currentUrl) return;
+    void getWatchLaterStatus(currentUrl)
+      .then((saved) => {
+        if (!cancelled && seq === savedRequestRef.current) {
+          setSavedToWatchLater(saved);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUrl]);
+
+  const toggleSaved = async (): Promise<void> => {
+    if (!currentUrl || savingToWatchLater) return;
+    const seq = ++savedRequestRef.current;
+    setSavingToWatchLater(true);
+    try {
+      const result = await toggleWatchLater(
+        currentUrl,
+        player.title,
+        player.thumbnail,
+        !savedToWatchLater,
+      );
+      if (seq === savedRequestRef.current) {
+        setSavedToWatchLater(result.saved);
+      }
+    } catch {
+      if (seq === savedRequestRef.current) {
+        setActionError("Could not update Watch Later.");
+      }
+    } finally {
+      setSavingToWatchLater(false);
+    }
+  };
+
   const cycleRepeat = () => {
     const next =
       player.repeat === "off" ? "all" : player.repeat === "all" ? "one" : "off";
@@ -691,6 +750,18 @@ export default function NowPlaying({ player, onRefresh }: NowPlayingProps) {
               {player.title || hostOf(player.url ?? "")}
             </h3>
             <div className="mt-1 text-[11.5px] text-muted truncate">
+              {player.live && (
+                <>
+                  <LiveBadge status="live" />
+                  <span className="mx-1.5" />
+                </>
+              )}
+              {player.isShort && (
+                <>
+                  <ShortBadge isShort url={player.url ?? ""} />
+                  <span className="mx-1.5" />
+                </>
+              )}
               {hostOf(player.url ?? "")}
               {player.chapter !== null && chapter && (
                 <>
@@ -704,15 +775,50 @@ export default function NowPlaying({ player, onRefresh }: NowPlayingProps) {
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg bg-transparent text-muted cursor-pointer transition-colors hover:text-danger hover:bg-danger/10"
-          title="Stop playback"
-          aria-label="Stop playback"
-          onClick={() => run(stopPlayback())}
-        >
-          <StopGlyph />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            className={`w-8 h-8 flex items-center justify-center rounded-lg border-none cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-default ${
+              savedToWatchLater
+                ? "text-accent bg-accent/10 hover:bg-accent/15"
+                : "bg-transparent text-muted hover:text-text hover:bg-elevated"
+            }`}
+            title={
+              savedToWatchLater
+                ? "Remove from Watch Later"
+                : "Save to Watch Later"
+            }
+            aria-label={
+              savedToWatchLater
+                ? "Remove from Watch Later"
+                : "Save to Watch Later"
+            }
+            aria-pressed={savedToWatchLater}
+            aria-busy={savingToWatchLater}
+            disabled={!currentUrl || savingToWatchLater}
+            onClick={() => {
+              void toggleSaved();
+            }}
+          >
+            {savingToWatchLater ? (
+              <span
+                className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+                aria-hidden="true"
+              />
+            ) : (
+              <BookmarkGlyph filled={savedToWatchLater} />
+            )}
+          </button>
+          <button
+            type="button"
+            className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg bg-transparent text-muted cursor-pointer transition-colors hover:text-danger hover:bg-danger/10"
+            title="Stop playback"
+            aria-label="Stop playback"
+            onClick={() => run(stopPlayback())}
+          >
+            <StopGlyph />
+          </button>
+        </div>
       </div>
 
       {actionError && (
@@ -1351,7 +1457,11 @@ export default function NowPlaying({ player, onRefresh }: NowPlayingProps) {
                               className="w-9 h-5 rounded"
                               iconSize={10}
                             />
-                            <span className="truncate">{label}</span>
+                            <span className="min-w-0 flex-1 truncate">
+                              {label}
+                            </span>
+                            <LiveBadge status={item.liveStatus} />
+                            <ShortBadge isShort={item.isShort} url={item.url} />
                           </button>
                           {!played && (
                             <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">

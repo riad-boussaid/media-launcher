@@ -20,6 +20,10 @@
     "queue-current-page": {
       "suggested_key": { "default": "Alt+Shift+Q" },
       "description": "Queue the current page with Media Launcher"
+    },
+    "save-current-page": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Save the current page to Watch Later"
     }
   },
 

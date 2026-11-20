@@ -2,6 +2,7 @@ import { type DragEvent, useEffect, useState } from "react";
 import NowPlaying from "../components/NowPlaying";
 import SetupGate from "../components/SetupGate";
 import {
+  addWatchLater,
   discardSavedQueue,
   getHistory,
   getPlayerStatus,
@@ -29,7 +30,9 @@ export default function Play() {
   const [toast, setToast] = useState<{ msg: string; variant: string } | null>(
     null,
   );
-  const [pending, setPending] = useState<"play" | "queue" | null>(null);
+  const [pending, setPending] = useState<"play" | "queue" | "save" | null>(
+    null,
+  );
   const [dragOver, setDragOver] = useState(false);
   const [recent, setRecent] = useState<HistoryEntry[]>([]);
   const [player, setPlayer] = useState<PlayerStatus | null>(null);
@@ -113,6 +116,24 @@ export default function Play() {
       return;
     }
     await sendUrl(url, true);
+  };
+
+  const handleSaveLater = async () => {
+    const url = urlInput.trim();
+    if (!url) return;
+    if (!isValidUrl(url)) {
+      showToast("Please enter a valid http(s) URL", "toast-error");
+      return;
+    }
+    setPending("save");
+    try {
+      await addWatchLater(url);
+      showToast("Saved to Watch Later");
+    } catch {
+      showToast("Could not save to Watch Later", "toast-error");
+    } finally {
+      setPending(null);
+    }
   };
 
   const handlePaste = async () => {
@@ -363,6 +384,32 @@ export default function Play() {
                   }
                 >
                   {pending === "queue" ? "Adding…" : "Queue"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost h-[42px] w-[42px] px-0 flex-shrink-0"
+                  onClick={() => void handleSaveLater()}
+                  disabled={!urlInput.trim() || pending !== null}
+                  title="Save to Watch Later"
+                  aria-label="Save to Watch Later"
+                >
+                  {pending === "save" ? (
+                    <span className="text-[11px] text-muted">…</span>
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="15"
+                      height="15"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                    </svg>
+                  )}
                 </button>
               </div>
             </div>

@@ -39,6 +39,29 @@ interface AppUpdateInfo {
   error: string | null;
 }
 
+interface WatchLaterEntry {
+  id: string;
+  url: string;
+  title: string;
+  thumbnail: string;
+  addedAt: number;
+  position?: number;
+  duration?: number;
+  completed?: boolean;
+  lastPlayedAt?: number;
+  liveStatus?: string;
+  isShort?: boolean;
+}
+
+interface WatchLaterTransferResult {
+  saved?: boolean;
+  canceled?: boolean;
+  count?: number;
+  imported?: number;
+  skipped?: number;
+  error?: string;
+}
+
 interface ElectronAPI {
   platform: "win32" | "darwin" | "linux";
   server: {
@@ -109,6 +132,10 @@ interface ElectronAPI {
         thumbnail: string;
         timestamp: number;
         position: number;
+        duration?: number;
+        completed?: boolean;
+        liveStatus?: string;
+        isShort?: boolean;
       }[]
     >;
     delete: (id: string) => Promise<
@@ -119,11 +146,50 @@ interface ElectronAPI {
         thumbnail: string;
         timestamp: number;
         position: number;
+        duration?: number;
+        completed?: boolean;
+        liveStatus?: string;
+        isShort?: boolean;
       }[]
     >;
     clear: () => Promise<void>;
     replay: (url: string) => Promise<{ success: boolean; error?: string }>;
     queue: (url: string) => Promise<{ success: boolean; error?: string }>;
+  };
+  watchLater: {
+    get: () => Promise<WatchLaterEntry[]>;
+    add: (
+      url: string,
+      title?: string,
+      thumbnail?: string,
+      addedAt?: number,
+    ) => Promise<WatchLaterEntry>;
+    status: (url: string) => Promise<boolean>;
+    toggle: (
+      url: string,
+      title?: string,
+      thumbnail?: string,
+      saved?: boolean,
+    ) => Promise<{ saved: boolean }>;
+    delete: (id: string) => Promise<WatchLaterEntry[]>;
+    clear: () => Promise<void>;
+    play: (ids?: string[]) => Promise<{
+      success: boolean;
+      count?: number;
+      total?: number;
+      error?: string;
+    }>;
+    queue: (ids?: string[]) => Promise<{
+      success: boolean;
+      count?: number;
+      total?: number;
+      error?: string;
+    }>;
+    reorder: (ids: string[]) => Promise<WatchLaterEntry[]>;
+    unwatch: (id: string) => Promise<WatchLaterEntry[]>;
+    refresh: (id: string) => Promise<WatchLaterEntry[]>;
+    exportFile: () => Promise<WatchLaterTransferResult>;
+    importFile: () => Promise<WatchLaterTransferResult>;
   };
   player: {
     check: (exe: string) => Promise<boolean>;
@@ -150,12 +216,16 @@ interface ElectronAPI {
       } | null;
       position: number;
       duration: number;
+      live: boolean;
+      isShort: boolean;
       paused: boolean;
       queue: {
         index: number;
         url: string;
         title: string;
         thumbnail: string;
+        liveStatus?: string;
+        isShort?: boolean;
         source: "queue" | "playlist";
         playlistId: string | null;
         playlistTitle: string | null;
@@ -169,6 +239,8 @@ interface ElectronAPI {
         url: string;
         title: string;
         thumbnail: string;
+        liveStatus?: string;
+        isShort?: boolean;
         source: "queue" | "playlist";
         playlistId: string | null;
         playlistTitle: string | null;

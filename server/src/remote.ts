@@ -235,6 +235,18 @@ ${remoteStyles()}
   <p class="hint" id="secure-hint" hidden>For screen wake lock and installable mode, open this page over HTTPS (for example through Tailscale).</p>
 </section>
 
+<section class="card" id="later-card" hidden>
+  <div class="card-head">
+    <span class="label">Watch later</span>
+    <div class="later-head-right">
+      <span class="count" id="later-count"></span>
+      <button type="button" class="link-btn" id="later-continue" aria-pressed="false">Continue</button>
+      <button type="button" class="link-btn" id="later-no-shorts" aria-pressed="false">No Shorts</button>
+    </div>
+  </div>
+  <ul id="later"></ul>
+</section>
+
 <section class="card" id="recent-card" hidden>
   <div class="card-head">
     <span class="label">Recent</span>

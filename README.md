@@ -36,15 +36,38 @@ Send videos from your browser to an external media player (mpv) with one click.
   partially watched videos resume where they left off, including queued and
   playlist tracks when they load. History rows are keyboard-accessible and
   reveal their actions on focus.
+- **Watch Later**: save videos from the in-page or thumbnail Save buttons, the
+  popup or sidebar, the right-click menu, or Alt+Shift+S. Saved videos stay
+  until you remove them; the server-backed list is shared by the desktop Later
+  tab and the phone remote, where each item shows watched/resume status and can
+  be played, queued, or removed. The desktop tab can play or queue the whole
+  list, multi-select a subset, bulk-remove, filter to in-progress videos, sort
+  or drag to reorder the list, import/export full JSON backups, refresh an
+  item's metadata, and mark videos unwatched, and the Now Playing card can save
+  or remove the current track. Watched videos are grouped into a collapsible
+  section. Progress bars appear in History, Watch Later, and the extension popup
+  once a video's duration is known, and the Continue filter is remembered on
+  desktop and the remote. Share, embed, and tracking-parameter variants of the
+  same video collapse to one bookmark.
+- **Live streams**: live and upcoming broadcasts are detected from metadata and
+  badged in History, Watch Later, the popup, and the remote. They never record a
+  resume position or a "watched" state; finished broadcasts show **Was live** but
+  behave like normal videos.
+- **Shorts & Reels**: YouTube Shorts, Facebook Reels, and Instagram Reels are
+  detected from their URLs or vertical, short metadata. They show a SHORT/REEL
+  badge in History, Watch Later, the popup, queue rows, and the remote; the
+  desktop Later and History tabs can hide them with a persisted **Hide Shorts &
+  Reels** filter, and the remote Watch Later card has its own toggle.
 - **Remote control from a phone**: LAN or Tailscale, with player status,
-  seek/pause/skip, chapters, volume, mute, speed, repeat, artwork and
-  recent-history thumbnails, full grouped queue management (move, remove,
+  seek/pause/skip, chapters, volume, mute, speed, repeat, artwork, recent-history
+  thumbnails, a Watch Later list, full grouped queue management (move, remove,
   shuffle, repeat, clear, load more), played-track replay, playback errors,
   reconnect feedback, PWA metadata/icons, and a best-effort screen wake lock.
 - **SponsorBlock**: optional mpv Lua script, installed from the desktop app's
   Downloads section.
-- **Injected-UI controls**: turn the page button, thumbnail buttons, and native
-  notifications on or off from the extension settings.
+- **Injected-UI controls**: turn the page and thumbnail Save buttons, the page
+  and thumbnail play buttons, and native notifications on or off from the
+  extension settings.
 - **Guided setup**: a first-run card detects missing mpv, yt-dlp, and ffmpeg,
   installs portable copies on Windows, and shows copyable package-manager
   commands elsewhere.
@@ -261,8 +284,8 @@ Options are grouped into:
 - **Server** — URL and API token.
 - **Playback** — max resolution, codec, audio-only, subtitles, volume, speed,
   loop, thumbnail for audio-only, and extra mpv arguments.
-- **On-page controls** — show/hide the page button, thumbnail buttons, and
-  desktop notifications.
+- **On-page controls** — show/hide the page and thumbnail buttons (play and Save
+  to Watch Later), plus desktop notifications.
 - **Appearance** — light/dark/system theme.
 
 ## Remote control

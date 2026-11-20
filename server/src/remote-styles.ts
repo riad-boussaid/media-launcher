@@ -374,6 +374,13 @@ export function remoteStyles(): string {
     color: var(--text-dim); font-size: 12px; line-height: 1.35; text-align: left;
   }
   .queue .q-main:active { color: var(--accent); }
+  .queue .q-tag {
+    flex: none; padding: 2px 4px; border-radius: 4px;
+    font-size: 8.5px; font-weight: 700; line-height: 1; text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .queue .q-tag.live { background: rgb(248 113 113 / 0.15); color: var(--danger); }
+  .queue .q-tag.short { background: rgb(232 121 249 / 0.15); color: #e879f9; }
   .queue .q-remove {
     width: 30px; height: 30px; flex: none; display: grid; place-items: center;
     padding: 0; border: none; background: transparent; color: var(--muted);
@@ -435,8 +442,8 @@ export function remoteStyles(): string {
   .btn:disabled { opacity: 0.4; cursor: default; }
 
   /* Recent */
-  #recent { margin: 0 -6px; padding: 0; list-style: none; }
-  #recent li + li { border-top: 1px solid var(--border); }
+  #recent, #later { margin: 0 -6px; padding: 0; list-style: none; }
+  #recent li + li, #later li + li { border-top: 1px solid var(--border); }
   .recent-row { display: flex; align-items: center; gap: 6px; }
   .recent-main {
     display: flex; align-items: center; gap: 11px; flex: 1; min-width: 0;
@@ -453,6 +460,14 @@ export function remoteStyles(): string {
   .recent-queue:hover, .recent-queue:active {
     background: rgb(100 255 218 / 0.1); color: var(--accent);
     border-color: rgb(100 255 218 / 0.35);
+  }
+  .later-remove {
+    width: 32px; height: 42px; flex: none; display: grid; place-items: center;
+    border: none; border-radius: 10px; background: transparent; color: var(--muted);
+    transition: background 0.15s, color 0.15s;
+  }
+  .later-remove:hover, .later-remove:active {
+    background: rgb(248 113 113 / 0.1); color: var(--danger);
   }
   .recent-icon {
     width: 34px; height: 34px; flex: none; display: grid; place-items: center;
@@ -471,6 +486,20 @@ export function remoteStyles(): string {
     font-size: 10.5px; color: var(--muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .recent-progress {
+    display: block; height: 2px; margin-top: 3px;
+    border-radius: 999px; background: var(--border); overflow: hidden;
+  }
+  .recent-progress-fill {
+    display: block; height: 100%; background: var(--accent);
+  }
+
+  .later-head-right { display: flex; align-items: center; gap: 8px; }
+  #later-continue, #later-no-shorts { color: var(--muted); font-weight: 600; }
+  #later-continue[aria-pressed="true"], #later-no-shorts[aria-pressed="true"] {
+    color: var(--accent);
+  }
+  .later-empty { padding: 10px 6px; font-size: 12px; color: var(--muted); }
 
   /* Pair + unpair */
   #unpair-row { margin-top: 4px; }

@@ -4,9 +4,15 @@ import {
   createActionButton,
 } from "@shared/action-button";
 import { ext } from "@shared/ext";
+import {
+  createSaveButton,
+  type SaveButton,
+  type SaveToggleResult,
+} from "@shared/save-button";
 import { getPageThumbnail, resolveVideoUrl, siteForHost } from "@shared/sites";
 import { getSettings } from "@shared/settings";
-import { isPlaylistUrl } from "@shared/url";
+import { WATCH_LATER_CACHE_KEY } from "@shared/storage-keys";
+import { canonicalizeUrl, isPlaylistUrl } from "@shared/url";
 
 // The hostname is fixed for the lifetime of a content script, so resolve the
 // site definition once instead of per mutation / per anchor.
@@ -49,20 +55,105 @@ async function relaySendUrl(
   }
 }
 
+async function relayToggleWatchLater(
+  url: string,
+  title: string,
+  thumbnail: string | null,
+  saved?: boolean,
+): Promise<SaveToggleResult> {
+  try {
+    const message: Record<string, unknown> = {
+      type: "toggle-watch-later",
+      url,
+      title,
+      thumbnail: thumbnail ?? "",
+    };
+    if (typeof saved === "boolean") message.saved = saved;
+    const response: unknown = await ext.runtime.sendMessage(message);
+    if (
+      response &&
+      typeof response === "object" &&
+      "success" in response &&
+      typeof (response as { success: unknown }).success === "boolean"
+    ) {
+      return response as SaveToggleResult;
+    }
+    return { success: false };
+  } catch {
+    return { success: false };
+  }
+}
+
+async function relayWatchLaterStatus(url: string): Promise<boolean | null> {
+  try {
+    const response: unknown = await ext.runtime.sendMessage({
+      type: "watch-later-status",
+      url,
+    });
+    if (
+      response &&
+      typeof response === "object" &&
+      "saved" in response &&
+      typeof (response as { saved: unknown }).saved === "boolean"
+    ) {
+      return (response as { saved: boolean }).saved;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function relayWatchLaterUrls(): Promise<string[] | null> {
+  try {
+    const response: unknown = await ext.runtime.sendMessage({
+      type: "watch-later-urls",
+    });
+    if (
+      response &&
+      typeof response === "object" &&
+      "urls" in response &&
+      Array.isArray((response as { urls: unknown }).urls)
+    ) {
+      return ((response as { urls: unknown[] }).urls).filter(
+        (url): url is string => typeof url === "string",
+      );
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 let btn: ActionButton | null = null;
+let saveBtn: SaveButton | null = null;
 
 let uiReady = false;
 let showPageButton = true;
+let showSaveButton = true;
 let showThumbButtons = true;
+let pageSaved = false;
+let saveStatusUrl: string | null = null;
+let saveStatusSeq = 0;
+
+// Canonical URLs known to be in Watch Later, for thumbnail badge state.
+let savedUrls = new Set<string>();
+let savedUrlsLoaded = false;
+let savedUrlsLoading = false;
+let savedUrlsVersion = 0;
+let lastSavedUrlsAttempt = 0;
+const SAVED_URLS_RETRY_MS = 30_000;
 
 async function loadUiSettings(): Promise<void> {
   try {
     const settings = await getSettings();
     showPageButton = settings.showPageButton;
+    showSaveButton = settings.showSaveButton;
     showThumbButtons = settings.showThumbButtons;
   } catch {
     // Storage may be unavailable in a stale content script; keep defaults.
     showPageButton = true;
+    showSaveButton = true;
     showThumbButtons = true;
   }
   uiReady = true;
@@ -71,6 +162,11 @@ async function loadUiSettings(): Promise<void> {
 function removeMainButton(): void {
   btn?.destroy();
   btn = null;
+}
+
+function removeSaveButton(): void {
+  saveBtn?.destroy();
+  saveBtn = null;
 }
 
 function removePlaylistBadge(): void {
@@ -206,6 +302,161 @@ function getVideoIdFromHref(href: string): string | null {
   return PAGE_SITE?.videoIdFromUrl?.(href) ?? null;
 }
 
+async function refreshSaveStatus(url: string): Promise<void> {
+  const seq = ++saveStatusSeq;
+  const saved = await relayWatchLaterStatus(url);
+  // A new video may have loaded, or a toggle may have finished while the
+  // request was in flight.
+  if (seq !== saveStatusSeq || saved === null || location.href !== url) return;
+  pageSaved = saved;
+  saveBtn?.setSaved(saved);
+}
+
+/**
+ * Refreshes the saved state once per URL. YouTube swaps videos without a page
+ * load, so a previously saved video must not leave the next one looking saved.
+ */
+function ensureSaveStatus(): void {
+  if (!showSaveButton) return;
+  if (saveStatusUrl === location.href) return;
+  saveStatusUrl = location.href;
+  // Use the list already fetched for thumbnail badges for an immediate state,
+  // then confirm with the server.
+  pageSaved = savedUrlsLoaded
+    ? savedUrls.has(canonicalizeUrl(location.href))
+    : false;
+  saveBtn?.setSaved(pageSaved);
+  void refreshSaveStatus(location.href);
+}
+
+function injectSaveButton(): void {
+  const site = PAGE_SITE;
+  const onShorts = isShortsPlayerPage();
+  const containerSelector = onShorts
+    ? SHORTS_CHANNEL_BAR
+    : (site?.buttonContainerSelector ?? null);
+  const container = containerSelector
+    ? document.querySelector<HTMLElement>(containerSelector)
+    : null;
+
+  if (containerSelector && !container) {
+    // Container not rendered yet — retry on next mutation.
+    return;
+  }
+
+  const floating = !site && hasVisibleVideo() ? "floating" : null;
+  if (!container && !floating) {
+    removeSaveButton();
+    return;
+  }
+
+  const targetVariant: SaveButton["variant"] = onShorts
+    ? "compact"
+    : (floating ?? "inline");
+
+  if (saveBtn && saveBtn.variant !== targetVariant) {
+    saveBtn.destroy();
+    saveBtn = null;
+  }
+
+  if (!saveBtn) {
+    saveBtn = createSaveButton({
+      variant: targetVariant,
+      saved: pageSaved,
+      onToggle: async ({ saved: currentlySaved }) => {
+        const url = location.href;
+        const target = !currentlySaved;
+        const result = await relayToggleWatchLater(
+          url,
+          document.title,
+          site ? getPageThumbnail(document) : null,
+          target,
+        );
+        if (result.success && location.href === url) {
+          // The toggle's response supersedes any status check already in flight.
+          saveStatusSeq += 1;
+          pageSaved = result.saved ?? target;
+          saveStatusUrl = url;
+          rememberSavedUrl(url, pageSaved);
+          syncThumbnailSaveBadges();
+        }
+        return result;
+      },
+    });
+  }
+
+  if (targetVariant === "floating") {
+    saveBtn.element.style.bottom = showPageButton ? "62px" : "16px";
+  }
+
+  if (container && saveBtn.element.parentElement !== container) {
+    container.appendChild(saveBtn.element);
+  } else if (targetVariant === "floating" && !saveBtn.element.isConnected) {
+    document.body.appendChild(saveBtn.element);
+  }
+}
+
+function isInWatchLater(list: unknown, url: string): boolean {
+  if (!Array.isArray(list)) return false;
+  const canonical = canonicalizeUrl(url);
+  return list.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const entryUrl = (entry as { url?: unknown }).url;
+    return (
+      typeof entryUrl === "string" && canonicalizeUrl(entryUrl) === canonical
+    );
+  });
+}
+
+function rememberSavedUrl(url: string, saved: boolean): void {
+  const canonical = canonicalizeUrl(url);
+  const known = savedUrls.has(canonical);
+  if (known === saved) return;
+  if (saved) savedUrls.add(canonical);
+  else savedUrls.delete(canonical);
+  // Invalidate a list fetch that started before this local change.
+  savedUrlsVersion += 1;
+}
+
+function syncPageSaveState(canonical: string, saved: boolean): void {
+  if (canonical !== canonicalizeUrl(location.href)) return;
+  saveStatusSeq += 1;
+  saveStatusUrl = location.href;
+  pageSaved = saved;
+  saveBtn?.setSaved(saved);
+}
+
+function syncThumbnailSaveBadges(): void {
+  for (const [anchor, placement] of badgePlacements) {
+    if (!placement.saveButton) continue;
+    const url = resolveVideoUrl(anchor);
+    if (!url) continue;
+    placement.saveButton.setSaved(savedUrls.has(canonicalizeUrl(url)));
+  }
+}
+
+async function refreshSavedUrls(): Promise<void> {
+  savedUrlsLoading = true;
+  lastSavedUrlsAttempt = Date.now();
+  const version = savedUrlsVersion;
+  try {
+    const urls = await relayWatchLaterUrls();
+    // A toggle or cache update may have landed while the request was in flight.
+    if (!urls || version !== savedUrlsVersion) return;
+    savedUrls = new Set(urls.map(canonicalizeUrl));
+    savedUrlsLoaded = true;
+    syncThumbnailSaveBadges();
+  } finally {
+    savedUrlsLoading = false;
+  }
+}
+
+function ensureSavedUrls(): void {
+  if (savedUrlsLoaded || savedUrlsLoading) return;
+  if (Date.now() - lastSavedUrlsAttempt < SAVED_URLS_RETRY_MS) return;
+  void refreshSavedUrls();
+}
+
 // Thumbnail overlays are pointless on text links (and previously landed on
 // comment timestamps, which also link to the video with an `lc` parameter).
 // Only anchors that actually render a thumbnail get a button.
@@ -224,6 +475,9 @@ function hasThumbnailImage(a: HTMLAnchorElement): boolean {
 
 const BADGE_INSET = 8;
 const BADGE_HEIGHT = 28;
+// The save chip sits above the play chip; short thumbnails don't have room for
+// both without overlap.
+const MIN_SAVE_BADGE_THUMB_HEIGHT = 96;
 
 // YouTube (and other sites) render hover previews in a separate overlay that
 // paints above the card itself, hiding anything positioned inside the card.
@@ -251,6 +505,7 @@ function getBadgeOverlay(): HTMLDivElement {
 
 interface BadgePlacement {
   button: ActionButton;
+  saveButton: SaveButton | null;
   host: HTMLElement;
   reposition: () => void;
 }
@@ -358,19 +613,106 @@ function attachThumbnailButton(a: HTMLAnchorElement): void {
           BADGE_HEIGHT,
       )
     }px`;
+
+    const save = badgePlacements.get(a)?.saveButton;
+    if (save) {
+      // Layout shifts can shrink a card below the room needed for both chips.
+      save.element.style.display =
+        anchorRect.height >= MIN_SAVE_BADGE_THUMB_HEIGHT
+          ? "inline-flex"
+          : "none";
+      save.element.style.left = `${
+        Math.round(anchorRect.left - overlayRect.left) + BADGE_INSET
+      }px`;
+      save.element.style.top = `${
+        Math.round(anchorRect.top - overlayRect.top) + BADGE_INSET
+      }px`;
+    }
   };
 
   overlay.appendChild(host);
   reposition();
 
-  badgePlacements.set(a, { button, host, reposition });
+  const placement: BadgePlacement = {
+    button,
+    saveButton: null,
+    host,
+    reposition,
+  };
+  badgePlacements.set(a, placement);
+  attachThumbnailSaveButton(a, placement);
   badgeResizeObserver.observe(a);
+}
+
+function attachThumbnailSaveButton(
+  a: HTMLAnchorElement,
+  placement: BadgePlacement,
+): void {
+  if (!showSaveButton || placement.saveButton) return;
+  if (a.getBoundingClientRect().height < MIN_SAVE_BADGE_THUMB_HEIGHT) return;
+
+  const url = resolveVideoUrl(a);
+  if (!url) return;
+
+  const saveButton = createSaveButton({
+    variant: "badge",
+    saved: savedUrls.has(canonicalizeUrl(url)),
+    onToggle: async ({ saved: currentlySaved }) => {
+      const currentUrl = resolveVideoUrl(a);
+      if (!currentUrl) return { success: false };
+      const target = !currentlySaved;
+      const img = a.querySelector<HTMLImageElement>("img");
+      const rawThumb = img?.currentSrc || img?.src || "";
+      const thumbnail = /^https?:\/\//i.test(rawThumb) ? rawThumb : "";
+      const result = await relayToggleWatchLater(
+        currentUrl,
+        img?.alt?.trim() ?? "",
+        thumbnail || null,
+        target,
+      );
+      if (result.success) {
+        const canonical = canonicalizeUrl(currentUrl);
+        const resulting = result.saved ?? target;
+        rememberSavedUrl(currentUrl, resulting);
+        syncThumbnailSaveBadges();
+        syncPageSaveState(canonical, resulting);
+      }
+      return result;
+    },
+  });
+
+  const host = saveButton.element;
+  host.classList.add("ml-thumb-save-button");
+  const stopNavigation = (event: Event): void => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  host.addEventListener("click", stopNavigation);
+  host.addEventListener("auxclick", stopNavigation);
+
+  getBadgeOverlay().appendChild(host);
+  placement.saveButton = saveButton;
+  placement.reposition();
+}
+
+function ensureThumbnailSaveButtons(): void {
+  for (const [anchor, placement] of badgePlacements) {
+    attachThumbnailSaveButton(anchor, placement);
+  }
+}
+
+function removeThumbnailSaveButtons(): void {
+  for (const placement of badgePlacements.values()) {
+    placement.saveButton?.destroy();
+    placement.saveButton = null;
+  }
 }
 
 function detachThumbnailButton(anchor: HTMLAnchorElement): void {
   const placement = badgePlacements.get(anchor);
   if (!placement) return;
   placement.button.destroy();
+  placement.saveButton?.destroy();
   badgePlacements.delete(anchor);
   badgeResizeObserver.unobserve(anchor);
 }
@@ -379,6 +721,7 @@ function pruneBadgePlacements(): void {
   for (const [anchor, placement] of badgePlacements) {
     if (anchor.isConnected && placement.host.isConnected) continue;
     placement.button.destroy();
+    placement.saveButton?.destroy();
     badgePlacements.delete(anchor);
     badgeResizeObserver.unobserve(anchor);
   }
@@ -551,8 +894,20 @@ function runInjectors(): void {
     removeMainButton();
   }
 
+  if (showSaveButton) {
+    ensureSaveStatus();
+    injectSaveButton();
+  } else {
+    removeSaveButton();
+    removeThumbnailSaveButtons();
+  }
+
   if (showThumbButtons) {
     refreshThumbnailBadges();
+    if (showSaveButton) {
+      ensureSavedUrls();
+      ensureThumbnailSaveButtons();
+    }
     injectPlaylistBadge();
   } else {
     clearThumbnailBadges();
@@ -616,8 +971,35 @@ window.addEventListener(
 );
 
 ext.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes[WATCH_LATER_CACHE_KEY]) {
+    const list = changes[WATCH_LATER_CACHE_KEY].newValue;
+    if (Array.isArray(list)) {
+      savedUrls = new Set(
+        list.flatMap((entry) => {
+          if (!entry || typeof entry !== "object") return [];
+          const url = (entry as { url?: unknown }).url;
+          return typeof url === "string" ? [canonicalizeUrl(url)] : [];
+        }),
+      );
+      savedUrlsVersion += 1;
+      savedUrlsLoaded = true;
+      syncThumbnailSaveBadges();
+    }
+    saveStatusSeq += 1;
+    saveStatusUrl = location.href;
+    const saved = isInWatchLater(list, location.href);
+    pageSaved = saved;
+    saveBtn?.setSaved(saved);
+    return;
+  }
   if (area !== "sync") return;
-  if (!changes.showPageButton && !changes.showThumbButtons) return;
+  if (
+    !changes.showPageButton &&
+    !changes.showSaveButton &&
+    !changes.showThumbButtons
+  ) {
+    return;
+  }
   void loadUiSettings().then(runInjectors);
 });
 

@@ -210,6 +210,8 @@ export interface HistoryEntry {
   title: string;
   thumbnail: string;
   timestamp: number;
+  liveStatus?: string;
+  isShort?: boolean;
 }
 
 /** Server watch history, or null when the server can't be reached. */
@@ -294,6 +296,114 @@ export async function addServerHistory(entry: {
     });
     return res.ok;
   } catch {
+    return false;
+  }
+}
+
+export interface WatchLaterEntry {
+  id: string;
+  url: string;
+  title: string;
+  thumbnail: string;
+  addedAt: number;
+  position?: number;
+  duration?: number;
+  completed?: boolean;
+  lastPlayedAt?: number;
+  liveStatus?: string;
+  isShort?: boolean;
+}
+
+/** Saved videos, or null when the server can't be reached. */
+export async function getServerWatchLater(): Promise<
+  WatchLaterEntry[] | null
+> {
+  const serverUrl = await getServerUrl();
+  if (!serverUrl) return null;
+  try {
+    const token = await getAuthToken();
+    const res = await fetch(`${serverUrl}/watch-later`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data: unknown = await res.json();
+    return Array.isArray(data) ? (data as WatchLaterEntry[]) : null;
+  } catch {
+    cachedServerUrl = null;
+    return null;
+  }
+}
+
+/** Saves a URL; returns the server's entry (idempotent by URL), or null. */
+export async function addServerWatchLater(entry: {
+  url: string;
+  title?: string;
+  thumbnail?: string;
+}): Promise<WatchLaterEntry | null> {
+  const serverUrl = await getServerUrl();
+  if (!serverUrl) return null;
+  try {
+    const token = await getAuthToken();
+    const res = await fetch(`${serverUrl}/watch-later`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(entry),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data: unknown = await res.json();
+    return data && typeof data === "object"
+      ? (data as WatchLaterEntry)
+      : null;
+  } catch {
+    cachedServerUrl = null;
+    return null;
+  }
+}
+
+/** Removes one saved video; returns the fresh list, or null on failure. */
+export async function deleteServerWatchLater(
+  id: string,
+): Promise<WatchLaterEntry[] | null> {
+  const serverUrl = await getServerUrl();
+  if (!serverUrl) return null;
+  try {
+    const token = await getAuthToken();
+    const res = await fetch(
+      `${serverUrl}/watch-later/${encodeURIComponent(id)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    if (!res.ok) return null;
+    const data: unknown = await res.json();
+    return Array.isArray(data) ? (data as WatchLaterEntry[]) : null;
+  } catch {
+    cachedServerUrl = null;
+    return null;
+  }
+}
+
+export async function clearServerWatchLater(): Promise<boolean> {
+  const serverUrl = await getServerUrl();
+  if (!serverUrl) return false;
+  try {
+    const token = await getAuthToken();
+    const res = await fetch(`${serverUrl}/watch-later`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok;
+  } catch {
+    cachedServerUrl = null;
     return false;
   }
 }

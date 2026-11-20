@@ -6,6 +6,63 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### Added
+
+- Watch Later: save the current page from the extension popup or sidebar, the
+  right-click menu, or Alt+Shift+S. The server-backed list is shared by the
+  desktop Later tab and the phone remote, with play, queue, and remove actions
+  for each saved video.
+- Video pages can show a Save to Watch Later button beside the play button. It
+  reflects the saved state, toggles the bookmark when clicked, and stays in
+  sync with saves from the popup or context menu.
+- Supported thumbnails show a Save badge beside the play chip. It fills in when
+  the video is already saved and toggles without opening the video.
+- The desktop Now Playing card can save or remove the current track from Watch
+  Later.
+- Watch Later recognizes the same video across share, embed, Shorts, and
+  tracking-parameter URL forms, and merges duplicate bookmarks on startup.
+- History rows now use the same canonical URLs, so share-link variants of the
+  same video dedupe there too and resume works across them.
+- Watch Later rows show a "Watched" marker or a resume position based on
+  playback history.
+- The desktop Later tab can play or queue every listed video, or multi-select a
+  subset to play, queue, or remove.
+- History now stores video duration; History and Watch Later show progress
+  bars, and Watch Later can filter to in-progress videos. The remote Watch Later
+  card has the same Continue filter.
+- The desktop Later tab can sort by newest, oldest, or title, or switch to a
+  manual order with drag-and-drop or keyboard reordering.
+- Watch Later can be exported to and imported from JSON, individual videos can
+  be marked unwatched, and direct media URLs gained a "Save Media to Watch
+  Later" context-menu item.
+- The popup's Watch Later rows show a compact progress indicator.
+- Live and upcoming streams are detected through yt-dlp metadata. They show a
+  LIVE badge in History, Watch Later, the popup, and the remote, and are excluded
+  from resume positions, progress bars, and watched state. Finished broadcasts
+  show "Was live" but keep normal VOD behavior.
+- YouTube Shorts, Facebook Reels, and Instagram Reels are detected from their
+  URLs or vertical, short metadata. They show a SHORT/REEL badge across History,
+  Watch Later, the popup, and the remote, and the desktop Later tab has a
+  persisted "Hide Shorts & Reels" filter. Existing Reel rows are flagged on
+  startup.
+- Watch Later metadata can be refreshed per item, and live statuses are refreshed
+  in the background on list reads and picked up by polling.
+- Queue rows, remote recent rows, and the remote Watch Later card show live and
+  Short/Reel labels. History has a persisted Hide Shorts & Reels filter, and the
+  remote Watch Later card has a No Shorts toggle.
+- Watch Later JSON backups now include live/Short flags, custom order, and
+  playback progress; imports restore them into Watch Later and History.
+- Watched videos are grouped into a collapsible section in the desktop Later
+  tab, and the Continue filter is remembered on desktop and the remote.
+
+### Fixed
+
+- Extension context menus are rebuilt on install, update, and browser start, so
+  stale entries no longer linger after upgrading.
+- Broken remote thumbnails fall back to the placeholder once and are not retried
+  for the rest of the session, so an invalid CDN certificate no longer repeats
+  TLS errors in the log.
+
 ## [1.1.0] - 2026-11-18
 
 ### Added

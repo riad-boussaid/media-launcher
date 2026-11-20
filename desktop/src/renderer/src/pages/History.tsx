@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isLiveLike, LiveBadge } from "../components/LiveBadge";
+import { ShortBadge } from "../components/ShortBadge";
+import { Thumbnail } from "../components/Thumbnail";
 import type { HistoryEntry } from "../lib/api";
 import {
+  addWatchLater,
   clearHistory,
   deleteHistory,
   getHistory,
@@ -9,18 +13,9 @@ import {
   queueUrl,
   replayUrl,
 } from "../lib/api";
+import { displayUrl, relativeTime } from "../lib/format";
 
-function relativeTime(ts: number): string {
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(ts).toLocaleDateString();
-}
+const HIDE_SHORTS_KEY = "ml-history-hide-shorts";
 
 function timeLabel(ts: number): string {
   return new Date(ts).toLocaleString(undefined, {
@@ -48,15 +43,6 @@ function groupLabel(ts: number): string {
   return "Older";
 }
 
-function displayUrl(url: string): { host: string; path: string } {
-  try {
-    const u = new URL(url);
-    return { host: u.hostname, path: u.pathname + u.search };
-  } catch {
-    return { host: "", path: url };
-  }
-}
-
 export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
   const [items, setItems] = useState<HistoryEntry[]>([]);
   const [search, setSearch] = useState("");
@@ -69,8 +55,16 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
   const [loadError, setLoadError] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [canQueue, setCanQueue] = useState(false);
+  const [hideShorts, setHideShorts] = useState(
+    () => localStorage.getItem(HIDE_SHORTS_KEY) === "1",
+  );
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const changeHideShorts = (value: boolean) => {
+    setHideShorts(value);
+    localStorage.setItem(HIDE_SHORTS_KEY, value ? "1" : "0");
+  };
 
   // App bumps focusSignal (Ctrl+2 / Ctrl+F) to jump here and focus the search.
   useEffect(() => {
@@ -138,7 +132,11 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
   }, []);
 
   useEffect(() => {
-    const hasPending = items.some((e) => !e.title && !e.thumbnail);
+    const hasPending = items.some(
+      (e) =>
+        (!e.title && !e.thumbnail) ||
+        (!e.liveStatus && Date.now() - e.timestamp < 60_000),
+    );
     if (hasPending && !pollRef.current) {
       pollRef.current = setInterval(load, 3000);
     }
@@ -163,10 +161,11 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
     () =>
       items.filter(
         (item) =>
-          item.url.toLowerCase().includes(search.toLowerCase()) ||
-          item.title.toLowerCase().includes(search.toLowerCase()),
+          (!hideShorts || !item.isShort) &&
+          (item.url.toLowerCase().includes(search.toLowerCase()) ||
+            item.title.toLowerCase().includes(search.toLowerCase())),
       ),
-    [items, search],
+    [items, search, hideShorts],
   );
 
   const grouped = useMemo(() => {
@@ -235,6 +234,15 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
     showToast("Copied");
   };
 
+  const handleSaveLater = async (item: HistoryEntry) => {
+    try {
+      await addWatchLater(item.url, item.title, item.thumbnail);
+      showToast("Saved to Watch Later");
+    } catch {
+      showToast("Could not save to Watch Later", "toast-error");
+    }
+  };
+
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -299,6 +307,14 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
         </div>
         {items.length > 0 && !selectMode && !confirmingClear && (
           <>
+            <label className="text-xs text-muted flex items-center gap-1 cursor-pointer flex-shrink-0">
+              <input
+                type="checkbox"
+                checked={hideShorts}
+                onChange={(e) => changeHideShorts(e.target.checked)}
+              />
+              Hide Shorts &amp; Reels
+            </label>
             <button
               type="button"
               className="btn-danger flex-shrink-0"
@@ -373,7 +389,9 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
 
       {items.length > 0 && !search && !loading && (
         <div className="text-[11.5px] text-muted mb-2 uppercase tracking-[0.5px]">
-          {items.length} {items.length === 1 ? "entry" : "entries"}
+          {hideShorts
+            ? `${filtered.length} of ${items.length} entries (short-form hidden)`
+            : `${items.length} ${items.length === 1 ? "entry" : "entries"}`}
         </div>
       )}
 
@@ -394,6 +412,17 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
                 Clear search
               </button>
             </>
+          ) : hideShorts && items.length > 0 ? (
+            <>
+              <p>Shorts and Reels are hidden</p>
+              <button
+                type="button"
+                className="btn-ghost mt-3"
+                onClick={() => changeHideShorts(false)}
+              >
+                Show Shorts &amp; Reels
+              </button>
+            </>
           ) : (
             <>
               <p>No history yet</p>
@@ -411,6 +440,16 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
             </div>
             {group.entries.map((item) => {
               const { host, path } = displayUrl(item.url);
+              const progress =
+                !isLiveLike(item.liveStatus) &&
+                !item.completed &&
+                item.position > 0 &&
+                (item.duration ?? 0) > 0
+                  ? Math.min(
+                      100,
+                      Math.round((item.position / (item.duration ?? 1)) * 100),
+                    )
+                  : 0;
               return (
                 <div
                   key={item.id}
@@ -433,32 +472,29 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
                   {/* biome-ignore lint/a11y/noStaticElementInteractions: thumbnail clickable area */}
                   {/* biome-ignore lint/a11y/useKeyWithClickEvents: thumbnail clickable area */}
                   <div
-                    className="w-20 flex-shrink-0 bg-black/40 bg-cover bg-center cursor-pointer flex items-center justify-center rounded-l-lg overflow-hidden"
+                    className="relative w-20 flex-shrink-0 bg-black/40 cursor-pointer flex items-center justify-center rounded-l-lg overflow-hidden"
                     onClick={() =>
                       selectMode
                         ? toggleSelect(item.id)
                         : handleReplay(item.url)
                     }
-                    style={
-                      item.thumbnail
-                        ? {
-                            backgroundImage: `url("${item.thumbnail.replace(/["\\]/g, "")}")`,
-                          }
-                        : undefined
-                    }
                   >
-                    {!item.thumbnail && (
-                      <svg
-                        className="w-5 h-5 text-white/15"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        aria-hidden="true"
-                      >
-                        <polygon points="5 3 19 12 5 21 5 3" />
-                      </svg>
-                    )}
+                    <Thumbnail
+                      src={item.thumbnail}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      fallback={
+                        <svg
+                          className="w-5 h-5 text-white/15"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          aria-hidden="true"
+                        >
+                          <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                      }
+                    />
                   </div>
                   <button
                     type="button"
@@ -481,9 +517,19 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
                         </div>
                       ) : null}
                       <div className="text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+                        {item.isShort && (
+                          <span className="mr-1.5 inline-flex align-middle">
+                            <ShortBadge isShort url={item.url} />
+                          </span>
+                        )}
+                        {item.liveStatus && item.liveStatus !== "none" && (
+                          <span className="mr-1.5 inline-flex align-middle">
+                            <LiveBadge status={item.liveStatus} />
+                          </span>
+                        )}
                         <span className="text-accent">{host}</span>
                         <span className="text-muted">{path}</span>
-                        {item.position > 60 && (
+                        {!isLiveLike(item.liveStatus) && item.position > 60 && (
                           <span className="text-muted ml-1.5">
                             · resume {Math.floor(item.position / 60)}:
                             {Math.floor(item.position % 60)
@@ -527,6 +573,27 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
                         >
                           <path d="M3 6h12M3 12h9M3 18h9" />
                           <path d="M18 12v8M14 16h8" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="action-btn later"
+                        title="Save to Watch Later"
+                        aria-label="Save to Watch Later"
+                        onClick={() => void handleSaveLater(item)}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          width="14"
+                          height="14"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
                         </svg>
                       </button>
                       <button
@@ -610,6 +677,14 @@ export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
                           <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
                         </svg>
                       </button>
+                    </div>
+                  )}
+                  {progress > 0 && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-border">
+                      <div
+                        className="h-full bg-accent"
+                        style={{ width: `${progress}%` }}
+                      />
                     </div>
                   )}
                 </div>

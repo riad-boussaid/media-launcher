@@ -8,9 +8,20 @@ import {
   migrateLegacy,
   removeEntry,
 } from "@shared/history";
+import { isLiveLike, liveLabel } from "@shared/live";
 import { defaultSettings, getSettings } from "@shared/settings";
-import { isPlaylistUrl } from "@shared/url";
+import { shortFormLabel } from "@shared/shorts";
+import { canonicalizeUrl, isPlaylistUrl } from "@shared/url";
 import {
+  getLater,
+  removeLater,
+  saveLater,
+  type WatchLaterEntry,
+} from "@shared/watch-later";
+import {
+  Bookmark,
+  BookmarkCheck,
+  BookmarkPlus,
   CheckCircle2,
   ChevronDown,
   History,
@@ -75,6 +86,16 @@ function timeAgo(timestamp: number): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function fmtPosition(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return h > 0
+    ? `${h}:${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`
+    : `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
 /** 16:9 YouTube thumbnail, falling back to hqdefault when maxres is missing. */
@@ -169,6 +190,30 @@ export default function Popup({
     });
   };
 
+  const [later, setLater] = useState<WatchLaterEntry[]>([]);
+  const [savingLater, setSavingLater] = useState(false);
+  const [laterOpen, setLaterOpen] = useState(
+    () => localStorage.getItem("ml-later-open") !== "0",
+  );
+
+  const toggleLater = () => {
+    setLaterOpen((open) => {
+      localStorage.setItem("ml-later-open", open ? "0" : "1");
+      return !open;
+    });
+  };
+
+  const [showAllLater, setShowAllLater] = useState(
+    () => localStorage.getItem("ml-later-show-all") === "1",
+  );
+
+  const toggleShowAllLater = () => {
+    setShowAllLater((v) => {
+      localStorage.setItem("ml-later-show-all", v ? "0" : "1");
+      return !v;
+    });
+  };
+
   const youtubeId = getYoutubeId(tabUrl);
   const thumbUrl = youtubeId
     ? `https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`
@@ -176,6 +221,9 @@ export default function Popup({
   const isPlaylist = isPlaylistUrl(tabUrl);
   // Only http(s) tabs can be handed to the player.
   const isWebUrl = /^https?:/i.test(tabUrl);
+  const canonicalTabUrl = canonicalizeUrl(tabUrl);
+  const savedLaterEntry = later.find((entry) => entry.url === canonicalTabUrl);
+  const isSaved = Boolean(savedLaterEntry);
   // Firefox has no sidePanel API — hide the "open in sidebar" shortcut there.
   const canOpenSidePanel = typeof ext.sidePanel?.open === "function";
   // Firefox uses sidebar_action instead.
@@ -197,6 +245,7 @@ export default function Popup({
     });
 
     void migrateLegacy().then(getRecent).then(setHistory);
+    void getLater().then(setLater);
 
     ext.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       if (tab?.url) setTabUrl(tab.url);
@@ -232,10 +281,30 @@ export default function Popup({
   // entry still lacks both title and thumbnail (mirrors the desktop History
   // page's poll).
   useEffect(() => {
-    if (!history.some((e) => !e.title && !e.thumbnail)) return;
+    if (
+      !history.some(
+        (e) =>
+          (!e.title && !e.thumbnail) ||
+          (!e.liveStatus && Date.now() - e.timestamp < 60_000),
+      )
+    )
+      return;
     const t = setInterval(() => void getRecent().then(setHistory), 3000);
     return () => clearInterval(t);
   }, [history]);
+
+  useEffect(() => {
+    if (
+      !later.some(
+        (e) =>
+          (!e.title && !e.thumbnail) ||
+          (!e.liveStatus && Date.now() - e.addedAt < 60_000),
+      )
+    )
+      return;
+    const t = setInterval(() => void getLater().then(setLater), 3000);
+    return () => clearInterval(t);
+  }, [later]);
 
   const handlePlay = async (url: string, title: string) => {
     if (!url.trim() || sending) return;
@@ -285,6 +354,52 @@ export default function Popup({
 
   const handleRemove = async (id: string) => {
     setHistory(await removeEntry(id));
+  };
+
+  const handleRemoveLater = async (id: string) => {
+    const list = await removeLater(id);
+    if (list) setLater(list);
+  };
+
+  const handleToggleLater = async () => {
+    if (!tabUrl.trim() || savingLater) return;
+    setSavingLater(true);
+    setStatus(null);
+    try {
+      if (savedLaterEntry) {
+        const list = await removeLater(savedLaterEntry.id);
+        if (list) {
+          setLater(list);
+          setStatus({ success: true, message: "Removed from Watch Later" });
+          setTimeout(() => setStatus(null), 2000);
+        } else {
+          setStatus({
+            success: false,
+            error: "Server unreachable — not removed",
+          });
+        }
+        return;
+      }
+      const list = await saveLater({
+        url: tabUrl,
+        title: tabTitle,
+        thumbnail: youtubeId
+          ? `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`
+          : undefined,
+      });
+      if (list) {
+        setLater(list);
+        setStatus({ success: true, message: "Saved to Watch Later" });
+        setTimeout(() => setStatus(null), 2000);
+      } else {
+        setStatus({
+          success: false,
+          error: "Server unreachable — not saved",
+        });
+      }
+    } finally {
+      setSavingLater(false);
+    }
   };
 
   const dot =
@@ -584,23 +699,49 @@ export default function Popup({
               )}
             </Button>
 
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full gap-1.5"
-              onClick={handleQueueCurrent}
-              disabled={queueing || sending}
-            >
-              {queueing ? (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" /> Adding…
-                </>
-              ) : (
-                <>
-                  <ListPlus className="size-3.5" /> Add to queue
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={handleQueueCurrent}
+                disabled={queueing || sending}
+              >
+                {queueing ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" /> Adding…
+                  </>
+                ) : (
+                  <>
+                    <ListPlus className="size-3.5" /> Add to queue
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className={isSaved ? "text-primary" : undefined}
+                onClick={() => void handleToggleLater()}
+                disabled={savingLater || sending || !isWebUrl}
+                title={
+                  isSaved
+                    ? "Saved to Watch Later — click to remove"
+                    : "Save to Watch Later"
+                }
+                aria-label={
+                  isSaved ? "Remove from Watch Later" : "Save to Watch Later"
+                }
+                aria-pressed={isSaved}
+              >
+                {savingLater ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : isSaved ? (
+                  <BookmarkCheck className="size-4" />
+                ) : (
+                  <BookmarkPlus className="size-4" />
+                )}
+              </Button>
+            </div>
           </>
         ) : (
           <>
@@ -629,6 +770,166 @@ export default function Popup({
             <CheckCircle2 className="size-3.5" />
             <span>{status.message ?? "Sent to player"}</span>
           </div>
+        )}
+
+        {later.length > 0 && (
+          <>
+            <Separator />
+            <div>
+              <div className="mb-1 flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  aria-expanded={laterOpen}
+                  className="flex flex-1 items-center gap-1 rounded p-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase transition-colors hover:bg-accent hover:text-foreground"
+                  onClick={toggleLater}
+                >
+                  <Bookmark className="size-3" />
+                  <span>Watch Later</span>
+                  <span className="text-[10px] tracking-normal normal-case opacity-70">
+                    {later.length}
+                  </span>
+                  <ChevronDown
+                    className={`ml-auto size-3 transition-transform ${
+                      laterOpen ? "" : "-rotate-90"
+                    }`}
+                  />
+                </button>
+              </div>
+              {laterOpen && (
+                <div
+                  className={
+                    isSidebar
+                      ? "no-scrollbar max-h-40 space-y-0.5 overflow-y-auto"
+                      : `no-scrollbar space-y-0.5 ${
+                          showAllLater ? "" : "max-h-30 overflow-y-auto"
+                        }`
+                  }
+                >
+                  {later
+                    .slice(0, isSidebar || showAllLater ? 20 : 10)
+                    .map((entry) => {
+                      const id = getYoutubeId(entry.url);
+                      const thumbSrc =
+                        entry.thumbnail ||
+                        (id
+                          ? `https://img.youtube.com/vi/${id}/mqdefault.jpg`
+                          : null);
+                      const progress = isLiveLike(entry.liveStatus)
+                        ? 0
+                        : entry.completed
+                          ? 100
+                          : (entry.duration ?? 0) > 0
+                            ? Math.min(
+                                100,
+                                Math.round(
+                                  ((entry.position ?? 0) /
+                                    (entry.duration ?? 1)) *
+                                    100,
+                                ),
+                              )
+                            : 0;
+                      const live = liveLabel(entry.liveStatus);
+                      return (
+                        <div
+                          key={entry.id}
+                          className="group flex items-center gap-0.5 rounded-lg pr-0.5 hover:bg-accent"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handlePlay(entry.url, entry.title)}
+                            className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 text-left ${
+                              isSidebar ? "py-1" : "py-0.5"
+                            }`}
+                            title={entry.title || entry.url}
+                          >
+                            {thumbSrc ? (
+                              <img
+                                src={thumbSrc}
+                                alt=""
+                                className={`${
+                                  isSidebar ? "h-9 w-16" : "h-6 w-11"
+                                } shrink-0 rounded-md border object-cover`}
+                              />
+                            ) : (
+                              <span
+                                className={`${
+                                  isSidebar ? "flex h-9 w-16" : "flex h-6 w-11"
+                                } shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground`}
+                              >
+                                <Bookmark className="size-3.5" />
+                              </span>
+                            )}
+                            <span className="min-w-0 flex-1 truncate text-xs">
+                              {entry.title || entry.url}
+                            </span>
+                            {entry.isShort && (
+                              <span className="shrink-0 rounded bg-fuchsia-500/15 px-1 py-0.5 text-[9px] font-semibold uppercase text-fuchsia-400">
+                                {shortFormLabel(entry.url)}
+                              </span>
+                            )}
+                            {progress > 0 && (
+                              <span
+                                aria-hidden="true"
+                                title={`${progress}% watched`}
+                                className="h-1 w-6 shrink-0 overflow-hidden rounded-full bg-muted"
+                              >
+                                <span
+                                  className={`block h-full rounded-full ${
+                                    entry.completed
+                                      ? "bg-green-500"
+                                      : "bg-primary"
+                                  }`}
+                                  style={{ width: `${progress}%` }}
+                                />
+                              </span>
+                            )}
+                            <span
+                              className={`shrink-0 text-[10px] ${
+                                isLiveLike(entry.liveStatus)
+                                  ? "font-semibold text-red-500"
+                                  : entry.completed
+                                    ? "text-green-600 dark:text-green-400"
+                                    : "text-muted-foreground"
+                              }`}
+                            >
+                              {live ??
+                                (entry.completed
+                                  ? "Watched"
+                                  : (entry.position ?? 0) > 60
+                                    ? `Resume ${fmtPosition(entry.position ?? 0)}`
+                                    : timeAgo(entry.addedAt))}
+                            </span>
+                          </button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
+                            title="Remove from Watch Later"
+                            onClick={() => void handleRemoveLater(entry.id)}
+                          >
+                            <X className="size-3" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+              {laterOpen && !isSidebar && later.length > 10 && (
+                <button
+                  type="button"
+                  className="mt-0.5 flex w-full items-center justify-center gap-1 rounded-md py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  onClick={toggleShowAllLater}
+                >
+                  <ChevronDown
+                    className={`size-3 transition-transform ${
+                      showAllLater ? "rotate-180" : ""
+                    }`}
+                  />
+                  {showAllLater ? "Show less" : `Show all ${later.length}`}
+                </button>
+              )}
+            </div>
+          </>
         )}
 
         {history.length > 0 && (
@@ -693,6 +994,7 @@ export default function Popup({
                         (id
                           ? `https://img.youtube.com/vi/${id}/mqdefault.jpg`
                           : null);
+                      const live = liveLabel(entry.liveStatus);
                       return (
                         <div
                           key={entry.id}
@@ -726,8 +1028,19 @@ export default function Popup({
                             <span className="min-w-0 flex-1 truncate text-xs">
                               {entry.title || entry.url}
                             </span>
-                            <span className="shrink-0 text-[10px] text-muted-foreground">
-                              {timeAgo(entry.timestamp)}
+                            {entry.isShort && (
+                              <span className="shrink-0 rounded bg-fuchsia-500/15 px-1 py-0.5 text-[9px] font-semibold uppercase text-fuchsia-400">
+                                {shortFormLabel(entry.url)}
+                              </span>
+                            )}
+                            <span
+                              className={`shrink-0 text-[10px] ${
+                                isLiveLike(entry.liveStatus)
+                                  ? "font-semibold text-red-500"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {live ?? timeAgo(entry.timestamp)}
                             </span>
                           </button>
                           <Button
@@ -766,7 +1079,7 @@ export default function Popup({
       {!isSidebar && (
         <div className="border-t px-3 py-2 text-center text-[10px] leading-relaxed text-muted-foreground">
           <p className="m-0">Shift-click in-page buttons to queue.</p>
-          <p className="m-0">Shortcuts: Alt+Shift+P play · Alt+Shift+Q queue</p>
+          <p className="m-0">Shortcuts: Alt+Shift+P play · Q queue · S save</p>
         </div>
       )}
     </div>

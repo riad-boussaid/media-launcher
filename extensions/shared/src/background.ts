@@ -1,7 +1,20 @@
-import { getServerUrl, sendUrl, type SendResult } from "@shared/api";
+import {
+  addServerWatchLater,
+  getServerUrl,
+  getServerWatchLater,
+  sendUrl,
+  type SendResult,
+} from "@shared/api";
 import { EXPECTED_SERVER_API_VERSION } from "@shared/discovery";
 import { ext } from "@shared/ext";
 import { getSettings, migrateAuthToken } from "@shared/settings";
+import { WATCH_LATER_CACHE_KEY } from "@shared/storage-keys";
+import { canonicalizeUrl } from "@shared/url";
+import {
+  removeLater,
+  saveLater,
+  type WatchLaterEntry,
+} from "@shared/watch-later";
 
 const LOGO = chrome.runtime.getURL("play-logo.png");
 
@@ -74,6 +87,19 @@ async function notify(message: string, thumbnailUrl?: string) {
     });
   } catch (err) {
     console.error("notification error:", err);
+  }
+}
+
+async function saveToWatchLater(url: string, title = ""): Promise<void> {
+  const videoId = getYouTubeId(url);
+  const thumb = videoId ? await fetchThumbnail(videoId) : undefined;
+  const entry = await addServerWatchLater({ url, title });
+  if (entry) {
+    setTemporaryBadge("✓", "#22c55e");
+    notify("Saved to Watch Later", thumb);
+  } else {
+    setTemporaryBadge("✗", "#ef4444");
+    notify("Could not save to Watch Later — is the server running?", thumb);
   }
 }
 
@@ -168,42 +194,66 @@ if (hasSidePanel) {
   });
 }
 
+function registerContextMenus(): void {
+  // Rebuild from scratch so upgrades don't leave stale items behind or log
+  // duplicate-ID errors for menus that already exist.
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "play-page",
+      title: "Play Page with Media Launcher",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: "play-link",
+      title: "Play Link with Media Launcher",
+      contexts: ["link"],
+    });
+    chrome.contextMenus.create({
+      id: "play-media",
+      title: "Play Media with Media Launcher",
+      contexts: ["video", "audio"],
+    });
+    chrome.contextMenus.create({
+      id: "queue-page",
+      title: "Queue Page with Media Launcher",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: "queue-link",
+      title: "Queue Link with Media Launcher",
+      contexts: ["link"],
+    });
+    chrome.contextMenus.create({
+      id: "save-page",
+      title: "Save Page to Watch Later",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: "save-link",
+      title: "Save Link to Watch Later",
+      contexts: ["link"],
+    });
+    chrome.contextMenus.create({
+      id: "save-media",
+      title: "Save Media to Watch Later",
+      contexts: ["video", "audio"],
+    });
+  });
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === "install") {
     // First-run onboarding: show the token setup checklist immediately.
     void ext.runtime.openOptionsPage();
   }
-  chrome.contextMenus.create({
-    id: "play-page",
-    title: "Play Page with Media Launcher",
-    contexts: ["page"],
-  });
-  chrome.contextMenus.create({
-    id: "play-link",
-    title: "Play Link with Media Launcher",
-    contexts: ["link"],
-  });
-  chrome.contextMenus.create({
-    id: "play-media",
-    title: "Play Media with Media Launcher",
-    contexts: ["video", "audio"],
-  });
-  chrome.contextMenus.create({
-    id: "queue-page",
-    title: "Queue Page with Media Launcher",
-    contexts: ["page"],
-  });
-  chrome.contextMenus.create({
-    id: "queue-link",
-    title: "Queue Link with Media Launcher",
-    contexts: ["link"],
-  });
+  registerContextMenus();
 
   chrome.alarms.create("check-server", { periodInMinutes: 0.5 });
   updatePersistentBadge();
 });
 
 chrome.runtime.onStartup.addListener(() => {
+  registerContextMenus();
   chrome.alarms.create("check-server", { periodInMinutes: 0.5 });
   updatePersistentBadge();
 });
@@ -213,6 +263,23 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     updatePersistentBadge();
   }
 });
+
+/** Server list for display; falls back to the last-known cache when offline. */
+async function loadWatchLaterForDisplay(): Promise<WatchLaterEntry[] | null> {
+  try {
+    const entries = await getServerWatchLater();
+    if (entries) return entries;
+  } catch {
+    // Fall through to the cache.
+  }
+  try {
+    const cached = await ext.storage.local.get(WATCH_LATER_CACHE_KEY);
+    const list = cached[WATCH_LATER_CACHE_KEY];
+    return Array.isArray(list) ? (list as WatchLaterEntry[]) : null;
+  } catch {
+    return null;
+  }
+}
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg === "check-server") {
@@ -231,6 +298,99 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         msg.queue === true,
       );
       sendResponse(result);
+    })();
+    return true;
+  }
+  if (msg?.type === "watch-later-status" && typeof msg.url === "string") {
+    void (async () => {
+      try {
+        const entries = await loadWatchLaterForDisplay();
+        if (!entries) {
+          sendResponse({});
+          return;
+        }
+        const canonical = canonicalizeUrl(msg.url as string);
+        sendResponse({
+          saved: entries.some(
+            (entry) => canonicalizeUrl(entry.url) === canonical,
+          ),
+        });
+      } catch {
+        sendResponse({});
+      }
+    })();
+    return true;
+  }
+  if (msg?.type === "watch-later-urls") {
+    void (async () => {
+      try {
+        const entries = await loadWatchLaterForDisplay();
+        sendResponse(
+          entries ? { urls: entries.map((entry) => entry.url) } : {},
+        );
+      } catch {
+        sendResponse({});
+      }
+    })();
+    return true;
+  }
+  if (msg?.type === "toggle-watch-later" && typeof msg.url === "string") {
+    void (async () => {
+      try {
+        const url = msg.url as string;
+        const title = typeof msg.title === "string" ? msg.title : "";
+        const thumbnail =
+          typeof msg.thumbnail === "string" ? msg.thumbnail : "";
+        const target = typeof msg.saved === "boolean" ? msg.saved : null;
+
+        // Newer callers send the state they want, so a stale "unsaved" label
+        // can never remove an existing bookmark. POST is idempotent.
+        if (target === true) {
+          const next = await saveLater({ url, title, thumbnail });
+          sendResponse(
+            next ? { success: true, saved: true } : { success: false },
+          );
+          return;
+        }
+
+        // Removal needs the entry id; read straight from the server instead of
+        // the cache so a status check can't write an older list over it.
+        const entries = await getServerWatchLater();
+        if (!entries) {
+          sendResponse({ success: false });
+          return;
+        }
+        const canonical = canonicalizeUrl(url);
+        const existing = entries.find(
+          (entry) => canonicalizeUrl(entry.url) === canonical,
+        );
+
+        if (target === false) {
+          if (!existing) {
+            sendResponse({ success: true, saved: false });
+            return;
+          }
+          const next = await removeLater(existing.id);
+          sendResponse(
+            next ? { success: true, saved: false } : { success: false },
+          );
+          return;
+        }
+
+        // Older content scripts (loaded before an extension update) don't send
+        // a target; keep the original toggle behavior for them.
+        if (existing) {
+          const next = await removeLater(existing.id);
+          sendResponse(
+            next ? { success: true, saved: false } : { success: false },
+          );
+          return;
+        }
+        const next = await saveLater({ url, title, thumbnail });
+        sendResponse(next ? { success: true, saved: true } : { success: false });
+      } catch {
+        sendResponse({ success: false });
+      }
     })();
     return true;
   }
@@ -274,6 +434,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 chrome.contextMenus.onClicked.addListener(async (info) => {
+  if (
+    info.menuItemId === "save-page" ||
+    info.menuItemId === "save-link" ||
+    info.menuItemId === "save-media"
+  ) {
+    const url =
+      info.menuItemId === "save-page"
+        ? info.pageUrl
+        : info.menuItemId === "save-link"
+          ? info.linkUrl
+          : info.srcUrl;
+    if (!url) return;
+    await saveToWatchLater(url);
+    return;
+  }
+
   let url: string | undefined;
   let queue = false;
   if (info.menuItemId === "play-page") {
@@ -303,10 +479,15 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
 });
 
 chrome.commands.onCommand.addListener((command) => {
-  if (command !== "play-current-page" && command !== "queue-current-page") {
+  if (
+    command !== "play-current-page" &&
+    command !== "queue-current-page" &&
+    command !== "save-current-page"
+  ) {
     return;
   }
   const queue = command === "queue-current-page";
+  const save = command === "save-current-page";
   void (async () => {
     const [tab] = await ext.tabs.query({
       active: true,
@@ -314,6 +495,10 @@ chrome.commands.onCommand.addListener((command) => {
     });
     const url = tab?.url;
     if (!url || !/^https?:/i.test(url)) return;
+    if (save) {
+      await saveToWatchLater(url);
+      return;
+    }
     const videoId = getYouTubeId(url);
     const thumb = videoId ? await fetchThumbnail(videoId) : undefined;
     const result = await sendUrl(url, undefined, queue);
