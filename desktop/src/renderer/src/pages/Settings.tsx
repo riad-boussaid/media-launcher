@@ -62,6 +62,16 @@ const PLAYER_EXE: Record<string, (s: Settings) => string> = {
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
 
+const SETTINGS_SECTIONS = [
+  { id: "playback", label: "Playback" },
+  { id: "appearance", label: "Theme" },
+  { id: "remote", label: "Remote" },
+  { id: "startup", label: "Startup" },
+  { id: "downloads", label: "Tools" },
+  { id: "about", label: "About" },
+  { id: "advanced", label: "Advanced" },
+];
+
 function formatBytes(bytes: number | null): string {
   if (!bytes || bytes <= 0) return "";
   const units = ["B", "KB", "MB", "GB"];
@@ -81,11 +91,35 @@ function versionLabel(id: string, version: string | null): string {
   return id === "yt-dlp" ? `v${version}` : version;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  id,
+  title,
+  description,
+  icon,
+  children,
+}: {
+  id: string;
+  title: string;
+  description?: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <section className="card p-4 mb-4">
-      <h3 className="field-label mb-3">{title}</h3>
-      {children}
+    <section id={id} className="card mb-3 scroll-mt-20 overflow-hidden">
+      <div className="flex items-start gap-2.5 border-b border-border px-4 py-3">
+        <span className="grid h-7 w-7 flex-none place-items-center rounded-lg bg-accent/10 text-accent">
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <h2 className="m-0 text-[13px] font-semibold text-text">{title}</h2>
+          {description && (
+            <p className="mt-0.5 text-[11px] leading-snug text-muted">
+              {description}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="p-4">{children}</div>
     </section>
   );
 }
@@ -926,9 +960,14 @@ export default function SettingsPage() {
 
   if (!settings) {
     return (
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-text m-0">Settings</h2>
+      <div className="pb-4">
+        <div className="mb-3">
+          <h1 className="text-[20px] font-semibold leading-tight tracking-[-0.01em] text-text">
+            Settings
+          </h1>
+          <p className="mt-0.5 text-xs text-muted">
+            Player, appearance, remote control, and tools.
+          </p>
         </div>
         {settingsError ? (
           <div className="card p-6 text-center">
@@ -1045,12 +1084,19 @@ export default function SettingsPage() {
         : "";
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-semibold text-text m-0">Settings</h2>
+    <div className="pb-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[20px] font-semibold leading-tight tracking-[-0.01em] text-text">
+            Settings
+          </h1>
+          <p className="mt-0.5 text-xs text-muted">
+            Player, appearance, remote control, and tools.
+          </p>
+        </div>
         {saveState !== "idle" && (
           <span
-            className={`flex items-center gap-1.5 text-[12px] ${
+            className={`flex flex-shrink-0 items-center gap-1.5 text-[11px] ${
               saveState === "error" ? "text-danger" : "text-muted"
             }`}
           >
@@ -1069,7 +1115,34 @@ export default function SettingsPage() {
         )}
       </div>
 
-      <Section title="Playback">
+      <nav
+        className="sticky top-0 z-10 -mx-4 mb-3 border-b border-border bg-base/95 px-4 py-2 backdrop-blur before:absolute before:-top-4 before:left-0 before:right-0 before:h-4 before:bg-base before:content-['']"
+        aria-label="Settings sections"
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {SETTINGS_SECTIONS.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className="rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] text-text-dim transition-colors hover:border-border-strong hover:text-text"
+              onClick={() =>
+                document
+                  .getElementById(section.id)
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              {section.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <Section
+        id="playback"
+        title="Playback"
+        description="Choose the player, extra arguments, and resume behavior."
+        icon={<PlaySectionIcon />}
+      >
         <Field
           label="Media player"
           hint={
@@ -1187,7 +1260,37 @@ export default function SettingsPage() {
         />
       </Section>
 
-      <Section title="Remote control">
+      <Section
+        id="appearance"
+        title="Appearance"
+        description="Theme for the app window and interface."
+        icon={<PaletteSectionIcon />}
+      >
+        <Field
+          label="Theme"
+          hint={<>System follows your OS light/dark setting.</>}
+        >
+          <div className="seg" role="radiogroup" aria-label="Theme">
+            {(["light", "dark", "system"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`seg-btn ${theme === t ? "active" : ""}`}
+                onClick={() => setTheme(t)}
+              >
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </div>
+        </Field>
+      </Section>
+
+      <Section
+        id="remote"
+        title="Remote control"
+        description="Pair a phone and control playback from your network."
+        icon={<PhoneSectionIcon />}
+      >
         <ToggleRow
           label="Allow devices on this network"
           description="Serve a mobile remote page on your LAN so phones can send URLs and control playback."
@@ -1202,7 +1305,7 @@ export default function SettingsPage() {
         )}
         {settings.remoteEnabled && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-[0.06em] font-semibold text-muted">
+            <span className="text-[11px] font-semibold text-text-dim">
               One-time pairing
             </span>
             <div className="flex items-center gap-2">
@@ -1278,7 +1381,7 @@ export default function SettingsPage() {
               {sessions.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-border">
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-[11px] text-muted uppercase tracking-[0.06em] font-semibold">
+                    <div className="text-[11px] font-semibold text-text-dim">
                       Paired devices
                     </div>
                     <button
@@ -1337,7 +1440,12 @@ export default function SettingsPage() {
           ))}
       </Section>
 
-      <Section title="Startup">
+      <Section
+        id="startup"
+        title="Startup"
+        description="Launch and tray behavior."
+        icon={<PowerSectionIcon />}
+      >
         <ToggleRow
           label="Start on boot"
           description="Launch Media Launcher when you sign in to Windows."
@@ -1352,16 +1460,20 @@ export default function SettingsPage() {
         />
       </Section>
 
-      <Section title="Downloads">
+      <Section
+        id="downloads"
+        title="Downloads"
+        description="Portable tools and scripts with no admin rights required."
+        icon={<DownloadSectionIcon />}
+      >
         <p className="text-[12px] text-muted -mt-1 mb-3 leading-snug">
-          Portable binaries and scripts saved to the app's data directory — no
-          admin rights needed. Downloaded copies are used automatically over
-          system-installed ones.
+          Saved to the app's data directory. Downloaded copies are used
+          automatically over system-installed ones.
           {portableSize ? ` Portable tools use ${portableSize}.` : ""}
         </p>
 
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-label">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <span className="whitespace-nowrap text-[11px] font-semibold text-text-dim">
             Playback engine
           </span>
           <div className="flex flex-wrap items-center justify-end gap-3">
@@ -1408,7 +1520,7 @@ export default function SettingsPage() {
 
         {installCommand && (
           <div className="mt-2 rounded-lg border border-border bg-surface p-2.5">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">
+            <div className="text-[11px] font-semibold text-text-dim">
               {platform === "darwin"
                 ? "Install with Homebrew"
                 : "Install with your package manager"}
@@ -1442,7 +1554,7 @@ export default function SettingsPage() {
 
         {extras.length > 0 && (
           <>
-            <div className="mt-4 mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-label">
+            <div className="mt-4 mb-2 text-[11px] font-semibold text-text-dim">
               Extras
             </div>
             {extras.map(renderDownload)}
@@ -1451,7 +1563,7 @@ export default function SettingsPage() {
 
         {otherPlayers.length > 0 && (
           <>
-            <div className="mt-4 mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-label">
+            <div className="mt-4 mb-2 text-[11px] font-semibold text-text-dim">
               Other players
             </div>
             {otherPlayers.map(renderDownload)}
@@ -1480,7 +1592,12 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      <Section title="About">
+      <Section
+        id="about"
+        title="About"
+        description="Version and update status."
+        icon={<InfoSectionIcon />}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[13px] font-semibold text-text">
@@ -1575,30 +1692,12 @@ export default function SettingsPage() {
         )}
       </Section>
 
-      <Section title="Appearance">
-        <Field
-          label="Theme"
-          hint={<>System follows your OS light/dark setting.</>}
-        >
-          <div className="seg" role="radiogroup" aria-label="Theme">
-            {(["light", "dark", "system"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={`seg-btn ${theme === t ? "active" : ""}`}
-                onClick={() => setTheme(t)}
-              >
-                {t.charAt(0).toUpperCase() + t.slice(1)}
-              </button>
-            ))}
-          </div>
-        </Field>
-      </Section>
-
-      <Section title="Advanced">
-        <p className="text-[11.5px] text-muted leading-snug mb-3 -mt-1">
-          Server URL and extension token — usually leave these as they are.
-        </p>
+      <Section
+        id="advanced"
+        title="Advanced"
+        description="Server URL and extension token — usually leave these as they are."
+        icon={<WrenchSectionIcon />}
+      >
         <Field
           label="Server URL"
           hint={
@@ -1714,5 +1813,87 @@ export default function SettingsPage() {
 
       {toast && <div className={`toast ${toast.variant}`}>{toast.msg}</div>}
     </div>
+  );
+}
+
+function SectionGlyph({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function PlaySectionIcon(): JSX.Element {
+  return (
+    <SectionGlyph>
+      <polygon points="6 3 20 12 6 21 6 3" />
+    </SectionGlyph>
+  );
+}
+
+function PaletteSectionIcon(): JSX.Element {
+  return (
+    <SectionGlyph>
+      <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+      <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+      <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+      <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+      <path d="M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.4-.3-.4-.5-.9-.5-1.4 0-1.1.9-2 2-2h2.3c2.6 0 4.7-2.1 4.7-4.7C22 6.6 17.5 2 12 2Z" />
+    </SectionGlyph>
+  );
+}
+
+function PhoneSectionIcon(): JSX.Element {
+  return (
+    <SectionGlyph>
+      <rect x="7" y="2" width="10" height="20" rx="2" />
+      <path d="M12 18h.01" />
+    </SectionGlyph>
+  );
+}
+
+function PowerSectionIcon(): JSX.Element {
+  return (
+    <SectionGlyph>
+      <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+      <line x1="12" y1="2" x2="12" y2="12" />
+    </SectionGlyph>
+  );
+}
+
+function DownloadSectionIcon(): JSX.Element {
+  return (
+    <SectionGlyph>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </SectionGlyph>
+  );
+}
+
+function InfoSectionIcon(): JSX.Element {
+  return (
+    <SectionGlyph>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4M12 8h.01" />
+    </SectionGlyph>
+  );
+}
+
+function WrenchSectionIcon(): JSX.Element {
+  return (
+    <SectionGlyph>
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2.1-2.1 2.4-2.2Z" />
+    </SectionGlyph>
   );
 }
