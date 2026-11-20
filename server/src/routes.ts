@@ -19,6 +19,7 @@ import {
   deleteRemoteSession,
   deleteWatchLater,
   findRemoteSession,
+  findWatchLater,
   getHistory,
   getHistoryPosition,
   getRemoteSessions,
@@ -1009,6 +1010,61 @@ app.get("/watch-later", (c) => {
     enrichWatchLater(entry.id, entry.url);
   }
   return c.json(entries);
+});
+
+app.get("/watch-later/status", (c) => {
+  const url = c.req.query("url");
+  if (!isUrl(url)) {
+    return c.json({ err: "url must be a valid http(s) URL" }, 400);
+  }
+  const entry = findWatchLater(url);
+  return c.json({ saved: Boolean(entry), id: entry?.id ?? null });
+});
+
+app.post("/watch-later/toggle", async (c) => {
+  try {
+    const { url, title, thumbnail, saved } = await c.req.json<{
+      url?: string;
+      title?: string;
+      thumbnail?: string;
+      saved?: boolean;
+    }>();
+    if (!isUrl(url)) {
+      return c.json({ err: "url must be a valid http(s) URL" }, 400);
+    }
+    if (saved !== undefined && typeof saved !== "boolean") {
+      return c.json({ err: "saved must be a boolean" }, 400);
+    }
+    const entryTitle = typeof title === "string" ? title.trim() : "";
+    const entryThumbnail =
+      typeof thumbnail === "string" ? thumbnail.trim() : "";
+
+    // Newer clients send the desired state so stale UI can't flip a bookmark
+    // the wrong way. Without it, fall back to a plain toggle.
+    if (saved === true) {
+      const entry = addWatchLater(url, entryTitle, entryThumbnail);
+      enrichWatchLater(entry.id, entry.url);
+      return c.json({ saved: true, entry });
+    }
+    if (saved === false) {
+      const existing = findWatchLater(url);
+      if (existing) deleteWatchLater(existing.id);
+      return c.json({ saved: false });
+    }
+
+    const existing = findWatchLater(url);
+    if (existing) {
+      deleteWatchLater(existing.id);
+      return c.json({ saved: false });
+    }
+    const entry = addWatchLater(url, entryTitle, entryThumbnail);
+    // Same as saving directly: keep the live/Short flags current.
+    enrichWatchLater(entry.id, entry.url);
+    return c.json({ saved: true, entry });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ err: message }, 400);
+  }
 });
 
 app.post("/watch-later", async (c) => {

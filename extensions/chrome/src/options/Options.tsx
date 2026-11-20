@@ -62,6 +62,7 @@ function isSettingsShape(value: unknown): value is Settings {
     typeof s.subLang === "string" &&
     typeof s.loop === "boolean" &&
     (s.showPageButton === undefined || typeof s.showPageButton === "boolean") &&
+    (s.showSaveButton === undefined || typeof s.showSaveButton === "boolean") &&
     (s.showThumbButtons === undefined ||
       typeof s.showThumbButtons === "boolean") &&
     (s.notifications === undefined || typeof s.notifications === "boolean") &&
@@ -100,6 +101,9 @@ export default function Options() {
   const [showPageButton, setShowPageButton] = useState(
     defaultSettings.showPageButton,
   );
+  const [showSaveButton, setShowSaveButton] = useState(
+    defaultSettings.showSaveButton,
+  );
   const [showThumbButtons, setShowThumbButtons] = useState(
     defaultSettings.showThumbButtons,
   );
@@ -133,6 +137,7 @@ export default function Options() {
     setSubLang(s.subLang);
     setLoop(s.loop);
     setShowPageButton(s.showPageButton ?? defaultSettings.showPageButton);
+    setShowSaveButton(s.showSaveButton ?? defaultSettings.showSaveButton);
     setShowThumbButtons(s.showThumbButtons ?? defaultSettings.showThumbButtons);
     setNotifications(s.notifications ?? defaultSettings.notifications);
   }, []);
@@ -149,6 +154,7 @@ export default function Options() {
     subLang,
     loop,
     showPageButton,
+    showSaveButton,
     showThumbButtons,
     notifications,
   });
@@ -555,6 +561,16 @@ export default function Options() {
           />
           <Label htmlFor="show-page-button" className="text-sm font-normal">
             Show the play button on video pages
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="show-save-button"
+            checked={showSaveButton}
+            onCheckedChange={(checked) => setShowSaveButton(checked === true)}
+          />
+          <Label htmlFor="show-save-button" className="text-sm font-normal">
+            Show Save to Watch Later buttons on video pages and thumbnails
           </Label>
         </div>
         <div className="flex items-center space-x-2">

@@ -35,8 +35,9 @@ copying URLs and no switching tabs.
   speed, and loop.
 - Add extra mpv arguments for advanced setups.
 - Videos resume where you left off, with a local watch history.
-- Save videos to Watch Later from the popup, the right-click menu, or
-  Alt+Shift+S; the list is shared with the desktop app and phone remote.
+- Save videos to Watch Later from the on-page and thumbnail Save buttons, the
+  popup, the right-click menu, or Alt+Shift+S; the list is shared with the
+  desktop app and phone remote.
 
 **Control from your phone**
 

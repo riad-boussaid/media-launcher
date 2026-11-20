@@ -53,6 +53,7 @@ import {
   getSavedQueue,
   getSettings,
   getWatchLater,
+  getWatchLaterStatus,
   importWatchLaterEntries,
   initDatabase,
   loadMorePlaylist,
@@ -82,6 +83,7 @@ import {
   stopPlayback,
   toggleMute,
   togglePause,
+  toggleWatchLater,
 } from "./store";
 import { createTray, destroyTray, refreshTrayMenu } from "./tray";
 import { checkAppUpdate, getAppUpdateState } from "./updates";
@@ -220,6 +222,19 @@ if (!gotTheLock) {
       "watchLater:add",
       (_event, url: string, title?: string, thumbnail?: string) =>
         addWatchLater(url, title, thumbnail),
+    );
+    ipcMain.handle("watchLater:status", (_event, url: string) =>
+      getWatchLaterStatus(url),
+    );
+    ipcMain.handle(
+      "watchLater:toggle",
+      (
+        _event,
+        url: string,
+        title?: string,
+        thumbnail?: string,
+        saved?: boolean,
+      ) => toggleWatchLater(url, title, thumbnail, saved),
     );
     ipcMain.handle("watchLater:delete", (_event, id: string) =>
       deleteWatchLater(id),

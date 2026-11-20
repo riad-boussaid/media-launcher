@@ -273,9 +273,12 @@
         page URL and hostname, video elements and video-related links, page
         images used as thumbnails, and Open Graph/Twitter thumbnail metadata.
         This information is not transmitted until you explicitly play or queue a
-        video, open the popup, or use a context-menu or keyboard action. The
-        extension does not read passwords, form fields, cookies, keystrokes, or
-        arbitrary page text.
+        video, save it to Watch Later, open the popup, or use a context-menu or
+        keyboard action. The injected controls also request the Watch Later list
+        from your local Media Launcher server (falling back to the extension's
+        local cache) so thumbnail badges can show whether a video is already
+        saved; that request contains no page information. The extension does not
+        read passwords, form fields, cookies, keystrokes, or arbitrary page text.
       </p>
 
       <h3>Data sent to your Media Launcher server</h3>

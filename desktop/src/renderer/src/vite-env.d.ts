@@ -164,6 +164,13 @@ interface ElectronAPI {
       thumbnail?: string,
       addedAt?: number,
     ) => Promise<WatchLaterEntry>;
+    status: (url: string) => Promise<boolean>;
+    toggle: (
+      url: string,
+      title?: string,
+      thumbnail?: string,
+      saved?: boolean,
+    ) => Promise<{ saved: boolean }>;
     delete: (id: string) => Promise<WatchLaterEntry[]>;
     clear: () => Promise<void>;
     play: (ids?: string[]) => Promise<{
@@ -210,6 +217,7 @@ interface ElectronAPI {
       position: number;
       duration: number;
       live: boolean;
+      isShort: boolean;
       paused: boolean;
       queue: {
         index: number;

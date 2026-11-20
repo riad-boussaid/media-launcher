@@ -12,6 +12,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
   right-click menu, or Alt+Shift+S. The server-backed list is shared by the
   desktop Later tab and the phone remote, with play, queue, and remove actions
   for each saved video.
+- Video pages can show a Save to Watch Later button beside the play button. It
+  reflects the saved state, toggles the bookmark when clicked, and stays in
+  sync with saves from the popup or context menu.
+- Supported thumbnails show a Save badge beside the play chip. It fills in when
+  the video is already saved and toggles without opening the video.
+- The desktop Now Playing card can save or remove the current track from Watch
+  Later.
 - Watch Later recognizes the same video across share, embed, Shorts, and
   tracking-parameter URL forms, and merges duplicate bookmarks on startup.
 - History rows now use the same canonical URLs, so share-link variants of the

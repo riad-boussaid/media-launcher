@@ -866,6 +866,14 @@ export function getWatchLater(): WatchLaterEntry[] {
   });
 }
 
+/** Finds a bookmark by any URL form of the same video. */
+export function findWatchLater(url: string): WatchLaterEntry | undefined {
+  const canonical = canonicalizeUrl(url);
+  return getWatchLater().find(
+    (entry) => canonicalizeUrl(entry.url) === canonical,
+  );
+}
+
 export function addWatchLater(
   url: string,
   title = "",

@@ -1,12 +1,20 @@
 import {
   addServerWatchLater,
   getServerUrl,
+  getServerWatchLater,
   sendUrl,
   type SendResult,
 } from "@shared/api";
 import { EXPECTED_SERVER_API_VERSION } from "@shared/discovery";
 import { ext } from "@shared/ext";
 import { getSettings, migrateAuthToken } from "@shared/settings";
+import { WATCH_LATER_CACHE_KEY } from "@shared/storage-keys";
+import { canonicalizeUrl } from "@shared/url";
+import {
+  removeLater,
+  saveLater,
+  type WatchLaterEntry,
+} from "@shared/watch-later";
 
 const LOGO = chrome.runtime.getURL("play-logo.png");
 
@@ -256,6 +264,23 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
+/** Server list for display; falls back to the last-known cache when offline. */
+async function loadWatchLaterForDisplay(): Promise<WatchLaterEntry[] | null> {
+  try {
+    const entries = await getServerWatchLater();
+    if (entries) return entries;
+  } catch {
+    // Fall through to the cache.
+  }
+  try {
+    const cached = await ext.storage.local.get(WATCH_LATER_CACHE_KEY);
+    const list = cached[WATCH_LATER_CACHE_KEY];
+    return Array.isArray(list) ? (list as WatchLaterEntry[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg === "check-server") {
     updatePersistentBadge();
@@ -273,6 +298,99 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         msg.queue === true,
       );
       sendResponse(result);
+    })();
+    return true;
+  }
+  if (msg?.type === "watch-later-status" && typeof msg.url === "string") {
+    void (async () => {
+      try {
+        const entries = await loadWatchLaterForDisplay();
+        if (!entries) {
+          sendResponse({});
+          return;
+        }
+        const canonical = canonicalizeUrl(msg.url as string);
+        sendResponse({
+          saved: entries.some(
+            (entry) => canonicalizeUrl(entry.url) === canonical,
+          ),
+        });
+      } catch {
+        sendResponse({});
+      }
+    })();
+    return true;
+  }
+  if (msg?.type === "watch-later-urls") {
+    void (async () => {
+      try {
+        const entries = await loadWatchLaterForDisplay();
+        sendResponse(
+          entries ? { urls: entries.map((entry) => entry.url) } : {},
+        );
+      } catch {
+        sendResponse({});
+      }
+    })();
+    return true;
+  }
+  if (msg?.type === "toggle-watch-later" && typeof msg.url === "string") {
+    void (async () => {
+      try {
+        const url = msg.url as string;
+        const title = typeof msg.title === "string" ? msg.title : "";
+        const thumbnail =
+          typeof msg.thumbnail === "string" ? msg.thumbnail : "";
+        const target = typeof msg.saved === "boolean" ? msg.saved : null;
+
+        // Newer callers send the state they want, so a stale "unsaved" label
+        // can never remove an existing bookmark. POST is idempotent.
+        if (target === true) {
+          const next = await saveLater({ url, title, thumbnail });
+          sendResponse(
+            next ? { success: true, saved: true } : { success: false },
+          );
+          return;
+        }
+
+        // Removal needs the entry id; read straight from the server instead of
+        // the cache so a status check can't write an older list over it.
+        const entries = await getServerWatchLater();
+        if (!entries) {
+          sendResponse({ success: false });
+          return;
+        }
+        const canonical = canonicalizeUrl(url);
+        const existing = entries.find(
+          (entry) => canonicalizeUrl(entry.url) === canonical,
+        );
+
+        if (target === false) {
+          if (!existing) {
+            sendResponse({ success: true, saved: false });
+            return;
+          }
+          const next = await removeLater(existing.id);
+          sendResponse(
+            next ? { success: true, saved: false } : { success: false },
+          );
+          return;
+        }
+
+        // Older content scripts (loaded before an extension update) don't send
+        // a target; keep the original toggle behavior for them.
+        if (existing) {
+          const next = await removeLater(existing.id);
+          sendResponse(
+            next ? { success: true, saved: false } : { success: false },
+          );
+          return;
+        }
+        const next = await saveLater({ url, title, thumbnail });
+        sendResponse(next ? { success: true, saved: true } : { success: false });
+      } catch {
+        sendResponse({ success: false });
+      }
     })();
     return true;
   }

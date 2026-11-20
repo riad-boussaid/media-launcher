@@ -112,6 +112,7 @@ export interface PlayerStatus {
   position: number;
   duration: number;
   live: boolean;
+  isShort: boolean;
   paused: boolean;
   queue: PlayerQueueEntry[];
   past: PlayerQueueEntry[];
@@ -364,6 +365,37 @@ export async function addWatchLater(
   });
 }
 
+export interface WatchLaterToggleResult {
+  saved: boolean;
+  entry?: WatchLaterEntry;
+}
+
+/** Whether any URL form of this video is already saved. */
+export async function getWatchLaterStatus(url: string): Promise<boolean> {
+  try {
+    const result = await api<{ saved?: boolean }>(
+      `/watch-later/status?url=${encodeURIComponent(url)}`,
+    );
+    return result.saved === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Saves the URL when absent, removes it when present. */
+export async function toggleWatchLater(
+  url: string,
+  title = "",
+  thumbnail = "",
+  saved?: boolean,
+): Promise<WatchLaterToggleResult> {
+  return api<WatchLaterToggleResult>("/watch-later/toggle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, title, thumbnail, saved }),
+  });
+}
+
 export async function reorderWatchLater(
   ids: string[],
 ): Promise<WatchLaterEntry[]> {
@@ -510,6 +542,7 @@ export async function getPlayerStatus(): Promise<PlayerStatus> {
       position: 0,
       duration: 0,
       live: false,
+      isShort: false,
       paused: false,
       queue: [],
       past: [],

@@ -87,6 +87,8 @@ export interface PlayerStatus {
   duration: number;
   /** True for a live/upcoming stream; progress and resume don't apply. */
   live: boolean;
+  /** True for a Short/Reel. */
+  isShort: boolean;
   paused: boolean;
   queue: QueueEntry[];
   /** Playlist-sourced entries before the current one, for playlist context. */
@@ -595,6 +597,7 @@ export function getPlayerStatus(): PlayerStatus {
     position: current?.position ?? 0,
     duration: current?.duration ?? 0,
     live: current ? isLiveLike(getHistoryLiveStatus(current.url)) : false,
+    isShort: currentHistory?.isShort ?? false,
     paused: current?.paused ?? false,
     queue,
     past,

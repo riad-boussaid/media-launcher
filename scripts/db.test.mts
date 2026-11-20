@@ -242,6 +242,19 @@ test("watch later joins progress by canonical URL", () => {
   assert.equal(entry.completed, true);
 });
 
+test("finds Watch Later entries by any canonical URL form", () => {
+  db.clearHistory();
+  db.clearWatchLater();
+
+  const saved = db.addWatchLater(short, "Video");
+  assert.equal(db.findWatchLater(canonical)?.id, saved.id);
+  assert.equal(
+    db.findWatchLater("https://www.youtube.com/shorts/dQw4w9WgXcQ")?.id,
+    saved.id,
+  );
+  assert.equal(db.findWatchLater("https://example.com/not-saved"), undefined);
+});
+
 test("live videos do not accumulate resume progress", () => {
   db.clearHistory();
   db.clearWatchLater();

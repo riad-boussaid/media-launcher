@@ -35,6 +35,13 @@ const api = {
     get: () => ipcRenderer.invoke("watchLater:get"),
     add: (url: string, title?: string, thumbnail?: string, addedAt?: number) =>
       ipcRenderer.invoke("watchLater:add", url, title, thumbnail, addedAt),
+    status: (url: string) => ipcRenderer.invoke("watchLater:status", url),
+    toggle: (
+      url: string,
+      title?: string,
+      thumbnail?: string,
+      saved?: boolean,
+    ) => ipcRenderer.invoke("watchLater:toggle", url, title, thumbnail, saved),
     delete: (id: string) => ipcRenderer.invoke("watchLater:delete", id),
     clear: () => ipcRenderer.invoke("watchLater:clear"),
     play: (ids?: string[]) => ipcRenderer.invoke("watchLater:play", ids),

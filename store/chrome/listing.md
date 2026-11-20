@@ -35,8 +35,9 @@ copying URLs and no switching tabs.
   speed, and loop.
 - Add extra mpv arguments for advanced setups.
 - Videos resume where you left off, with a local watch history.
-- Save videos to Watch Later from the popup, the right-click menu, or
-  Alt+Shift+S; the list is shared with the desktop app and phone remote.
+- Save videos to Watch Later from the on-page and thumbnail Save buttons, the
+  popup, the right-click menu, or Alt+Shift+S; the list is shared with the
+  desktop app and phone remote.
 
 **Control from your phone**
 
@@ -90,7 +91,7 @@ server, or show playback state and history for that server.
 | `notifications` | Show a success or failure notification after a play, queue, or save request, with the video thumbnail when available. |
 | `alarms` | Periodically refresh the toolbar badge that indicates whether the local Media Launcher server is reachable. |
 | `sidePanel` | Host the extension's side-panel UI (Chrome 116+). |
-| Content script on `<all_urls>` | Detect supported video pages and inject the play button or thumbnail chip. The script only reads video elements, video links, thumbnail images, and page metadata; it does not transmit anything until the user acts. |
+| Content script on `<all_urls>` | Detect supported video pages and inject the play and Save to Watch Later buttons or thumbnail chip. The script reads video elements, video links, thumbnail images, and page metadata, and requests the local Watch Later list to show saved states. Page information is sent to the user's local server only when the user acts. |
 | `http://localhost:*/*`, `http://127.0.0.1:*/*` | Reach the Media Launcher API on the user's own machine. Ports 5000–5010 are probed during discovery. |
 
 ### Host permissions for thumbnails and site metadata

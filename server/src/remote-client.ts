@@ -915,6 +915,9 @@ export function remoteClientScript(): string {
       npTitle.textContent = p.title || p.url;
       npTitle.title = p.url;
       var meta = hostOf(p.url);
+      if (p.isShort) {
+        meta = shortTagLabel({ isShort: true, url: p.url }) + " · " + meta;
+      }
       if (p.live) meta = "LIVE · " + meta;
       if (p.chapter !== null && chapters[p.chapter]) {
         var chapter = chapters[p.chapter];

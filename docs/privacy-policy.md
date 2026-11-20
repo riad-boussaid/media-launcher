@@ -74,8 +74,12 @@ video pages, video thumbnails, and player controls. The script inspects:
 - Open Graph/Twitter thumbnail metadata.
 
 This information is not transmitted until you explicitly play or queue a video,
-open the popup, or use a context-menu/shortcut action. The extension does not
-read passwords, form fields, cookies, keystrokes, or arbitrary page text.
+save it to Watch Later, open the popup, or use a context-menu/shortcut action.
+The injected controls also request the Watch Later list from your local Media
+Launcher server (falling back to the extension's local cache) so thumbnail
+badges can show whether a video is already saved; that request contains no page
+information. The extension does not read passwords, form fields, cookies,
+keystrokes, or arbitrary page text.
 
 ### Data sent to your Media Launcher server
 

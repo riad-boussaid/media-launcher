@@ -6,12 +6,13 @@ import {
   type WatchLaterEntry,
 } from "@shared/api";
 import { ext } from "@shared/ext";
+import { WATCH_LATER_CACHE_KEY } from "@shared/storage-keys";
 
 export type { WatchLaterEntry };
 
 // The server owns the list; local storage is only a read-through cache so the
 // popup can still show saved videos while the server is briefly unreachable.
-const CACHE_KEY = "media-launcher-watch-later-cache";
+const CACHE_KEY = WATCH_LATER_CACHE_KEY;
 
 /** Reads the saved videos; falls back to the last-known cache offline. */
 export async function getLater(): Promise<WatchLaterEntry[]> {

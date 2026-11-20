@@ -104,6 +104,7 @@ export interface PlayerStatus {
   position: number;
   duration: number;
   live: boolean;
+  isShort: boolean;
   paused: boolean;
   queue: PlayerQueueEntry[];
   past: PlayerQueueEntry[];
@@ -263,6 +264,23 @@ export async function addWatchLater(
   addedAt?: number,
 ): Promise<WatchLaterEntry> {
   return api.watchLater.add(url, title, thumbnail, addedAt);
+}
+
+export async function getWatchLaterStatus(url: string): Promise<boolean> {
+  return api.watchLater.status(url);
+}
+
+export interface WatchLaterToggleResult {
+  saved: boolean;
+}
+
+export async function toggleWatchLater(
+  url: string,
+  title = "",
+  thumbnail = "",
+  saved?: boolean,
+): Promise<WatchLaterToggleResult> {
+  return api.watchLater.toggle(url, title, thumbnail, saved);
 }
 
 export async function reorderWatchLater(
