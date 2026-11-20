@@ -127,11 +127,7 @@ function stateLabel(item: HistoryEntry): string {
   return "Not started";
 }
 
-export default function History({
-  focusSignal = 0,
-}: {
-  focusSignal?: number;
-}) {
+export default function History({ focusSignal = 0 }: { focusSignal?: number }) {
   const [items, setItems] = useState<HistoryEntry[]>([]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -344,9 +340,7 @@ export default function History({
       if (pending) {
         clearTimeout(pending.timer);
         pendingRef.current = null;
-        void Promise.allSettled(
-          pending.ids.map((id) => deleteHistory(id)),
-        );
+        void Promise.allSettled(pending.ids.map((id) => deleteHistory(id)));
       }
     };
   }, []);
@@ -834,10 +828,7 @@ export default function History({
 
       {selectMode && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2">
-          <span
-            className="text-xs font-medium text-text"
-            aria-live="polite"
-          >
+          <span className="text-xs font-medium text-text" aria-live="polite">
             <span className="tabular-nums">{visibleSelectedCount}</span>{" "}
             selected
           </span>
@@ -1047,9 +1038,7 @@ export default function History({
                         <Thumbnail
                           src={item.thumbnail}
                           className={`absolute inset-0 h-full w-full object-cover ${
-                            item.completed
-                              ? "opacity-60 saturate-50"
-                              : ""
+                            item.completed ? "opacity-60 saturate-50" : ""
                           }`}
                           fallback={
                             <span className="grid h-full w-full place-items-center text-white/15">
@@ -1170,9 +1159,7 @@ export default function History({
                                 aria-label="More options"
                                 aria-haspopup="menu"
                                 aria-expanded={menuId === item.id}
-                                onClick={(event) =>
-                                  toggleRowMenu(item, event)
-                                }
+                                onClick={(event) => toggleRowMenu(item, event)}
                               >
                                 <MoreIcon className="h-[15px] w-[15px]" />
                               </button>
@@ -1459,11 +1446,7 @@ function PlayIcon({ className }: { className?: string }): JSX.Element {
 function PlayFillIcon({ className }: { className?: string }): JSX.Element {
   return (
     <Icon className={className}>
-      <polygon
-        points="8 5 19 12 8 19 8 5"
-        fill="currentColor"
-        stroke="none"
-      />
+      <polygon points="8 5 19 12 8 19 8 5" fill="currentColor" stroke="none" />
     </Icon>
   );
 }
@@ -1530,11 +1513,7 @@ function CheckIcon({ className }: { className?: string }): JSX.Element {
   );
 }
 
-function ChevronRightIcon({
-  className,
-}: {
-  className?: string;
-}): JSX.Element {
+function ChevronRightIcon({ className }: { className?: string }): JSX.Element {
   return (
     <Icon className={className}>
       <path d="m9 18 6-6-6-6" />

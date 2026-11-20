@@ -97,7 +97,9 @@ function rowTime(ts: number): string {
 }
 
 function isInProgress(item: WatchLaterEntry): boolean {
-  return !isLiveLike(item.liveStatus) && !item.completed && (item.position ?? 0) > 0;
+  return (
+    !isLiveLike(item.liveStatus) && !item.completed && (item.position ?? 0) > 0
+  );
 }
 
 function progressPercent(item: WatchLaterEntry): number {
@@ -368,9 +370,7 @@ export default function WatchLater({
       if (pending) {
         clearTimeout(pending.timer);
         pendingRef.current = null;
-        void Promise.allSettled(
-          pending.ids.map((id) => deleteWatchLater(id)),
-        );
+        void Promise.allSettled(pending.ids.map((id) => deleteWatchLater(id)));
       }
     };
   }, []);
@@ -552,9 +552,7 @@ export default function WatchLater({
 
   const toggleSelectAll = () => {
     setSelected(
-      allSelected
-        ? new Set()
-        : new Set(selectableRows.map((item) => item.id)),
+      allSelected ? new Set() : new Set(selectableRows.map((item) => item.id)),
     );
   };
 
@@ -655,9 +653,7 @@ export default function WatchLater({
     setSelectMode(false);
     scheduleDelete(
       ids,
-      ids.length === 1
-        ? "1 video removed"
-        : `${ids.length} videos removed`,
+      ids.length === 1 ? "1 video removed" : `${ids.length} videos removed`,
     );
   };
 
@@ -1391,10 +1387,7 @@ export default function WatchLater({
                     {rowTime(item.addedAt)}
                   </span>
                   {!selectMode && (
-                    <div
-                      className="relative flex-none"
-                      data-row-menu={item.id}
-                    >
+                    <div className="relative flex-none" data-row-menu={item.id}>
                       <button
                         type="button"
                         className="flex h-[30px] w-[30px] items-center justify-center rounded-md text-muted transition-colors hover:bg-elevated hover:text-text"
@@ -1417,9 +1410,7 @@ export default function WatchLater({
                             customIndex >= 0 && customIndex < items.length - 1
                           }
                           up={menuUp}
-                          onAction={(action) =>
-                            runRowAction(action, item)
-                          }
+                          onAction={(action) => runRowAction(action, item)}
                         />
                       )}
                     </div>
@@ -1731,11 +1722,7 @@ function PlayIcon({ className }: { className?: string }): JSX.Element {
 function PlayFillIcon({ className }: { className?: string }): JSX.Element {
   return (
     <Icon className={className}>
-      <polygon
-        points="8 5 19 12 8 19 8 5"
-        fill="currentColor"
-        stroke="none"
-      />
+      <polygon points="8 5 19 12 8 19 8 5" fill="currentColor" stroke="none" />
     </Icon>
   );
 }
@@ -1785,11 +1772,7 @@ function CheckIcon({ className }: { className?: string }): JSX.Element {
   );
 }
 
-function ChevronDownIcon({
-  className,
-}: {
-  className?: string;
-}): JSX.Element {
+function ChevronDownIcon({ className }: { className?: string }): JSX.Element {
   return (
     <Icon className={className}>
       <path d="m6 9 6 6 6-6" />

@@ -311,9 +311,7 @@ export default function Play() {
                   <div
                     className="mt-0.5 truncate text-[13px] font-medium text-text"
                     title={
-                      savedQueue.current?.title ||
-                      savedQueue.current?.url ||
-                      ""
+                      savedQueue.current?.title || savedQueue.current?.url || ""
                     }
                   >
                     {savedQueue.current?.title ||
@@ -374,9 +372,7 @@ export default function Play() {
                       className="h-10 w-full rounded-lg border border-border bg-surface pl-3 pr-10 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-[color-mix(in_oklab,var(--color-accent)_50%,transparent)] focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-accent)_10%,transparent)]"
                       type="text"
                       placeholder={
-                        isPlaying
-                          ? "Paste another URL…"
-                          : "Paste a video URL…"
+                        isPlaying ? "Paste another URL…" : "Paste a video URL…"
                       }
                       aria-label="Video URL"
                       value={urlInput}
@@ -419,7 +415,9 @@ export default function Play() {
                       type="button"
                       className="btn-ghost h-10 flex-1 px-4 min-[620px]:flex-none"
                       onClick={() => void handleQueue()}
-                      disabled={!urlInput.trim() || pending !== null || !canQueue}
+                      disabled={
+                        !urlInput.trim() || pending !== null || !canQueue
+                      }
                       title={
                         canQueue
                           ? "Add this URL to the queue"
@@ -445,8 +443,8 @@ export default function Play() {
                   </div>
                 </div>
                 <p className="mt-2 mb-0 text-[11px] leading-snug text-muted">
-                  YouTube, Vimeo, Twitch, and other supported sites. Enter
-                  plays the URL.
+                  YouTube, Vimeo, Twitch, and other supported sites. Enter plays
+                  the URL.
                 </p>
               </div>
             </section>
@@ -617,11 +615,7 @@ function PlayIcon({ className }: { className?: string }): JSX.Element {
 function PlayFillIcon({ className }: { className?: string }): JSX.Element {
   return (
     <Icon className={className}>
-      <polygon
-        points="8 5 19 12 8 19 8 5"
-        fill="currentColor"
-        stroke="none"
-      />
+      <polygon points="8 5 19 12 8 19 8 5" fill="currentColor" stroke="none" />
     </Icon>
   );
 }
@@ -668,11 +662,7 @@ function CheckIcon({ className }: { className?: string }): JSX.Element {
   );
 }
 
-function ChevronRightIcon({
-  className,
-}: {
-  className?: string;
-}): JSX.Element {
+function ChevronRightIcon({ className }: { className?: string }): JSX.Element {
   return (
     <Icon className={className}>
       <path d="m9 18 6-6-6-6" />
