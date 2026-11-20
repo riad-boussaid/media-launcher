@@ -175,7 +175,7 @@
       </span>
 
       <h1>Privacy <span>Policy</span></h1>
-      <p class="meta">Effective date: 16 November 2026</p>
+      <p class="meta">Effective date: 20 November 2026</p>
 
       <div class="summary">
         <h2>In short</h2>
@@ -242,8 +242,12 @@
           position.
         </li>
         <li>
+          <strong>Watch Later cache</strong> — the saved videos returned by your
+          server: page URL, title, thumbnail URL, and save time.
+        </li>
+        <li>
           <strong>Interface state</strong> — theme choice and whether history
-          sections are expanded.
+          and Watch Later sections are expanded.
         </li>
       </ul>
 
@@ -316,8 +320,10 @@
       <ul>
         <li>
           <strong>SQLite database</strong> — playback history (URL, title,
-          thumbnail URL, timestamp, resume position), app settings, and hashed
-          remote-session records.
+          thumbnail URL, timestamp, resume position, duration, completion
+          state, live status, Shorts/Reels flag), saved Watch Later entries (URL,
+          title, thumbnail URL, save time, manual order, live status,
+          Shorts/Reels flag), app settings, and hashed remote-session records.
         </li>
         <li>
           <strong>API token file</strong> — the master token used to authenticate
@@ -365,8 +371,9 @@
           browser's <code>localStorage</code>.
         </li>
         <li>
-          The remote page can display recent history titles and URLs and can
-          control playback. Paired devices can be revoked from the desktop app.
+          The remote page can display recent history and Watch Later titles and
+          URLs and can control playback. Paired devices can be revoked from the
+          desktop app.
         </li>
         <li>
           The remote page is served over plain HTTP on the LAN. Use Tailscale
@@ -396,6 +403,11 @@
           <strong>Extension history:</strong> clear it from the popup or history
           view, or remove the extension. Cached history is also replaced as new
           entries arrive.
+        </li>
+        <li>
+          <strong>Watch Later:</strong> remove individual videos or clear the
+          list from the desktop Later tab or the extension. The extension's
+          cached copy is replaced whenever the list changes.
         </li>
         <li>
           <strong>Extension settings:</strong> reset them in the options page or

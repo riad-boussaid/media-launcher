@@ -75,6 +75,34 @@ export function remoteClientScript(): string {
   var recentCard = document.getElementById("recent-card");
   var recentList = document.getElementById("recent");
   var recentCount = document.getElementById("recent-count");
+  var laterCard = document.getElementById("later-card");
+  var laterList = document.getElementById("later");
+  var laterCount = document.getElementById("later-count");
+  var laterContinueBtn = document.getElementById("later-continue");
+  var laterContinueOnly = false;
+  try {
+    laterContinueOnly =
+      localStorage.getItem("ml-remote-later-continue") === "1";
+  } catch (e) {}
+  laterContinueBtn.setAttribute(
+    "aria-pressed",
+    laterContinueOnly ? "true" : "false",
+  );
+
+  laterContinueBtn.addEventListener("click", function () {
+    laterContinueOnly = !laterContinueOnly;
+    laterContinueBtn.setAttribute(
+      "aria-pressed",
+      laterContinueOnly ? "true" : "false",
+    );
+    try {
+      localStorage.setItem(
+        "ml-remote-later-continue",
+        laterContinueOnly ? "1" : "0",
+      );
+    } catch (e) {}
+    loadWatchLater();
+  });
 
   function deviceLabel() {
     var ua = navigator.userAgent;
@@ -823,6 +851,7 @@ export function remoteClientScript(): string {
       npTitle.textContent = p.title || p.url;
       npTitle.title = p.url;
       var meta = hostOf(p.url);
+      if (p.live) meta = "LIVE · " + meta;
       if (p.chapter !== null && chapters[p.chapter]) {
         var chapter = chapters[p.chapter];
         meta += " · Chapter " + (p.chapter + 1) + "/" + chapters.length +
@@ -835,7 +864,7 @@ export function remoteClientScript(): string {
       if (!scrubbing) updateProgress(p.position || 0, duration);
       npSeek.setAttribute(
         "aria-disabled",
-        p.ipcReady && duration > 0 ? "false" : "true",
+        p.ipcReady && duration > 0 && !p.live ? "false" : "true",
       );
 
       npEq.className = p.paused ? "eq paused" : "eq";
@@ -853,8 +882,11 @@ export function remoteClientScript(): string {
       npToggle.setAttribute("aria-label", npToggle.title);
       npToggle.disabled = !p.ipcReady;
 
-      npRewind.disabled = !p.ipcReady || p.position <= 0;
-      npForward.disabled = !p.ipcReady || (duration > 0 && p.position >= duration);
+      npRewind.disabled = !p.ipcReady || p.live || p.position <= 0;
+      npForward.disabled =
+        !p.ipcReady ||
+        p.live ||
+        (duration > 0 && p.position >= duration);
 
       var hasChapters = chapters.length > 0;
       npPrev.hidden = !hasChapters;
@@ -1170,6 +1202,7 @@ export function remoteClientScript(): string {
         syncAuthUI();
         showBanner("Paired — connected to the desktop app.", true);
         loadRecent();
+        loadWatchLater();
         loadPlayer();
       })
       .catch(function () {
@@ -1213,6 +1246,13 @@ export function remoteClientScript(): string {
         idle.hidden = true;
         recentCard.hidden = true;
         recentList.innerHTML = "";
+        laterCard.hidden = true;
+        laterList.innerHTML = "";
+        laterContinueOnly = false;
+        laterContinueBtn.setAttribute("aria-pressed", "false");
+        try {
+          localStorage.removeItem("ml-remote-later-continue");
+        } catch (e) {}
         setStatus("unpaired");
       })
       .finally(function () { unpairBtn.disabled = false; });
@@ -1283,6 +1323,156 @@ export function remoteClientScript(): string {
     }).catch(function () {});
   }
 
+  function loadWatchLater() {
+    if (!token) return;
+    api("/watch-later").then(function (items) {
+      laterList.innerHTML = "";
+      var shown = laterContinueOnly
+        ? items.filter(function (e) {
+            return (
+              !e.completed &&
+              typeof e.position === "number" &&
+              e.position > 0
+            );
+          })
+        : items;
+      laterCard.hidden = items.length === 0;
+      laterCount.textContent = laterContinueOnly
+        ? shown.length + " in progress"
+        : items.length + " saved";
+      if (shown.length === 0) {
+        var empty = document.createElement("li");
+        empty.className = "later-empty";
+        empty.textContent = laterContinueOnly
+          ? "No videos in progress"
+          : "Nothing saved yet";
+        laterList.appendChild(empty);
+        return;
+      }
+      shown.forEach(function (e) {
+        var li = document.createElement("li");
+        li.className = "recent-row";
+        var label = e.title || hostOf(e.url);
+
+        var play = document.createElement("button");
+        play.type = "button";
+        play.className = "recent-main";
+        play.title = e.url;
+        play.setAttribute("aria-label", "Play " + label);
+        var icon = document.createElement("span");
+        icon.className = "recent-icon";
+        if (e.thumbnail) {
+          var thumb = document.createElement("img");
+          thumb.className = "recent-thumb";
+          thumb.alt = "";
+          thumb.loading = "lazy";
+          icon.appendChild(thumb);
+          loadThumb(thumb, e.thumbnail, function () {
+            return thumb.isConnected;
+          });
+        } else {
+          icon.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><polygon points="7 4 21 12 7 20 7 4"/></svg>';
+        }
+        var info = document.createElement("span");
+        info.className = "recent-info";
+        var title = document.createElement("span");
+        title.className = "recent-title";
+        title.textContent = label;
+        var meta = document.createElement("span");
+        meta.className = "recent-meta";
+        var liveLabel =
+          e.liveStatus === "live"
+            ? "Live"
+            : e.liveStatus === "upcoming"
+              ? "Upcoming"
+              : e.liveStatus === "post_live"
+                ? "Live ended"
+                : e.liveStatus === "was_live"
+                  ? "Was live"
+                  : "";
+        var liveLike =
+          e.liveStatus === "live" ||
+          e.liveStatus === "upcoming" ||
+          e.liveStatus === "post_live";
+        var bits = [hostOf(e.url)];
+        if (liveLabel) bits.push(liveLabel);
+        if (e.isShort) {
+          var shortLabel =
+            e.url.indexOf("/reel/") !== -1 || e.url.indexOf("/reels/") !== -1
+              ? "Reel"
+              : "Short";
+          bits.push(shortLabel);
+        }
+        if (!liveLike) {
+          if (e.completed) {
+            bits.push("Watched");
+          } else if (typeof e.position === "number" && e.position > 60) {
+            bits.push("Resume " + fmt(e.position));
+          } else if (e.addedAt) {
+            bits.push("Saved " + timeAgo(e.addedAt));
+          }
+        }
+        meta.textContent = bits.join(" · ");
+        info.appendChild(title);
+        info.appendChild(meta);
+        var progress = liveLike
+          ? 0
+          : e.completed
+            ? 100
+            : typeof e.duration === "number" && e.duration > 0
+              ? Math.min(
+                  100,
+                  Math.round(((e.position || 0) / e.duration) * 100),
+                )
+              : 0;
+        if (progress > 0) {
+          var bar = document.createElement("span");
+          bar.className = "recent-progress";
+          var fill = document.createElement("span");
+          fill.className = "recent-progress-fill";
+          fill.style.width = progress + "%";
+          bar.appendChild(fill);
+          info.appendChild(bar);
+        }
+        play.appendChild(icon);
+        play.appendChild(info);
+        play.addEventListener("click", function () { send(e.url, false); });
+
+        var add = document.createElement("button");
+        add.type = "button";
+        add.className = "recent-queue";
+        add.title = "Add to queue";
+        add.setAttribute("aria-label", "Add to queue: " + label);
+        add.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+        add.addEventListener("click", function () { send(e.url, true); });
+
+        var remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "later-remove";
+        remove.title = "Remove from Watch Later";
+        remove.setAttribute("aria-label", "Remove from Watch Later: " + label);
+        remove.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+        remove.addEventListener("click", function () {
+          api("/watch-later/" + encodeURIComponent(e.id), { method: "DELETE" })
+            .then(function (list) {
+              if (Array.isArray(list)) {
+                showBanner("Removed from Watch Later", true);
+                loadWatchLater();
+              }
+            })
+            .catch(function () {
+              showBanner("Could not remove that video", false);
+            });
+        });
+
+        li.appendChild(play);
+        li.appendChild(add);
+        li.appendChild(remove);
+        laterList.appendChild(li);
+      });
+    }).catch(function () {});
+  }
+
   try {
     var params = new URLSearchParams(location.search);
     var code = params.get("c");
@@ -1305,6 +1495,7 @@ export function remoteClientScript(): string {
             unauthorizedShown = false;
             syncAuthUI();
             loadRecent();
+            loadWatchLater();
             loadPlayer();
             return;
           }
@@ -1328,6 +1519,7 @@ export function remoteClientScript(): string {
           }
           syncAuthUI();
           loadRecent();
+          loadWatchLater();
           loadPlayer();
         })
         .catch(function () {
@@ -1343,6 +1535,7 @@ export function remoteClientScript(): string {
           }
           syncAuthUI();
           loadRecent();
+          loadWatchLater();
           loadPlayer();
         });
     } else {
@@ -1353,6 +1546,7 @@ export function remoteClientScript(): string {
   syncAuthUI();
   if (token) {
     loadRecent();
+    loadWatchLater();
     loadPlayer();
   } else {
     setStatus("unpaired");
@@ -1384,7 +1578,10 @@ export function remoteClientScript(): string {
       });
   }
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "visible" && !wakeLock) requestWakeLock();
+    if (document.visibilityState === "visible") {
+      if (token) loadWatchLater();
+      if (!wakeLock) requestWakeLock();
+    }
   });
   requestWakeLock();`;
 }

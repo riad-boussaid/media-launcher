@@ -1,3 +1,4 @@
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   app,
@@ -34,13 +35,16 @@ import {
   stopServer,
 } from "./server";
 import {
+  addWatchLater,
   chapterNext,
   chapterPrev,
   clearHistory,
   clearPlaybackError,
   clearPlayedPlaylist,
   clearQueue,
+  clearWatchLater,
   deleteHistory,
+  deleteWatchLater,
   discardSavedQueue,
   getAutoUpdateYtDlp,
   getHistory,
@@ -48,15 +52,20 @@ import {
   getRemoteSessions,
   getSavedQueue,
   getSettings,
+  getWatchLater,
   initDatabase,
   loadMorePlaylist,
   moveQueueItem,
   moveQueueItemTo,
   playQueueItem,
+  playWatchLater,
   queueUrl,
+  queueWatchLater,
   removePlaylistFromQueue,
   removeQueueItem,
+  reorderWatchLater,
   replayUrl,
+  resetWatchLaterProgress,
   restoreSavedQueue,
   revokeAllRemoteSessions,
   revokeRemoteSession,
@@ -204,6 +213,132 @@ if (!gotTheLock) {
     ipcMain.handle("history:get", () => getHistory());
     ipcMain.handle("history:delete", (_event, id) => deleteHistory(id));
     ipcMain.handle("history:clear", () => clearHistory());
+    ipcMain.handle("watchLater:get", () => getWatchLater());
+    ipcMain.handle(
+      "watchLater:add",
+      (_event, url: string, title?: string, thumbnail?: string) =>
+        addWatchLater(url, title, thumbnail),
+    );
+    ipcMain.handle("watchLater:delete", (_event, id: string) =>
+      deleteWatchLater(id),
+    );
+    ipcMain.handle("watchLater:clear", () => clearWatchLater());
+    ipcMain.handle("watchLater:play", (_event, ids?: string[]) =>
+      playWatchLater(ids),
+    );
+    ipcMain.handle("watchLater:queue", (_event, ids?: string[]) =>
+      queueWatchLater(ids),
+    );
+    ipcMain.handle("watchLater:reorder", (_event, ids: string[]) =>
+      reorderWatchLater(ids),
+    );
+    ipcMain.handle("watchLater:unwatch", (_event, id: string) =>
+      resetWatchLaterProgress(id),
+    );
+    ipcMain.handle("watchLater:export", async () => {
+      try {
+        const entries = await getWatchLater();
+        const result = win
+          ? await dialog.showSaveDialog(win, {
+              title: "Export Watch Later",
+              defaultPath: join(app.getPath("downloads"), "watch-later.json"),
+              filters: [{ name: "JSON", extensions: ["json"] }],
+            })
+          : await dialog.showSaveDialog({
+              title: "Export Watch Later",
+              defaultPath: join(app.getPath("downloads"), "watch-later.json"),
+              filters: [{ name: "JSON", extensions: ["json"] }],
+            });
+        if (result.canceled || !result.filePath) {
+          return { canceled: true };
+        }
+        const payload = {
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          entries: entries.map((entry) => ({
+            url: entry.url,
+            title: entry.title,
+            thumbnail: entry.thumbnail,
+            addedAt: entry.addedAt,
+          })),
+        };
+        await writeFile(
+          result.filePath,
+          `${JSON.stringify(payload, null, 2)}\n`,
+          "utf8",
+        );
+        return { saved: true, count: entries.length };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    });
+    ipcMain.handle("watchLater:import", async () => {
+      try {
+        const result = win
+          ? await dialog.showOpenDialog(win, {
+              title: "Import Watch Later",
+              properties: ["openFile"],
+              filters: [{ name: "JSON", extensions: ["json"] }],
+            })
+          : await dialog.showOpenDialog({
+              title: "Import Watch Later",
+              properties: ["openFile"],
+              filters: [{ name: "JSON", extensions: ["json"] }],
+            });
+        if (result.canceled || result.filePaths.length === 0) {
+          return { canceled: true };
+        }
+        const raw = await readFile(result.filePaths[0], "utf8");
+        const parsed: unknown = JSON.parse(raw);
+        let list: unknown[];
+        if (Array.isArray(parsed)) {
+          list = parsed;
+        } else if (
+          parsed &&
+          typeof parsed === "object" &&
+          Array.isArray((parsed as { entries?: unknown }).entries)
+        ) {
+          list = (parsed as { entries: unknown[] }).entries;
+        } else {
+          return { error: "Unrecognized Watch Later file" };
+        }
+
+        let imported = 0;
+        let skipped = 0;
+        for (const item of list) {
+          if (!item || typeof item !== "object") {
+            skipped += 1;
+            continue;
+          }
+          const entry = item as {
+            url?: unknown;
+            title?: unknown;
+            thumbnail?: unknown;
+            addedAt?: unknown;
+          };
+          if (typeof entry.url !== "string" || entry.url.length === 0) {
+            skipped += 1;
+            continue;
+          }
+          try {
+            await addWatchLater(
+              entry.url,
+              typeof entry.title === "string" ? entry.title : "",
+              typeof entry.thumbnail === "string" ? entry.thumbnail : "",
+              typeof entry.addedAt === "number" ? entry.addedAt : undefined,
+            );
+            imported += 1;
+          } catch {
+            skipped += 1;
+          }
+        }
+        return { imported, skipped };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    });
     ipcMain.handle("player:check", async (_event, exe) =>
       checkPlayerExists(exe),
     );

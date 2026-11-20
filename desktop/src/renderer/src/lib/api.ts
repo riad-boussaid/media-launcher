@@ -5,6 +5,24 @@ export interface HistoryEntry {
   thumbnail: string;
   timestamp: number;
   position: number;
+  duration?: number;
+  completed?: boolean;
+  liveStatus?: string;
+  isShort?: boolean;
+}
+
+export interface WatchLaterEntry {
+  id: string;
+  url: string;
+  title: string;
+  thumbnail: string;
+  addedAt: number;
+  position?: number;
+  duration?: number;
+  completed?: boolean;
+  lastPlayedAt?: number;
+  liveStatus?: string;
+  isShort?: boolean;
 }
 
 export interface Settings {
@@ -83,6 +101,7 @@ export interface PlayerStatus {
   error: PlaybackError | null;
   position: number;
   duration: number;
+  live: boolean;
   paused: boolean;
   queue: PlayerQueueEntry[];
   past: PlayerQueueEntry[];
@@ -229,6 +248,75 @@ export async function deleteHistory(id: string): Promise<HistoryEntry[]> {
 
 export async function clearHistory(): Promise<void> {
   return api.history.clear();
+}
+
+export async function getWatchLater(): Promise<WatchLaterEntry[]> {
+  return api.watchLater.get();
+}
+
+export async function addWatchLater(
+  url: string,
+  title?: string,
+  thumbnail?: string,
+  addedAt?: number,
+): Promise<WatchLaterEntry> {
+  return api.watchLater.add(url, title, thumbnail, addedAt);
+}
+
+export async function reorderWatchLater(
+  ids: string[],
+): Promise<WatchLaterEntry[]> {
+  return api.watchLater.reorder(ids);
+}
+
+export async function resetWatchLaterProgress(
+  id: string,
+): Promise<WatchLaterEntry[]> {
+  return api.watchLater.unwatch(id);
+}
+
+export interface WatchLaterTransferResult {
+  saved?: boolean;
+  canceled?: boolean;
+  count?: number;
+  imported?: number;
+  skipped?: number;
+  error?: string;
+}
+
+export async function exportWatchLater(): Promise<WatchLaterTransferResult> {
+  return api.watchLater.exportFile();
+}
+
+export async function importWatchLater(): Promise<WatchLaterTransferResult> {
+  return api.watchLater.importFile();
+}
+
+export async function deleteWatchLater(id: string): Promise<WatchLaterEntry[]> {
+  return api.watchLater.delete(id);
+}
+
+export async function clearWatchLater(): Promise<void> {
+  return api.watchLater.clear();
+}
+
+export interface WatchLaterActionResult {
+  success: boolean;
+  count?: number;
+  total?: number;
+  error?: string;
+}
+
+export async function playWatchLater(
+  ids?: string[],
+): Promise<WatchLaterActionResult> {
+  return api.watchLater.play(ids);
+}
+
+export async function queueWatchLater(
+  ids?: string[],
+): Promise<WatchLaterActionResult> {
+  return api.watchLater.queue(ids);
 }
 
 export async function replayUrl(

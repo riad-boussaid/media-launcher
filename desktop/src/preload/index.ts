@@ -31,6 +31,19 @@ const api = {
     replay: (url: string) => ipcRenderer.invoke("history:replay", url),
     queue: (url: string) => ipcRenderer.invoke("history:queue", url),
   },
+  watchLater: {
+    get: () => ipcRenderer.invoke("watchLater:get"),
+    add: (url: string, title?: string, thumbnail?: string, addedAt?: number) =>
+      ipcRenderer.invoke("watchLater:add", url, title, thumbnail, addedAt),
+    delete: (id: string) => ipcRenderer.invoke("watchLater:delete", id),
+    clear: () => ipcRenderer.invoke("watchLater:clear"),
+    play: (ids?: string[]) => ipcRenderer.invoke("watchLater:play", ids),
+    queue: (ids?: string[]) => ipcRenderer.invoke("watchLater:queue", ids),
+    reorder: (ids: string[]) => ipcRenderer.invoke("watchLater:reorder", ids),
+    unwatch: (id: string) => ipcRenderer.invoke("watchLater:unwatch", id),
+    exportFile: () => ipcRenderer.invoke("watchLater:export"),
+    importFile: () => ipcRenderer.invoke("watchLater:import"),
+  },
   player: {
     check: (exe: string) => ipcRenderer.invoke("player:check", exe),
     status: () => ipcRenderer.invoke("player:status"),

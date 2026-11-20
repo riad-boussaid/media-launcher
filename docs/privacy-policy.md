@@ -1,6 +1,6 @@
 # Media Launcher Privacy Policy
 
-**Effective date:** 2026-11-16
+**Effective date:** 2026-11-20
 
 Media Launcher is an open-source browser extension and desktop app that sends
 videos from your browser to a media player (mpv) running on your own computer.
@@ -42,7 +42,10 @@ through the repository's issue tracker.
   configure.
 - **History cache** — a local copy of the most recent entries returned by your
   server: page URL, title, thumbnail URL, timestamp, and resume position.
-- **Interface state** — theme choice and whether history sections are expanded.
+- **Watch Later cache** — a local copy of the saved videos returned by your
+  server: page URL, title, thumbnail URL, and save time.
+- **Interface state** — theme choice and whether history and Watch Later
+  sections are expanded.
 
 ### Stored in browser sync storage
 
@@ -119,7 +122,10 @@ The desktop app stores the following under the operating system's per-user data
 directory:
 
 - **SQLite database** — playback history (URL, title, thumbnail URL, timestamp,
-  resume position), app settings, and hashed remote-session records.
+  resume position, duration, completion state, live status, Shorts/Reels flag),
+  saved Watch Later entries (URL, title, thumbnail URL, save time, manual order,
+  live status, Shorts/Reels flag), app settings, and hashed remote-session
+  records.
 - **API token file** — the master token used to authenticate the extension. The
   server requests owner-only permissions where the operating system supports
   them.
@@ -151,8 +157,8 @@ Remote control is intended for a trusted LAN or Tailscale network.
   kept in server memory and are lost when the server restarts.
 - A paired phone receives a revocable session token, stored in the phone
   browser's `localStorage`.
-- The remote page can display recent history titles and URLs and can control
-  playback. Paired devices can be revoked from the desktop app.
+- The remote page can display recent history and Watch Later titles and URLs
+  and can control playback. Paired devices can be revoked from the desktop app.
 - The remote page is served over plain HTTP on the LAN. Use Tailscale when you
   need encrypted transport outside your local network.
 
@@ -168,6 +174,9 @@ Remote control is intended for a trusted LAN or Tailscale network.
 
 - **Extension history:** clear it from the popup or history view, or remove the
   extension. Cached history is also replaced as new entries arrive.
+- **Watch Later:** remove individual videos or clear the list from the desktop
+  Later tab or the extension. The extension's cached copy is replaced whenever
+  the list changes.
 - **Extension settings:** reset them in the options page, or remove the
   extension. Synced preferences may remain in your browser account until you
   delete them through the browser's sync settings.

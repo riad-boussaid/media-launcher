@@ -1,4 +1,9 @@
-import { getServerUrl, sendUrl, type SendResult } from "@shared/api";
+import {
+  addServerWatchLater,
+  getServerUrl,
+  sendUrl,
+  type SendResult,
+} from "@shared/api";
 import { EXPECTED_SERVER_API_VERSION } from "@shared/discovery";
 import { ext } from "@shared/ext";
 import { getSettings, migrateAuthToken } from "@shared/settings";
@@ -74,6 +79,19 @@ async function notify(message: string, thumbnailUrl?: string) {
     });
   } catch (err) {
     console.error("notification error:", err);
+  }
+}
+
+async function saveToWatchLater(url: string, title = ""): Promise<void> {
+  const videoId = getYouTubeId(url);
+  const thumb = videoId ? await fetchThumbnail(videoId) : undefined;
+  const entry = await addServerWatchLater({ url, title });
+  if (entry) {
+    setTemporaryBadge("✓", "#22c55e");
+    notify("Saved to Watch Later", thumb);
+  } else {
+    setTemporaryBadge("✗", "#ef4444");
+    notify("Could not save to Watch Later — is the server running?", thumb);
   }
 }
 
@@ -168,42 +186,66 @@ if (hasSidePanel) {
   });
 }
 
+function registerContextMenus(): void {
+  // Rebuild from scratch so upgrades don't leave stale items behind or log
+  // duplicate-ID errors for menus that already exist.
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "play-page",
+      title: "Play Page with Media Launcher",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: "play-link",
+      title: "Play Link with Media Launcher",
+      contexts: ["link"],
+    });
+    chrome.contextMenus.create({
+      id: "play-media",
+      title: "Play Media with Media Launcher",
+      contexts: ["video", "audio"],
+    });
+    chrome.contextMenus.create({
+      id: "queue-page",
+      title: "Queue Page with Media Launcher",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: "queue-link",
+      title: "Queue Link with Media Launcher",
+      contexts: ["link"],
+    });
+    chrome.contextMenus.create({
+      id: "save-page",
+      title: "Save Page to Watch Later",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: "save-link",
+      title: "Save Link to Watch Later",
+      contexts: ["link"],
+    });
+    chrome.contextMenus.create({
+      id: "save-media",
+      title: "Save Media to Watch Later",
+      contexts: ["video", "audio"],
+    });
+  });
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === "install") {
     // First-run onboarding: show the token setup checklist immediately.
     void ext.runtime.openOptionsPage();
   }
-  chrome.contextMenus.create({
-    id: "play-page",
-    title: "Play Page with Media Launcher",
-    contexts: ["page"],
-  });
-  chrome.contextMenus.create({
-    id: "play-link",
-    title: "Play Link with Media Launcher",
-    contexts: ["link"],
-  });
-  chrome.contextMenus.create({
-    id: "play-media",
-    title: "Play Media with Media Launcher",
-    contexts: ["video", "audio"],
-  });
-  chrome.contextMenus.create({
-    id: "queue-page",
-    title: "Queue Page with Media Launcher",
-    contexts: ["page"],
-  });
-  chrome.contextMenus.create({
-    id: "queue-link",
-    title: "Queue Link with Media Launcher",
-    contexts: ["link"],
-  });
+  registerContextMenus();
 
   chrome.alarms.create("check-server", { periodInMinutes: 0.5 });
   updatePersistentBadge();
 });
 
 chrome.runtime.onStartup.addListener(() => {
+  registerContextMenus();
   chrome.alarms.create("check-server", { periodInMinutes: 0.5 });
   updatePersistentBadge();
 });
@@ -274,6 +316,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 chrome.contextMenus.onClicked.addListener(async (info) => {
+  if (
+    info.menuItemId === "save-page" ||
+    info.menuItemId === "save-link" ||
+    info.menuItemId === "save-media"
+  ) {
+    const url =
+      info.menuItemId === "save-page"
+        ? info.pageUrl
+        : info.menuItemId === "save-link"
+          ? info.linkUrl
+          : info.srcUrl;
+    if (!url) return;
+    await saveToWatchLater(url);
+    return;
+  }
+
   let url: string | undefined;
   let queue = false;
   if (info.menuItemId === "play-page") {
@@ -303,10 +361,15 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
 });
 
 chrome.commands.onCommand.addListener((command) => {
-  if (command !== "play-current-page" && command !== "queue-current-page") {
+  if (
+    command !== "play-current-page" &&
+    command !== "queue-current-page" &&
+    command !== "save-current-page"
+  ) {
     return;
   }
   const queue = command === "queue-current-page";
+  const save = command === "save-current-page";
   void (async () => {
     const [tab] = await ext.tabs.query({
       active: true,
@@ -314,6 +377,10 @@ chrome.commands.onCommand.addListener((command) => {
     });
     const url = tab?.url;
     if (!url || !/^https?:/i.test(url)) return;
+    if (save) {
+      await saveToWatchLater(url);
+      return;
+    }
     const videoId = getYouTubeId(url);
     const thumb = videoId ? await fetchThumbnail(videoId) : undefined;
     const result = await sendUrl(url, undefined, queue);

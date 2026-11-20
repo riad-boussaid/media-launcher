@@ -13,6 +13,24 @@ export interface HistoryEntry {
   thumbnail: string;
   timestamp: number;
   position: number;
+  duration?: number;
+  completed?: boolean;
+  liveStatus?: string;
+  isShort?: boolean;
+}
+
+export interface WatchLaterEntry {
+  id: string;
+  url: string;
+  title: string;
+  thumbnail: string;
+  addedAt: number;
+  position?: number;
+  duration?: number;
+  completed?: boolean;
+  lastPlayedAt?: number;
+  liveStatus?: string;
+  isShort?: boolean;
 }
 
 export interface Settings {
@@ -91,6 +109,7 @@ export interface PlayerStatus {
   error: PlaybackError | null;
   position: number;
   duration: number;
+  live: boolean;
   paused: boolean;
   queue: PlayerQueueEntry[];
   past: PlayerQueueEntry[];
@@ -326,6 +345,118 @@ export async function getHistory(): Promise<HistoryEntry[]> {
   return api<HistoryEntry[]>("/history");
 }
 
+export async function getWatchLater(): Promise<WatchLaterEntry[]> {
+  return api<WatchLaterEntry[]>("/watch-later");
+}
+
+export async function addWatchLater(
+  url: string,
+  title = "",
+  thumbnail = "",
+  addedAt?: number,
+): Promise<WatchLaterEntry> {
+  return api<WatchLaterEntry>("/watch-later", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, title, thumbnail, addedAt }),
+  });
+}
+
+export async function reorderWatchLater(
+  ids: string[],
+): Promise<WatchLaterEntry[]> {
+  return api<WatchLaterEntry[]>("/watch-later/order", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function resetWatchLaterProgress(
+  id: string,
+): Promise<WatchLaterEntry[]> {
+  return api<WatchLaterEntry[]>(
+    `/watch-later/${encodeURIComponent(id)}/unwatch`,
+    { method: "POST" },
+  );
+}
+
+export async function deleteWatchLater(id: string): Promise<WatchLaterEntry[]> {
+  return api<WatchLaterEntry[]>(`/watch-later/${id}`, { method: "DELETE" });
+}
+
+export async function clearWatchLater(): Promise<void> {
+  await api("/watch-later", { method: "DELETE" });
+}
+
+export interface WatchLaterActionResult {
+  success: boolean;
+  count?: number;
+  total?: number;
+  error?: string;
+}
+
+async function watchLaterAction(
+  path: string,
+  ids?: string[],
+): Promise<WatchLaterActionResult> {
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    const token = readServerToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${getServerUrl()}${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ids }),
+    });
+    const data: unknown = await res.json().catch(() => null);
+    if (!res.ok) {
+      const error =
+        typeof data === "object" &&
+        data !== null &&
+        "err" in data &&
+        typeof data.err === "string"
+          ? data.err
+          : res.statusText;
+      return { success: false, error };
+    }
+    return {
+      success: true,
+      count:
+        typeof data === "object" &&
+        data !== null &&
+        "count" in data &&
+        typeof data.count === "number"
+          ? data.count
+          : undefined,
+      total:
+        typeof data === "object" &&
+        data !== null &&
+        "total" in data &&
+        typeof data.total === "number"
+          ? data.total
+          : undefined,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
+}
+
+export async function playWatchLater(
+  ids?: string[],
+): Promise<WatchLaterActionResult> {
+  return watchLaterAction("/watch-later/play", ids);
+}
+
+export async function queueWatchLater(
+  ids?: string[],
+): Promise<WatchLaterActionResult> {
+  return watchLaterAction("/watch-later/queue", ids);
+}
+
 export async function getNowPlaying(): Promise<HistoryEntry | null> {
   const history = await api<HistoryEntry[]>("/history");
   return history[0] ?? null;
@@ -352,6 +483,7 @@ export async function getPlayerStatus(): Promise<PlayerStatus> {
       error: null,
       position: 0,
       duration: 0,
+      live: false,
       paused: false,
       queue: [],
       past: [],

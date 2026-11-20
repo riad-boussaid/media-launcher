@@ -3,9 +3,10 @@ import { getServerStatus, getSettings } from "./lib/api";
 import History from "./pages/History";
 import Play from "./pages/Play";
 import Settings from "./pages/Settings";
+import WatchLater from "./pages/WatchLater";
 import "./index.css";
 
-type Tab = "play" | "history" | "settings";
+type Tab = "play" | "history" | "later" | "settings";
 
 function PlayIcon() {
   return (
@@ -45,6 +46,24 @@ function HistoryIcon() {
   );
 }
 
+function BookmarkIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
 function SettingsIcon() {
   return (
     <svg
@@ -67,6 +86,7 @@ function SettingsIcon() {
 const TABS: { key: Tab; label: string; icon: () => JSX.Element }[] = [
   { key: "play", label: "Play", icon: PlayIcon },
   { key: "history", label: "History", icon: HistoryIcon },
+  { key: "later", label: "Later", icon: BookmarkIcon },
   { key: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -99,7 +119,8 @@ export default function App() {
 
   useEffect(() => {
     const cleanup = window.electronAPI.window.onNavigate((t) => {
-      if (t === "play" || t === "history" || t === "settings") setTab(t);
+      if (t === "play" || t === "history" || t === "later" || t === "settings")
+        setTab(t);
     });
     return cleanup;
   }, []);
@@ -118,6 +139,10 @@ export default function App() {
       } else if (key === "3") {
         e.preventDefault();
         setTab("settings");
+      } else if (key === "4") {
+        e.preventDefault();
+        setTab("later");
+        setSearchSignal((n) => n + 1);
       } else if (key === "f") {
         e.preventDefault();
         setTab("history");
@@ -215,6 +240,7 @@ export default function App() {
         >
           {tab === "play" && <Play />}
           {tab === "history" && <History focusSignal={searchSignal} />}
+          {tab === "later" && <WatchLater focusSignal={searchSignal} />}
           {tab === "settings" && <Settings />}
         </main>
       </div>

@@ -10,18 +10,25 @@ import {
 } from "./auth.js";
 import {
   addHistory,
+  addWatchLater,
   clearHistory,
+  clearWatchLater,
   createRemoteSession,
   deleteAllRemoteSessions,
   deleteHistory,
   deleteRemoteSession,
+  deleteWatchLater,
   findRemoteSession,
   getHistory,
   getHistoryPosition,
   getRemoteSessions,
   getSettings,
+  getWatchLater,
+  resetHistoryProgress,
   setSettings,
+  setWatchLaterOrder,
   updateHistoryEntry,
+  updateWatchLaterEntry,
 } from "./db.js";
 import { fetchMetadata } from "./metadata.js";
 import { launchPlayer } from "./player.js";
@@ -61,6 +68,7 @@ import {
   type PlaylistInfo,
 } from "./playlists.js";
 import { clearSavedQueue, readSavedQueue } from "./saved-queue.js";
+import type { WatchLaterEntry } from "./types.js";
 import { API_VERSION, SERVER_VERSION } from "./version.js";
 
 const app = new Hono();
@@ -68,12 +76,24 @@ const app = new Hono();
 function enrichMetadata(historyId: string, url: string): void {
   fetchMetadata(url)
     .then((meta) => {
-      if (meta.title || meta.thumbnail) {
+      if (meta.title || meta.thumbnail || meta.liveStatus) {
         updateHistoryEntry(historyId, meta);
       }
     })
     .catch((err) => {
       console.error("metadata enrichment failed:", err);
+    });
+}
+
+function enrichWatchLater(id: string, url: string): void {
+  fetchMetadata(url)
+    .then((meta) => {
+      if (meta.title || meta.thumbnail || meta.liveStatus) {
+        updateWatchLaterEntry(id, meta);
+      }
+    })
+    .catch((err) => {
+      console.error("watch later enrichment failed:", err);
     });
 }
 
@@ -119,6 +139,32 @@ async function enqueueEntries(urls: string[]): Promise<boolean> {
     if (!(await queueUrl(url))) return false;
   }
   return true;
+}
+
+function watchLaterSelection(ids?: string[]): WatchLaterEntry[] {
+  const all = getWatchLater();
+  if (!ids) return all;
+  const byId = new Map(all.map((entry) => [entry.id, entry]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((entry): entry is WatchLaterEntry => entry !== undefined);
+}
+
+/** Records queued entries in history so their titles and thumbnails resolve. */
+function rememberWatchLaterEntries(entries: WatchLaterEntry[]): void {
+  // Oldest first so the first entry ends up at the top of history.
+  for (const entry of [...entries].reverse()) {
+    const history = addHistory(entry.url, entry.title, entry.thumbnail);
+    const patch: { liveStatus?: string; isShort?: boolean } = {};
+    // Carry known flags into history so playback doesn't record a resume
+    // position while metadata is still being fetched, and so the Short badge
+    // survives the canonical URL rewrite.
+    if (entry.liveStatus) patch.liveStatus = entry.liveStatus;
+    if (entry.isShort) patch.isShort = true;
+    if (Object.keys(patch).length > 0) {
+      updateHistoryEntry(history.id, patch);
+    }
+  }
 }
 
 app.get("/api/health", (c) => {
@@ -921,6 +967,197 @@ app.delete("/history/:id", (c) => {
 app.delete("/history", (_c) => {
   clearHistory();
   return _c.json({ data: "cleared" });
+});
+
+app.get("/watch-later", (c) => {
+  return c.json(getWatchLater());
+});
+
+app.post("/watch-later", async (c) => {
+  try {
+    const { url, title, thumbnail, addedAt } = await c.req.json<{
+      url?: string;
+      title?: string;
+      thumbnail?: string;
+      addedAt?: number;
+    }>();
+    if (!isUrl(url)) {
+      return c.json({ err: "url must be a valid http(s) URL" }, 400);
+    }
+    const entry = addWatchLater(
+      url,
+      typeof title === "string" ? title.trim() : "",
+      typeof thumbnail === "string" ? thumbnail.trim() : "",
+      typeof addedAt === "number" && Number.isFinite(addedAt) && addedAt > 0
+        ? addedAt
+        : undefined,
+    );
+    // Always refresh metadata so the live/upcoming status is current, not just
+    // when the title or thumbnail is missing.
+    enrichWatchLater(entry.id, entry.url);
+    return c.json(entry);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ err: message }, 400);
+  }
+});
+
+app.put("/watch-later/order", async (c) => {
+  try {
+    const { ids } = await c.req.json<{ ids?: string[] }>();
+    if (!isOptions(ids) || ids.length === 0) {
+      return c.json({ err: "ids must be a non-empty array of strings" }, 400);
+    }
+    const all = getWatchLater();
+    const known = new Set(all.map((entry) => entry.id));
+    const unique = new Set(ids);
+    if (
+      unique.size !== ids.length ||
+      ids.length !== all.length ||
+      ids.some((id) => !known.has(id))
+    ) {
+      return c.json(
+        { err: "ids must include every Watch Later item exactly once" },
+        400,
+      );
+    }
+    setWatchLaterOrder(ids);
+    return c.json(getWatchLater());
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ err: message }, 400);
+  }
+});
+
+app.post("/watch-later/:id/unwatch", (c) => {
+  const entry = getWatchLater().find((item) => item.id === c.req.param("id"));
+  if (!entry) {
+    return c.json({ err: "No such Watch Later item" }, 404);
+  }
+  resetHistoryProgress(entry.url);
+  return c.json(getWatchLater());
+});
+
+app.delete("/watch-later/:id", (c) => {
+  const id = c.req.param("id");
+  return c.json(deleteWatchLater(id));
+});
+
+app.delete("/watch-later", (c) => {
+  clearWatchLater();
+  return c.json({ data: "cleared" });
+});
+
+app.post("/watch-later/play", async (c) => {
+  try {
+    const { ids, options } = await c.req.json<{
+      ids?: string[];
+      options?: string[];
+    }>();
+    if (!isOptions(ids)) {
+      return c.json({ err: "ids must be an array of strings" }, 400);
+    }
+    if (!isOptions(options)) {
+      return c.json({ err: "options must be an array of strings" }, 400);
+    }
+    const selected = watchLaterSelection(ids);
+    if (selected.length === 0) {
+      return c.json({ err: "No Watch Later videos to play" }, 404);
+    }
+    const settings = getSettings();
+    if ((settings.player || "mpv") !== "mpv") {
+      return c.json({ err: "Watch Later playback requires mpv" }, 409);
+    }
+
+    // A launch passes the queue on the command line, which has the same limit
+    // as playlist playback; a live player queues over IPC without that cap.
+    const player = getPlayerStatus();
+    const canControl = player.alive && player.ipcReady;
+    const entries = canControl
+      ? selected
+      : selected.slice(0, PLAYLIST_ENTRY_LIMIT);
+
+    rememberWatchLaterEntries(entries);
+    const [first, ...rest] = entries;
+
+    if (canControl) {
+      if (!(await playNow(first.url))) {
+        return c.json(
+          { err: "Could not control the running mpv instance" },
+          503,
+        );
+      }
+      for (let i = 0; i < rest.length; i += 1) {
+        if (!(await queueUrl(rest[i].url))) {
+          return c.json(
+            {
+              err: `Started the first video but queued only ${i} of ${rest.length}`,
+              count: i + 1,
+            },
+            503,
+          );
+        }
+      }
+    } else {
+      const result = await launchPlayer(
+        first.url,
+        [...(options ?? [])],
+        rest.map((entry) => entry.url),
+      );
+      if (!result.success) {
+        return c.json({ err: result.error }, 503);
+      }
+      if (result.proc && result.pipePath) {
+        registerPlayer(result.proc, result.pipePath, first.url);
+      }
+    }
+    return c.json({
+      data: "success",
+      count: entries.length,
+      total: selected.length,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(message);
+    return c.json({ err: message }, 500);
+  }
+});
+
+app.post("/watch-later/queue", async (c) => {
+  try {
+    const { ids } = await c.req.json<{ ids?: string[] }>();
+    if (!isOptions(ids)) {
+      return c.json({ err: "ids must be an array of strings" }, 400);
+    }
+    const entries = watchLaterSelection(ids);
+    if (entries.length === 0) {
+      return c.json({ err: "No Watch Later videos to queue" }, 404);
+    }
+    const settings = getSettings();
+    const player = getPlayerStatus();
+    if (
+      (settings.player || "mpv") !== "mpv" ||
+      !player.alive ||
+      !player.ipcReady
+    ) {
+      return c.json({ err: "Start a video before queueing another" }, 409);
+    }
+
+    rememberWatchLaterEntries(entries);
+    for (let i = 0; i < entries.length; i += 1) {
+      if (!(await queueUrl(entries[i].url))) {
+        return c.json(
+          { err: `Queued ${i} of ${entries.length} videos`, count: i },
+          503,
+        );
+      }
+    }
+    return c.json({ data: "queued", count: entries.length });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(message);
+    return c.json({ err: message }, 500);
+  }
 });
 
 app.get("/settings", (c) => {

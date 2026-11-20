@@ -3,11 +3,14 @@ import { randomInt } from "node:crypto";
 import { connect, type Socket } from "node:net";
 import {
   addHistory,
+  getHistoryLiveStatus,
   getHistoryMetadata,
   getHistoryPosition,
   getSettings,
+  markHistoryCompleted,
   updateHistoryPositionByUrl,
 } from "./db.js";
+import { isLiveLike } from "./live.js";
 import {
   clearSavedQueue,
   type SavedQueueEntry,
@@ -80,6 +83,8 @@ export interface PlayerStatus {
   error: PlaybackError | null;
   position: number;
   duration: number;
+  /** True for a live/upcoming stream; progress and resume don't apply. */
+  live: boolean;
   paused: boolean;
   queue: QueueEntry[];
   /** Playlist-sourced entries before the current one, for playlist context. */
@@ -273,8 +278,14 @@ function handleLine(line: string): void {
 
   if (msg.event === "end-file" && current) {
     if (msg.reason === "eof") {
-      // Watched to the end — a replay should start over.
-      updateHistoryPositionByUrl(current.url, 0);
+      // Watched to the end — note it, and a replay starts over. Live streams
+      // end when the broadcast ends, which is not the same as "watched".
+      if (
+        current.duration > 0 &&
+        !isLiveLike(getHistoryLiveStatus(current.url))
+      ) {
+        markHistoryCompleted(current.url, current.duration);
+      }
       const index = playlist.findIndex((entry) => entry.current === true);
       if (index >= 0 && index === playlist.length - 1) {
         // Nothing follows the finished track, so there is no queue to restore.
@@ -314,6 +325,10 @@ async function resumeTrackIfNeeded(): Promise<void> {
   if (!ipcReady || !current) return;
   const url = current.url;
   if (resumeChecked === url) return;
+  if (isLiveLike(getHistoryLiveStatus(url))) {
+    resumeChecked = url;
+    return;
+  }
   if (!getSettings().resumePlayback) return;
   const position = getHistoryPosition(url);
   if (position <= 60) {
@@ -330,13 +345,20 @@ async function resumeTrackIfNeeded(): Promise<void> {
 /** Persists the current position, unless the video is effectively finished. */
 function flushPosition(): void {
   if (!current?.url || current.position <= 0) return;
-  let position = current.position;
-  if (current.duration > 0 && position / current.duration >= 0.95) {
-    position = 0;
+  // Live streams have no stable position. `duration <= 0` also covers streams
+  // whose metadata has not been enriched yet.
+  if (current.duration <= 0 || isLiveLike(getHistoryLiveStatus(current.url))) {
+    return;
   }
-  if (position > 0) {
-    updateHistoryPositionByUrl(current.url, Math.floor(position));
+  if (current.position / current.duration >= 0.95) {
+    markHistoryCompleted(current.url, current.duration);
+    return;
   }
+  updateHistoryPositionByUrl(
+    current.url,
+    Math.floor(current.position),
+    current.duration,
+  );
 }
 
 /**
@@ -568,6 +590,7 @@ export function getPlayerStatus(): PlayerStatus {
     error: playbackError,
     position: current?.position ?? 0,
     duration: current?.duration ?? 0,
+    live: current ? isLiveLike(getHistoryLiveStatus(current.url)) : false,
     paused: current?.paused ?? false,
     queue,
     past,

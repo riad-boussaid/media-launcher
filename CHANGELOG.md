@@ -6,6 +6,49 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### Added
+
+- Watch Later: save the current page from the extension popup or sidebar, the
+  right-click menu, or Alt+Shift+S. The server-backed list is shared by the
+  desktop Later tab and the phone remote, with play, queue, and remove actions
+  for each saved video.
+- Watch Later recognizes the same video across share, embed, Shorts, and
+  tracking-parameter URL forms, and merges duplicate bookmarks on startup.
+- History rows now use the same canonical URLs, so share-link variants of the
+  same video dedupe there too and resume works across them.
+- Watch Later rows show a "Watched" marker or a resume position based on
+  playback history.
+- The desktop Later tab can play or queue every listed video, or multi-select a
+  subset to play, queue, or remove.
+- History now stores video duration; History and Watch Later show progress
+  bars, and Watch Later can filter to in-progress videos. The remote Watch Later
+  card has the same Continue filter.
+- The desktop Later tab can sort by newest, oldest, or title, or switch to a
+  manual order with drag-and-drop or keyboard reordering.
+- Watch Later can be exported to and imported from JSON, individual videos can
+  be marked unwatched, and direct media URLs gained a "Save Media to Watch
+  Later" context-menu item.
+- The popup's Watch Later rows show a compact progress indicator.
+- Live and upcoming streams are detected through yt-dlp metadata. They show a
+  LIVE badge in History, Watch Later, the popup, and the remote, and are excluded
+  from resume positions, progress bars, and watched state. Finished broadcasts
+  show "Was live" but keep normal VOD behavior.
+- YouTube Shorts, Facebook Reels, and Instagram Reels are detected from their
+  URLs or vertical, short metadata. They show a SHORT/REEL badge across History,
+  Watch Later, the popup, and the remote, and the desktop Later tab has a
+  persisted "Hide Shorts & Reels" filter. Existing Reel rows are flagged on
+  startup.
+- Watched videos are grouped into a collapsible section in the desktop Later
+  tab, and the Continue filter is remembered on desktop and the remote.
+
+### Fixed
+
+- Extension context menus are rebuilt on install, update, and browser start, so
+  stale entries no longer linger after upgrading.
+- Broken remote thumbnails fall back to the placeholder once and are not retried
+  for the rest of the session, so an invalid CDN certificate no longer repeats
+  TLS errors in the log.
+
 ## [1.1.0] - 2026-11-18
 
 ### Added

@@ -32,6 +32,8 @@ import {
   togglePause,
 } from "../lib/api";
 import { formatTime, hostOf } from "../lib/format";
+import { LiveBadge } from "./LiveBadge";
+import { Thumbnail } from "./Thumbnail";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -223,18 +225,11 @@ function Artwork({
           <polygon points="7 4 21 12 7 20 7 4" />
         </svg>
       </span>
-      {src ? (
-        <img
-          src={src}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          className="absolute inset-0 h-full w-full object-cover"
-          onError={(event) => {
-            event.currentTarget.style.visibility = "hidden";
-          }}
-        />
-      ) : null}
+      <Thumbnail
+        src={src}
+        className="absolute inset-0 h-full w-full object-cover"
+        fallback={null}
+      />
     </span>
   );
 }
@@ -691,6 +686,12 @@ export default function NowPlaying({ player, onRefresh }: NowPlayingProps) {
               {player.title || hostOf(player.url ?? "")}
             </h3>
             <div className="mt-1 text-[11.5px] text-muted truncate">
+              {player.live && (
+                <>
+                  <LiveBadge status="live" />
+                  <span className="mx-1.5" />
+                </>
+              )}
               {hostOf(player.url ?? "")}
               {player.chapter !== null && chapter && (
                 <>

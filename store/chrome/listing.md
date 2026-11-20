@@ -35,12 +35,14 @@ copying URLs and no switching tabs.
   speed, and loop.
 - Add extra mpv arguments for advanced setups.
 - Videos resume where you left off, with a local watch history.
+- Save videos to Watch Later from the popup, the right-click menu, or
+  Alt+Shift+S; the list is shared with the desktop app and phone remote.
 
 **Control from your phone**
 
 - Enable remote control to get a QR code and a one-time pairing code.
 - A paired phone can seek, pause, skip, change chapters, adjust volume and
-  speed, and browse recent history.
+  speed, browse recent history and Watch Later, and play saved videos.
 - Remote access works over your LAN or Tailscale; paired devices can be revoked
   at any time.
 
@@ -82,10 +84,10 @@ server, or show playback state and history for that server.
 
 | Permission | Why it is needed |
 |---|---|
-| `storage` | Save the server URL, API token (local only), playback preferences, and a cache of history returned by the user's server. |
+| `storage` | Save the server URL, API token (local only), playback preferences, and a cache of history and Watch Later returned by the user's server. |
 | `activeTab` | Read the current tab's URL and title when the user opens the popup or invokes a shortcut, so the correct video can be sent. |
-| `contextMenus` | Add Play and Queue actions when the user right-clicks a page, link, or video. |
-| `notifications` | Show a success or failure notification after a play/queue request, with the video thumbnail when available. |
+| `contextMenus` | Add Play, Queue, and Save to Watch Later actions when the user right-clicks a page, link, or video. |
+| `notifications` | Show a success or failure notification after a play, queue, or save request, with the video thumbnail when available. |
 | `alarms` | Periodically refresh the toolbar badge that indicates whether the local Media Launcher server is reachable. |
 | `sidePanel` | Host the extension's side-panel UI (Chrome 116+). |
 | Content script on `<all_urls>` | Detect supported video pages and inject the play button or thumbnail chip. The script only reads video elements, video links, thumbnail images, and page metadata; it does not transmit anything until the user acts. |
@@ -95,7 +97,7 @@ server, or show playback state and history for that server.
 
 | Host | Purpose |
 |---|---|
-| `https://img.youtube.com/*` | YouTube video thumbnails in the popup, notifications, and history. |
+| `https://img.youtube.com/*` | YouTube video thumbnails in the popup, notifications, history, and Watch Later. |
 | `https://*.youtube.com/*` | Detect videos, Shorts, and playlists on YouTube pages. |
 | `https://i.vimeocdn.com/*` | Vimeo thumbnails. |
 | `https://*.dailymotion.com/*` | Dailymotion page metadata. |

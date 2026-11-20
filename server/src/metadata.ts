@@ -2,10 +2,15 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { getSettings } from "./db.js";
+import { parseLiveStatus } from "./live.js";
+import { isShortMetadata } from "./shorts.js";
 
 export interface VideoMetadata {
   title: string;
   thumbnail: string;
+  /** "live", "upcoming", "post_live", "was_live", "none", or "" if unknown. */
+  liveStatus: string;
+  isShort: boolean;
 }
 
 // Packaged apps launched from Finder inherit a minimal PATH, so Homebrew
@@ -69,12 +74,12 @@ function runFetchMetadata(
 
     proc.on("error", (err) => {
       console.error(`[metadata] yt-dlp error: ${err.message}`);
-      resolve({ title: "", thumbnail: "" });
+      resolve({ title: "", thumbnail: "", liveStatus: "", isShort: false });
     });
 
     proc.on("close", (code) => {
       if (code !== 0 || !stdout.trim()) {
-        resolve({ title: "", thumbnail: "" });
+        resolve({ title: "", thumbnail: "", liveStatus: "", isShort: false });
         return;
       }
       const lines = stdout
@@ -87,15 +92,27 @@ function runFetchMetadata(
           const title = typeof obj.title === "string" ? obj.title : "";
           const thumbnail =
             typeof obj.thumbnail === "string" ? obj.thumbnail : "";
-          if (title || thumbnail) {
-            resolve({ title, thumbnail });
+          const liveStatus = parseLiveStatus(
+            obj.live_status,
+            obj.is_live,
+            obj.was_live,
+          );
+          const isShort = isShortMetadata(obj);
+          if (
+            title ||
+            thumbnail ||
+            liveStatus !== "none" ||
+            typeof obj.live_status === "string" ||
+            isShort
+          ) {
+            resolve({ title, thumbnail, liveStatus, isShort });
             return;
           }
         } catch {
           // Not JSON (e.g. a warning leaked to stdout) — keep scanning.
         }
       }
-      resolve({ title: "", thumbnail: "" });
+      resolve({ title: "", thumbnail: "", liveStatus: "", isShort: false });
     });
 
     if (signal) {

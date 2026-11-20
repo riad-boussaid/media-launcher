@@ -29,6 +29,21 @@ export const history = sqliteTable("history", {
   thumbnail: text("thumbnail").notNull().default(""),
   timestamp: integer("timestamp").notNull(),
   position: integer("position").notNull().default(0),
+  duration: integer("duration").notNull().default(0),
+  completed: integer("completed", { mode: "boolean" }).notNull().default(false),
+  liveStatus: text("live_status").notNull().default(""),
+  isShort: integer("is_short", { mode: "boolean" }).notNull().default(false),
+});
+
+export const watchLater = sqliteTable("watch_later", {
+  id: text("id").primaryKey(),
+  url: text("url").notNull().unique(),
+  title: text("title").notNull().default(""),
+  thumbnail: text("thumbnail").notNull().default(""),
+  addedAt: integer("added_at").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  liveStatus: text("live_status").notNull().default(""),
+  isShort: integer("is_short", { mode: "boolean" }).notNull().default(false),
 });
 
 export const remoteSessions = sqliteTable("remote_sessions", {
