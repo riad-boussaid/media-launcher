@@ -71,15 +71,47 @@ jobs:
           pnpm package:chrome
           pnpm package:firefox
 
-      - name: Sign Firefox XPI with AMO
-        if: env.AMO_API_KEY != '' && env.AMO_API_SECRET != ''
+      - name: Create Firefox source archive
+        shell: bash
         run: |
+          VERSION="${TAG#v}"
+          git archive --format=zip \
+            --prefix="media-launcher-${VERSION}/" \
+            -o "artifacts/media-launcher-firefox-${VERSION}-source.zip" HEAD
+
+      - name: Create AMO version metadata
+        shell: bash
+        run: |
+          node scripts/amo-metadata.mjs "${TAG#v}" "$RUNNER_TEMP/amo-metadata.json"
+
+      - name: Submit Firefox release to AMO
+        id: amo
+        if: env.AMO_API_KEY != '' && env.AMO_API_SECRET != ''
+        continue-on-error: true
+        shell: bash
+        run: |
+          VERSION="${TAG#v}"
           pnpm dlx web-ext@latest sign \
             --source-dir extensions/firefox/dist \
-            --artifacts-dir artifacts \
-            --channel unlisted \
+            --artifacts-dir "$RUNNER_TEMP/amo-artifacts" \
+            --channel listed \
             --api-key "$AMO_API_KEY" \
-            --api-secret "$AMO_API_SECRET"
+            --api-secret "$AMO_API_SECRET" \
+            --upload-source-code "artifacts/media-launcher-firefox-${VERSION}-source.zip" \
+            --amo-metadata "$RUNNER_TEMP/amo-metadata.json" \
+            --approval-timeout 0 \
+            --no-input
+          echo "AMO submission sent for $VERSION. Check the addons.mozilla.org Developer Hub for review status." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Warn about a failed AMO submission
+        if: steps.amo.outcome == 'failure'
+        run: |
+          echo "::warning::The listed AMO submission failed; check the previous step and submit this version manually."
+
+      - name: Note skipped AMO submission
+        if: env.AMO_API_KEY == '' || env.AMO_API_SECRET == ''
+        run: |
+          echo "::notice::AMO credentials are not configured; skipping the Firefox listing submission."
 
       - name: Upload extension bundles
         uses: actions/upload-artifact@v7

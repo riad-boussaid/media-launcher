@@ -87,8 +87,10 @@ manually with a tag name.
 Jobs:
 
 1. **extensions** — verifies versions/metadata, lints, type-checks, builds both
-   extensions, packages ZIP/XPI, optionally signs the XPI with AMO, and uploads
-   the bundles.
+   extensions, packages ZIP/XPI, creates a source archive, and, when AMO
+   credentials are present, submits the Firefox build to the listed AMO channel
+   with its source archive and changelog release notes. It does not wait for
+   AMO review.
 2. **desktop** — builds Windows, macOS, and Linux packages on native runners,
    signing when the corresponding secrets are present.
 3. **release** — downloads every artifact, writes `SHA256SUMS.txt`, attaches
@@ -98,7 +100,8 @@ Jobs:
 ### Signing secrets
 
 All secrets are optional. Without them, the workflow still produces working
-unsigned artifacts.
+unsigned artifacts. The AMO submission is non-blocking: a failure emits a
+workflow warning but still publishes the GitHub release.
 
 | Secret | Used for |
 |---|---|
@@ -112,8 +115,8 @@ unsigned artifacts.
 | `APPLE_API_KEY` | Contents of an App Store Connect `.p8` key (optional alternative to `APPLE_ID`) |
 | `APPLE_API_KEY_ID` | App Store Connect key ID |
 | `APPLE_API_ISSUER` | App Store Connect issuer UUID |
-| `AMO_API_KEY` | addons.mozilla.org API key for XPI signing |
-| `AMO_API_SECRET` | addons.mozilla.org API secret |
+| `AMO_API_KEY` | addons.mozilla.org API key for the listed Firefox submission |
+| `AMO_API_SECRET` | addons.mozilla.org API secret for the listed Firefox submission |
 
 macOS signing uses electron-builder's standard environment variables and
 notarization (`mac.notarize: true`). If `APPLE_API_KEY` is provided, the
@@ -155,11 +158,17 @@ Before submitting to either store, enable GitHub Pages for the repository
 
 ### Firefox addons.mozilla.org
 
-1. Upload `artifacts/media-launcher-firefox-X.Y.Z.xpi` to AMO, or let the
-   release workflow sign it with `AMO_API_KEY` / `AMO_API_SECRET`.
-2. Use `store/firefox/listing.md`, `store/firefox/permissions.md`, and
-   `store/firefox/reviewer-notes.md` for the submission and reviewer notes.
-3. Upload `store/assets/firefox-screenshot-1280x800.png` and the 128/512 icons.
+The release workflow submits the listed Firefox build automatically when
+`AMO_API_KEY` and `AMO_API_SECRET` are configured. It uploads a clean source
+archive, passes the changelog section as release notes, and skips waiting for
+review (`--approval-timeout 0`). Check the Developer Hub for the review status.
+
+To submit manually, upload `artifacts/media-launcher-firefox-X.Y.Z.xpi` and
+`artifacts/media-launcher-firefox-X.Y.Z-source.zip` as a listed version.
+
+Use `store/firefox/listing.md`, `store/firefox/permissions.md`, and
+`store/firefox/reviewer-notes.md` for the metadata and reviewer notes. Upload
+`store/assets/firefox-screenshot-1280x800.png` and the 128/512 icons.
 
 ### Regenerating listing artwork
 
@@ -180,5 +189,7 @@ The generated PNGs are committed, so this is only needed when the copy changes.
 - [ ] `pnpm lint`, `pnpm type-check`, `pnpm build` pass
 - [ ] `pnpm release:extensions` produces both archives
 - [ ] `pnpm -C desktop run dist:win` (and mac/Linux where available) works
+- [ ] AMO credentials configured (or Firefox submission planned manually)
 - [ ] Tag pushed; release workflow is green
+- [ ] AMO submission appears in the Developer Hub (when automatic)
 - [ ] Store listings and privacy policy URL are current

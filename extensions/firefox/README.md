@@ -30,8 +30,10 @@ pnpm package:firefox
 ```
 
 Writes `artifacts/media-launcher-firefox-<version>.xpi` with `manifest.json` at
-the archive root. AMO signing can be performed with `web-ext sign`; the release
-workflow does this when `AMO_API_KEY` and `AMO_API_SECRET` are set.
+the archive root. When `AMO_API_KEY` and `AMO_API_SECRET` are configured, the
+release workflow submits the build to the **listed** AMO channel together with
+a clean source archive and the changelog release notes. It does not wait for
+AMO review.
 
 ## Load in Firefox
 
